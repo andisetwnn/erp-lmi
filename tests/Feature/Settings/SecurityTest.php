@@ -4,8 +4,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Livewire;
 
-beforeEach(function () {
-});
+beforeEach(function () {});
 
 test('security settings page can be rendered', function () {
     $user = User::factory()->create();
@@ -31,7 +30,10 @@ test('security settings page renders without two factor when feature is disabled
 });
 
 test('two factor authentication disabled when confirmation abandoned between requests', function () {
-});
+    // Placeholder — fitur 2FA belum diaktifkan pada sistem ini
+    // (lihat config/fortify.php features array yang kosong).
+    // Aktifkan skenario asli saat 2FA di-enable.
+})->skip('2FA belum diaktifkan pada sistem ini.');
 
 test('password can be updated', function () {
     $user = User::factory()->create([

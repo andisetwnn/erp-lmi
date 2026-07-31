@@ -19,6 +19,7 @@ class ResetTransactionalData extends Command
      */
     private array $tablesToReset = [
         // SPR & transaksi
+        'spr_realisasi_pembayaran',
         'spr_termin_pembayaran',
         'spr',
         'booking',
@@ -51,6 +52,9 @@ class ResetTransactionalData extends Command
         'alasan_pembatalan',
         'pimpinan_activity_log',
         'dismissed_notif',
+
+        // Audit log (activity_log dari Spatie ActivityLog / BusinessActivityLogger)
+        'activity_log',
     ];
 
     public function handle(): int

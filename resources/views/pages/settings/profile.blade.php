@@ -43,6 +43,12 @@ new #[Title('Profil')] class extends Component
         $validated = $this->validate($this->profileRules($user->id));
 
         $user->fill($validated);
+
+        // Reset status verifikasi bila email berubah — konsumen harus verify ulang.
+        if ($user->isDirty('email')) {
+            $user->email_verified_at = null;
+        }
+
         $user->save();
 
         Flux::toast(variant: 'success', text: 'Profil berhasil diperbarui.');

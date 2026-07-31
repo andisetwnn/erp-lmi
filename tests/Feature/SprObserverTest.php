@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Master\JenisSales;
 use App\Models\Master\ProspectCustomer;
 use App\Models\Master\Proyek;
 use App\Models\Master\Rumah;
@@ -7,26 +8,39 @@ use App\Models\Master\Sales;
 use App\Models\Master\Spr;
 use App\Models\Master\TipeRumah;
 use Illuminate\Support\Facades\DB;
+use Tests\TestCase;
 
 beforeEach(function () {
-    // Seed seluruh master data supaya FK constraint terpenuhi.
+    // Seed master data (perusahaan, proyek, tipe_rumah, coa, bank, alasan_pembatalan, jenis_sales, dst).
+    // Sales & prospect_customer TIDAK di-seed lagi (per keputusan DB reset) — buat manual di sini.
     $this->seed();
 
     $proyek = Proyek::first();
     $tipe = TipeRumah::where('proyek_id', $proyek->id)->first();
-    $sales = Sales::first();
-    $prospect = ProspectCustomer::first()
-        ?? ProspectCustomer::create([
-            'sales_id' => $sales->id,
-            'nama_lengkap' => 'Test Customer',
-            'nik' => '0000000000000001',
-            'hp' => '0800000001',
-            'sumber' => 'Walk-in',
-            'status' => 'finish',
-            'foto_ktp' => 'x.jpg',
-            'bi_kol' => '1',
-            'bi_dbr' => 25,
-        ]);
+
+    $jenisSalesId = JenisSales::first()?->id;
+
+    $sales = Sales::create([
+        'kode' => 'SLS-TEST',
+        'nama' => 'Sales Test',
+        'jenis_sales_id' => $jenisSalesId,
+        'is_aktif' => true,
+        'dbos_username' => 'sales-test',
+        'dbos_password' => 'rahasia123',
+    ]);
+
+    $prospect = ProspectCustomer::create([
+        'sales_id' => $sales->id,
+        'proyek_id' => $proyek->id,
+        'nama_lengkap' => 'Test Customer',
+        'nik' => '0000000000000001',
+        'hp' => '0800000001',
+        'sumber' => 'Walk-in',
+        'status' => 'finish',
+        'foto_ktp' => 'x.jpg',
+        'bi_kol' => '1',
+        'bi_dbr' => 25,
+    ]);
 
     $this->rumah = Rumah::create([
         'proyek_id' => $proyek->id,
@@ -54,7 +68,7 @@ beforeEach(function () {
 
 function makeSpr(string $status = 'submitted'): Spr
 {
-    /** @var \Tests\TestCase $t */
+    /** @var TestCase $t */
     $t = test();
 
     return Spr::create([
