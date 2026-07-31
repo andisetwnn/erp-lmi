@@ -4,56 +4,62 @@ namespace Database\Seeders;
 
 use App\Models\Master\JenisSales;
 use App\Models\Master\Sales;
+use App\Models\Master\SalesGrup;
 use Illuminate\Database\Seeder;
 
 class SalesSeeder extends Seeder
 {
     public function run(): void
     {
-        // Semua sales GRHA ARYANA jenisnya Agent. Grup belum digunakan (nullable).
         $jenisAgent = JenisSales::firstOrCreate(['nama' => 'Agent']);
 
-        // ---- SALES ----
-        // Kode auto-generate SLS-XXX. Data riil dari sistem lama GRHA ARYANA.
-        // Password DBOS pattern: <nama_lower>123 (mis. arifin → arifin123).
-        $sales = [
-            ['kode' => 'SLS-001', 'nama' => 'Arifin', 'dbos' => 'arifin'],
-            ['kode' => 'SLS-002', 'nama' => 'Ana',    'dbos' => 'ana'],
-            ['kode' => 'SLS-003', 'nama' => 'Dkh',    'dbos' => 'dkh'],
-            ['kode' => 'SLS-004', 'nama' => 'Ridho',  'dbos' => 'ridho'],
-            ['kode' => 'SLS-005', 'nama' => 'Ramdan', 'dbos' => 'ramdan'],
-            ['kode' => 'SLS-006', 'nama' => 'Hendra', 'dbos' => 'hendra'],
-            ['kode' => 'SLS-007', 'nama' => 'Delon',  'dbos' => 'delon'],
-            ['kode' => 'SLS-008', 'nama' => 'Bima',   'dbos' => 'bima'],
-            ['kode' => 'SLS-009', 'nama' => 'Viktor', 'dbos' => 'viktor'],
+        // Definisi tim + anggotanya. Pimpinan = anggota pertama tiap tim.
+        $tims = [
+            'Tim Agus' => [
+                ['nama' => 'Agus Solehudin', 'dbos' => 'agus.solehudin', 'is_pimpinan' => true],
+                ['nama' => 'Hendra Maryono', 'dbos' => 'hendra.maryono'],
+                ['nama' => 'Muhamad Ramdan', 'dbos' => 'muhamad.ramdan'],
+                ['nama' => 'Arifin',         'dbos' => 'arifin'],
+            ],
+            'Tim Dellon' => [
+                ['nama' => 'Dellon',         'dbos' => 'dellon',       'is_pimpinan' => true],
+                ['nama' => 'Ade Saputra',    'dbos' => 'ade.saputra'],
+                ['nama' => 'Ridha Mustafa',  'dbos' => 'ridha.mustafa'],
+                ['nama' => 'Nur Fitriana',   'dbos' => 'nur.fitriana'],
+            ],
         ];
 
-        foreach ($sales as $row) {
-            $password = strtolower($row['dbos']).'123';
+        $urut = 1;
 
-            // Dedup priority: kode → dbos_username.
-            $s = Sales::where('kode', $row['kode'])->first();
-            if (! $s) {
-                $s = Sales::where('dbos_username', $row['dbos'])->first();
+        foreach ($tims as $namaGrup => $anggotaList) {
+            $grup = SalesGrup::firstOrCreate(['nama' => $namaGrup]);
+            $pimpinanId = null;
+
+            foreach ($anggotaList as $data) {
+                $kode = 'SLS-'.str_pad((string) $urut, 3, '0', STR_PAD_LEFT);
+                $password = str_replace('.', '', $data['dbos']).'123';
+
+                $sales = Sales::updateOrCreate(
+                    ['dbos_username' => $data['dbos']],
+                    [
+                        'kode' => $kode,
+                        'nama' => $data['nama'],
+                        'jenis_sales_id' => $jenisAgent->id,
+                        'sales_grup_id' => $grup->id,
+                        'is_aktif' => true,
+                        'dbos_password' => $password,
+                    ],
+                );
+
+                if (! empty($data['is_pimpinan'])) {
+                    $pimpinanId = $sales->id;
+                }
+
+                $urut++;
             }
 
-            if (! $s) {
-                Sales::create([
-                    'kode' => $row['kode'],
-                    'nama' => $row['nama'],
-                    'jenis_sales_id' => $jenisAgent->id,
-                    'sales_grup_id' => null,
-                    'is_aktif' => true,
-                    'dbos_username' => $row['dbos'],
-                    'dbos_password' => $password,
-                ]);
-            } else {
-                // Existing → refresh jenis + password + kosongkan grup
-                $s->update([
-                    'jenis_sales_id' => $jenisAgent->id,
-                    'sales_grup_id' => null,
-                    'dbos_password' => $password,
-                ]);
+            if ($pimpinanId) {
+                $grup->update(['pimpinan_id' => $pimpinanId]);
             }
         }
     }

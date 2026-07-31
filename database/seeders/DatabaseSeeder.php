@@ -25,7 +25,10 @@ class DatabaseSeeder extends Seeder
             JenisSalesSeeder::class,
             AlasanPembatalanSeeder::class,
 
-            // Data operasional (sales, notaris, tempat_kerja, rumah, customer, dst)
+            // Sales team default (2 tim: Tim Agus + Tim Dellon)
+            SalesSeeder::class,
+
+            // Data operasional lain (notaris, tempat_kerja, rumah, customer, prospect, spr)
             // TIDAK auto-seed — di-input manual via UI atau via import:konsumen-on-progress.
         ]);
     }
