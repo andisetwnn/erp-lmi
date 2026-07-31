@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(composer require *)",
+      "PowerShell($env:Path = \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.4.20-Win32-vs17-x64;$env:Path\"; cd \"c:\\\\laragon\\\\www\\\\erp-lmi\"; & php artisan tinker --execute \"echo 'proyek columns: '; foreach\\(\\\\Illuminate\\\\Support\\\\Facades\\\\Schema::getColumnListing\\('proyek'\\) as \\\\$c\\) echo \\\\$c.', '; echo PHP_EOL.'rumah columns siteplan: '; foreach\\(['siteplan_x','siteplan_y','siteplan_w','siteplan_h'] as \\\\$c\\) echo \\\\$c.'='.\\(\\\\Illuminate\\\\Support\\\\Facades\\\\Schema::hasColumn\\('rumah', \\\\$c\\) ? 'YES' : 'NO'\\).' ';\")",
+      "PowerShell($env:PATH = \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.4.20-Win32-vs17-x64;$env:PATH\"; php vendor/bin/pint --dirty --format agent 2>&1 | Select-Object -Last 3)"
+    ]
+  }
+}

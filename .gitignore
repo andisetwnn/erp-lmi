@@ -1,0 +1,64 @@
+/.phpunit.cache
+/node_modules
+/public/build
+/public/fonts-manifest.dev.json
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+
+# User-uploaded files & sensitive data (JANGAN commit ke public repo)
+/storage/app/public/*
+!/storage/app/public/.gitkeep
+/storage/app/livewire-tmp/*
+!/storage/app/livewire-tmp/.gitkeep
+
+# Runtime files (di-regen saat deploy)
+/storage/logs/*
+!/storage/logs/.gitkeep
+/storage/framework/cache/data/*
+!/storage/framework/cache/data/.gitkeep
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitkeep
+/storage/framework/views/*
+!/storage/framework/views/.gitkeep
+/storage/framework/testing/*
+!/storage/framework/testing/.gitkeep
+/vendor
+/database/*.sqlite*
+.env
+.env.backup
+.env.production
+.phpactor.json
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+npm-debug.log
+yarn-error.log
+/auth.json
+/.fleet
+/.idea
+/.nova
+/.vscode
+/.zed
+/.claude/settings.local.json
+
+# Data kerja / import (JANGAN commit — berisi data konsumen real)
+/KTP/
+/MASTER DATA.xlsx
+/_master_extract/
+/_master_extract.zip
+/erp-lmi.zip
+/ktp_folders.txt
+/ktp_map.txt
+/ktp_niks.txt
+*.xlsx
+*.xls
+*.zip
+*.rar
+*.7z
+
+# File temporary / OS
+.DS_Store
+Thumbs.db
+desktop.ini
