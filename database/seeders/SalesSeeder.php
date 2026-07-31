@@ -21,8 +21,8 @@ class SalesSeeder extends Seeder
                 ['nama' => 'Muhamad Ramdan', 'dbos' => 'muhamad.ramdan'],
                 ['nama' => 'Arifin',         'dbos' => 'arifin'],
             ],
-            'Tim Dellon' => [
-                ['nama' => 'Dellon',         'dbos' => 'dellon',       'is_pimpinan' => true],
+            'Tim Delon' => [
+                ['nama' => 'Delon',         'dbos' => 'delon',       'is_pimpinan' => true],
                 ['nama' => 'Ade Saputra',    'dbos' => 'ade.saputra'],
                 ['nama' => 'Ridha Mustafa',  'dbos' => 'ridha.mustafa'],
                 ['nama' => 'Nur Fitriana',   'dbos' => 'nur.fitriana'],
