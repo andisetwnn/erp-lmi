@@ -26,6 +26,7 @@ class RolePermissionSeeder extends Seeder
             // SPR (cetak/batal ter-cover spr.lihat, tidak perlu permission terpisah)
             'spr.lihat',          // Lihat list & detail SPR + cetak PDF + halaman pembatalan
             'spr.approve',        // Approve SPR sebagai Project Manager
+            'spr.pindah-unit',    // Pindah kavling / swap SPR
 
             // Finance (utj.konfirmasi ter-cover pembayaran.kelola)
             'pembayaran.kelola',  // Konfirmasi UTJ + realisasi cicilan + tempel materai + refund
@@ -90,10 +91,10 @@ class RolePermissionSeeder extends Seeder
         // - Permission redundan (spr.cetak/spr.batal/utj.konfirmasi) → sudah ter-cover spr.lihat & pembayaran.kelola
         // - Legacy dari seeder awal
         Permission::whereIn('name', [
-                'customer.kelola', 'dbos.kelola', 'spr.kelola', 'approval.proses',
-                'jurnal.kelola', 'kpr.kelola', 'sp3k.kelola', 'akad.kelola',
-                'spr.cetak', 'spr.batal', 'utj.konfirmasi',
-            ])
+            'customer.kelola', 'dbos.kelola', 'spr.kelola', 'approval.proses',
+            'jurnal.kelola', 'kpr.kelola', 'sp3k.kelola', 'akad.kelola',
+            'spr.cetak', 'spr.batal', 'utj.konfirmasi',
+        ])
             ->where('guard_name', 'web')
             ->delete();
 

@@ -20,21 +20,23 @@ class BusinessActivityLogger
      */
     public const EVENT_LABELS = [
         // Penjualan
-        'booking.created'   => 'Booking Baru',
-        'spr.submitted'     => 'SPR Diajukan',
-        'spr.approved'      => 'SPR Disetujui',
-        'spr.rejected'      => 'SPR Ditolak',
-        'spr.cancelled'     => 'SPR Dibatalkan',
-        'spr.akad'          => 'Akad Kredit',
-        'konsumen.signed'   => 'Konsumen Tanda Tangan',
+        'booking.created' => 'Booking Baru',
+        'spr.submitted' => 'SPR Diajukan',
+        'spr.approved' => 'SPR Disetujui',
+        'spr.rejected' => 'SPR Ditolak',
+        'spr.cancelled' => 'SPR Dibatalkan',
+        'spr.akad' => 'Akad Kredit',
+        'spr.switched' => 'Pindah Kavling',
+        'spr.swapped' => 'Swap Kavling (2 SPR)',
+        'konsumen.signed' => 'Konsumen Tanda Tangan',
         // Keuangan
-        'utj.verified'      => 'UTJ Diverifikasi',
+        'utj.verified' => 'UTJ Diverifikasi',
         'realisasi.created' => 'Realisasi Pembayaran',
-        'refund.processed'  => 'Refund Diproses',
-        'materai.stamped'   => 'e-Materai Ditempel',
+        'refund.processed' => 'Refund Diproses',
+        'materai.stamped' => 'e-Materai Ditempel',
         // Unit
-        'unit.created'        => 'Unit Baru',
-        'unit.updated'        => 'Unit Diubah',
+        'unit.created' => 'Unit Baru',
+        'unit.updated' => 'Unit Diubah',
         'unit.status_changed' => 'Status Unit Berubah',
     ];
 
@@ -51,7 +53,10 @@ class BusinessActivityLogger
      */
     public static function shortenDesc(?string $text): string
     {
-        if (! $text) return '';
+        if (! $text) {
+            return '';
+        }
+
         // Match "SPR/YYYY/MM/XXXX" (optional # prefix), ganti dengan #XXXX (padded 5 digit).
         // Pakai delimiter ~ supaya karakter # bebas dipakai di dalam pattern tanpa konflik.
         return preg_replace_callback(
@@ -162,6 +167,55 @@ class BusinessActivityLogger
             ->log("SPR #{$spr->nomor_display} akad · {$customer}");
     }
 
+    /** SPR di-pindah kavling (1 customer pindah ke unit baru — SPR lama voided, SPR baru dibuat). */
+    public static function sprSwitched(Spr $sprLama, Spr $sprBaru, string $alasan, int $userId): void
+    {
+        $customer = $sprLama->prospectCustomer?->nama_lengkap ?? '—';
+        $unitLama = $sprLama->rumah ? "{$sprLama->rumah->blok}-{$sprLama->rumah->nomor_unit}" : '—';
+        $sprBaru->loadMissing('rumah');
+        $unitBaru = $sprBaru->rumah ? "{$sprBaru->rumah->blok}-{$sprBaru->rumah->nomor_unit}" : '—';
+
+        activity('penjualan')
+            ->causedBy($userId)
+            ->performedOn($sprBaru)
+            ->event('spr.switched')
+            ->withProperties([
+                'spr_lama' => $sprLama->nomor_spr,
+                'spr_baru' => $sprBaru->nomor_spr,
+                'unit_lama' => $unitLama,
+                'unit_baru' => $unitBaru,
+                'customer' => $customer,
+                'alasan' => $alasan,
+            ])
+            ->log("Pindah Kavling: {$customer} unit {$unitLama} → {$unitBaru} (SPR #{$sprLama->nomor_display} → #{$sprBaru->nomor_display})");
+    }
+
+    /** Swap 2 SPR (2 customer tukar unit atomic). */
+    public static function sprSwapped(Spr $sprA, Spr $sprB, Spr $sprBaruA, Spr $sprBaruB, string $alasan, int $userId): void
+    {
+        $customerA = $sprA->prospectCustomer?->nama_lengkap ?? '—';
+        $customerB = $sprB->prospectCustomer?->nama_lengkap ?? '—';
+        $unitA = $sprA->rumah ? "{$sprA->rumah->blok}-{$sprA->rumah->nomor_unit}" : '—';
+        $unitB = $sprB->rumah ? "{$sprB->rumah->blok}-{$sprB->rumah->nomor_unit}" : '—';
+
+        activity('penjualan')
+            ->causedBy($userId)
+            ->performedOn($sprBaruA)
+            ->event('spr.swapped')
+            ->withProperties([
+                'spr_a_lama' => $sprA->nomor_spr,
+                'spr_b_lama' => $sprB->nomor_spr,
+                'spr_a_baru' => $sprBaruA->nomor_spr,
+                'spr_b_baru' => $sprBaruB->nomor_spr,
+                'unit_a' => $unitA,
+                'unit_b' => $unitB,
+                'customer_a' => $customerA,
+                'customer_b' => $customerB,
+                'alasan' => $alasan,
+            ])
+            ->log("Swap Kavling: {$customerA} ({$unitA}) ↔ {$customerB} ({$unitB})");
+    }
+
     /**
      * Konsumen tanda tangan digital via public page (no auth).
      * Causer = null (anonymous), tapi kita simpan info konsumen di properties.
@@ -238,6 +292,41 @@ class BusinessActivityLogger
                 'jumlah' => (float) $realisasi->jumlah,
             ])
             ->log("Realisasi {$jenis} · {$customer} · {$nominalFmt}");
+    }
+
+    /**
+     * Realisasi pembayaran di-edit (biasanya koreksi typo nominal / tanggal).
+     * Old values disimpan di properties supaya bisa di-audit siapa ubah apa dari nilai berapa.
+     *
+     * @param  array{tanggal_bayar: ?string, jumlah: float, metode: ?string, keterangan: ?string}  $old
+     */
+    public static function realisasiUpdated(SprRealisasiPembayaran $realisasi, array $old): void
+    {
+        $realisasi->loadMissing('spr.prospectCustomer');
+        $spr = $realisasi->spr;
+        $customer = $spr?->prospectCustomer?->nama_lengkap ?? '—';
+        $nominalBaru = 'Rp '.number_format((float) $realisasi->jumlah, 0, ',', '.');
+        $nominalLama = 'Rp '.number_format((float) $old['jumlah'], 0, ',', '.');
+        $jenis = strtoupper($realisasi->jenis);
+
+        activity('keuangan')
+            ->causedBy(self::causer())
+            ->performedOn($realisasi)
+            ->event('realisasi.updated')
+            ->withProperties([
+                'nomor_kwitansi' => $realisasi->nomor_kwitansi,
+                'nomor_spr' => $spr?->nomor_spr,
+                'customer' => $customer,
+                'jenis' => $realisasi->jenis,
+                'old' => $old,
+                'new' => [
+                    'tanggal_bayar' => $realisasi->tanggal_bayar?->format('Y-m-d'),
+                    'jumlah' => (float) $realisasi->jumlah,
+                    'metode' => $realisasi->metode,
+                    'keterangan' => $realisasi->keterangan,
+                ],
+            ])
+            ->log("Edit realisasi {$jenis} · kwitansi {$realisasi->nomor_kwitansi} · {$customer} · {$nominalLama} → {$nominalBaru}");
     }
 
     public static function refundProcessed(Spr $spr, float $jumlah): void
@@ -326,6 +415,7 @@ class BusinessActivityLogger
         if (Auth::guard('sales')->check()) {
             return Auth::guard('sales')->user();
         }
+
         return null;
     }
 }

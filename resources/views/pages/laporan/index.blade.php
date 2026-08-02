@@ -39,6 +39,9 @@ new #[Title('Laporan')] class extends Component
     #[Url(as: 'tipe')]
     public ?int $filterTipe = null;
 
+    #[Url(as: 'kat')]
+    public ?string $filterKategori = null;
+
     #[Url(as: 'q')]
     public string $search = '';
 
@@ -88,6 +91,7 @@ new #[Title('Laporan')] class extends Component
         $this->search = '';
         $this->filterSales = null;
         $this->filterTipe = null;
+        $this->filterKategori = null;
         $this->dateFrom = null;
         $this->dateTo = null;
         $this->period = 'all';
@@ -96,6 +100,7 @@ new #[Title('Laporan')] class extends Component
     public function updatingSearch(): void { $this->resetPage(); }
     public function updatingFilterSales(): void { $this->resetPage(); }
     public function updatingFilterTipe(): void { $this->resetPage(); }
+    public function updatingFilterKategori(): void { $this->resetPage(); }
     public function updatingDateFrom(): void { $this->resetPage(); }
     public function updatingDateTo(): void { $this->resetPage(); }
     public function updatingPerPage(): void { $this->resetPage(); }
@@ -167,6 +172,7 @@ new #[Title('Laporan')] class extends Component
         'penjualan'    => ['Penjualan',        'chart-bar',        'emerald', 'penjualan'],
         'stock'        => ['Stok Unit',        'cube',             'blue',    'penjualan'],
         'pembatalan'   => ['Pembatalan',       'x-circle',         'rose',    'penjualan'],
+        'pindah'       => ['Pindah Kavling',   'arrows-right-left','blue',    'penjualan'],
         'performance'  => ['Peringkat Sales',  'trophy',           'indigo',  'penjualan'],
         'realisasi'    => ['Kwitansi Masuk',   'banknotes',        'purple',  'keuangan'],
         'outstanding'  => ['Tunggakan UM',     'clock',            'amber',   'keuangan'],
@@ -232,6 +238,7 @@ public function setPeriod(string $p): void
             'realisasi' => $this->dataRealisasi($from, $to),
             'outstanding' => $this->dataOutstanding(),
             'pembatalan' => $this->dataPembatalan($from, $to),
+            'pindah' => $this->dataPindah($from, $to),
             'performance' => $this->dataPerformance($from, $to),
             default => [],
         };
@@ -246,6 +253,7 @@ public function setPeriod(string $p): void
         if ($this->filterProyek) $q->whereHas('rumah', fn ($r) => $r->where('proyek_id', $this->filterProyek));
         if ($this->filterSales) $q->where('spr.sales_id', $this->filterSales);
         if ($this->filterTipe) $q->whereHas('rumah', fn ($r) => $r->where('tipe_rumah_id', $this->filterTipe));
+        if ($this->filterKategori) $q->where('spr.kategori', $this->filterKategori);
         if ($this->search !== '') {
             $s = $this->search;
             $q->where(function ($qq) use ($s) {
@@ -291,6 +299,7 @@ public function setPeriod(string $p): void
         $q = Rumah::query()->with(['tipeRumah', 'proyek']);
         if ($this->filterProyek) $q->where('proyek_id', $this->filterProyek);
         if ($this->filterTipe) $q->where('tipe_rumah_id', $this->filterTipe);
+        if ($this->filterKategori) $q->whereHas('tipeRumah', fn ($t) => $t->where('kategori', $this->filterKategori));
         if ($this->search !== '') {
             $s = $this->search;
             $q->where(fn ($qq) => $qq->where('blok', 'like', "%{$s}%")->orWhere('nomor_unit', 'like', "%{$s}%")->orWhereRaw("CONCAT(blok,'-',nomor_unit) like ?", ["%{$s}%"]));
@@ -346,6 +355,9 @@ public function setPeriod(string $p): void
         }
         if ($this->filterTipe) {
             $q->whereHas('spr.rumah', fn ($r) => $r->where('tipe_rumah_id', $this->filterTipe));
+        }
+        if ($this->filterKategori) {
+            $q->whereHas('spr', fn ($s) => $s->where('kategori', $this->filterKategori));
         }
         if ($this->search !== '') {
             $s = $this->search;
@@ -480,11 +492,60 @@ public function setPeriod(string $p): void
         ];
     }
 
+    private function dataPindah($from, $to): array
+    {
+        $query = \App\Models\Master\SprSwitching::query()
+            ->with([
+                'sprLamaA.rumah.tipeRumah', 'sprLamaA.prospectCustomer:id,nama_lengkap',
+                'sprBaruA.rumah',
+                'sprLamaB.rumah.tipeRumah', 'sprLamaB.prospectCustomer:id,nama_lengkap',
+                'sprBaruB.rumah',
+                'processedBy:id,name',
+            ])
+            ->whereBetween('processed_at', [$from, $to]);
+
+        if ($this->filterProyek) {
+            $query->whereHas('sprLamaA.rumah', fn ($r) => $r->where('proyek_id', $this->filterProyek));
+        }
+
+        if ($this->search !== '') {
+            $s = "%{$this->search}%";
+            $query->where(function ($q) use ($s) {
+                $q->where('nomor_switching', 'like', $s)
+                    ->orWhere('alasan', 'like', $s)
+                    ->orWhereHas('sprLamaA.prospectCustomer', fn ($p) => $p->where('nama_lengkap', 'like', $s))
+                    ->orWhereHas('sprLamaB.prospectCustomer', fn ($p) => $p->where('nama_lengkap', 'like', $s))
+                    ->orWhereHas('sprLamaA.rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", [$s]))
+                    ->orWhereHas('sprLamaB.rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", [$s]));
+            });
+        }
+
+        $switchings = (clone $query)->orderByDesc('processed_at')->paginate($this->effectivePerPage());
+
+        $totalPindah = (clone $query)->where('tipe', 'pindah')->count();
+        $totalSwap = (clone $query)->where('tipe', 'swap')->count();
+        $totalEvent = $totalPindah + $totalSwap;
+        $totalRefundPindah = (float) \App\Models\Master\SprRealisasiPembayaran::where('jenis', 'refund_pindah')
+            ->whereHas('switching', fn ($q) => $q->whereBetween('processed_at', [$from, $to])
+                ->when($this->filterProyek, fn ($qq) => $qq->whereHas('sprLamaA.rumah', fn ($r) => $r->where('proyek_id', $this->filterProyek))))
+            ->sum('jumlah');
+
+        return compact('switchings', 'totalPindah', 'totalSwap', 'totalEvent', 'totalRefundPindah');
+    }
+
     private function dataPembatalan($from, $to): array
     {
+        // Exclude SPR yang cancelled karena Pindah Kavling — dilaporkan di tab terpisah.
+        $pindahAlasanId = \App\Models\Master\AlasanPembatalan::where('nama', 'Pindah Kavling')->value('id');
+
         $query = $this->baseSprQuery(['cancelled'])
-            ->with('alasanPembatalan')
-            ->whereBetween('spr.tanggal_spr', [$from, $to]);
+            ->with(['alasanPembatalan', 'realisasiPembayaran:id,spr_id,jenis,jumlah', 'rumah.tipeRumah:id,tipe,nama_tipe'])
+            ->whereBetween('spr.tanggal_spr', [$from, $to])
+            ->when($pindahAlasanId, fn ($q) => $q->where(function ($qq) use ($pindahAlasanId) {
+                $qq->whereNull('spr.alasan_pembatalan_id')
+                    ->orWhere('spr.alasan_pembatalan_id', '!=', $pindahAlasanId);
+            }));
+
         $sortMap = [
             'cancelled_at' => 'spr.cancelled_at',
             'nomor_spr' => 'spr.nomor_spr',
@@ -514,6 +575,7 @@ public function setPeriod(string $p): void
             ->whereIn('spr.status', ['approved', 'akad'])
             ->whereBetween('spr.tanggal_spr', [$from, $to]);
         if ($this->filterProyek) $baseQuery->whereHas('rumah', fn ($r) => $r->where('proyek_id', $this->filterProyek));
+        if ($this->filterKategori) $baseQuery->where('kategori', $this->filterKategori);
 
         $sprIds = (clone $baseQuery)->pluck('id');
 
@@ -601,6 +663,7 @@ public function setPeriod(string $p): void
                         'stock' => 'Cari blok / nomor unit...',
                         'realisasi' => 'Cari nomor kwitansi / nomor SPR...',
                         'penjualan', 'pembatalan', 'outstanding' => 'Cari nomor SPR / nama customer / blok...',
+                        'pindah' => 'Cari nomor transaksi (PK/...) / nama customer / blok...',
                         default => null,
                     };
                 @endphp
@@ -621,7 +684,7 @@ public function setPeriod(string $p): void
                     <span wire:loading wire:target="exportExcel">Menyiapkan...</span>
                 </button>
 
-                @if ($search || $filterSales || $filterTipe || $dateFrom || $dateTo)
+                @if ($search || $filterSales || $filterTipe || $filterKategori || $dateFrom || $dateTo)
                     <button type="button" wire:click="resetFilters"
                             class="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
                         <flux:icon.x-mark class="size-3" />
@@ -654,6 +717,13 @@ public function setPeriod(string $p): void
                            class="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-white" />
                 </div>
 
+                {{-- Kategori filter (Subsidi / Komersial) --}}
+                <select wire:model.live="filterKategori" class="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-white">
+                    <option value="">— Semua Kategori —</option>
+                    <option value="subsidi">Subsidi</option>
+                    <option value="komersial">Komersial</option>
+                </select>
+
                 {{-- Tipe filter --}}
                 <select wire:model.live="filterTipe" class="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-white">
                     <option value="">— Semua Tipe —</option>
@@ -663,7 +733,7 @@ public function setPeriod(string $p): void
                 </select>
 
                 {{-- Sales filter --}}
-                @if (in_array($tab, ['penjualan', 'realisasi', 'performance', 'outstanding', 'pembatalan']))
+                @if (in_array($tab, ['penjualan', 'realisasi', 'performance', 'outstanding', 'pembatalan', 'pindah']))
                     <select wire:model.live="filterSales" class="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-white">
                         <option value="">— Semua Sales —</option>
                         @foreach ($salesList as $s)
@@ -769,7 +839,7 @@ public function setPeriod(string $p): void
                         <tbody>
                             @forelse ($sprs as $spr)
                                 <tr class="border-t border-zinc-100 dark:border-zinc-800">
-                                    <td class="px-3 py-2 font-mono">{{ $spr->nomor_spr }}</td>
+                                    <td class="px-3 py-2 font-mono">{{ $spr->nomor_display }}</td>
                                     <td class="px-3 py-2">{{ $spr->tanggal_spr?->format('d/m/y') }}</td>
                                     <td class="px-3 py-2 font-semibold">{{ $spr->prospectCustomer?->nama_lengkap }}</td>
                                     <td class="px-3 py-2 font-mono">{{ $spr->rumah?->blok }}-{{ $spr->rumah?->nomor_unit }}</td>
@@ -951,7 +1021,7 @@ public function setPeriod(string $p): void
                                     <td class="px-3 py-2 font-mono">{{ $r->nomor_kwitansi ?? '—' }}</td>
                                     <td class="px-3 py-2">{{ $r->tanggal_bayar?->format('d/m/y') }}</td>
                                     <td class="px-3 py-2 font-semibold">{{ $r->spr?->prospectCustomer?->nama_lengkap }}</td>
-                                    <td class="px-3 py-2 font-mono text-[10px]">{{ $r->spr?->nomor_spr }}</td>
+                                    <td class="px-3 py-2 font-mono text-[10px]">{{ $r->spr?->nomor_display ?? '—' }}</td>
                                     <td class="px-3 py-2">{{ $r->spr?->sales?->nama }}</td>
                                     <td class="px-3 py-2">
                                         @php
@@ -1023,7 +1093,7 @@ public function setPeriod(string $p): void
                         <tbody>
                             @forelse ($outstandingRows as $row)
                                 <tr class="border-t border-zinc-100 dark:border-zinc-800">
-                                    <td class="px-3 py-2 font-mono">{{ $row->spr->nomor_spr }}</td>
+                                    <td class="px-3 py-2 font-mono">{{ $row->spr->nomor_display }}</td>
                                     <td class="px-3 py-2 font-semibold">{{ $row->spr->prospectCustomer?->nama_lengkap }}</td>
                                     <td class="px-3 py-2 font-mono">{{ $row->spr->rumah?->blok }}-{{ $row->spr->rumah?->nomor_unit }}</td>
                                     <td class="px-3 py-2">{{ $row->spr->sales?->nama }}</td>
@@ -1089,41 +1159,149 @@ public function setPeriod(string $p): void
                     <table class="w-full text-xs">
                         <thead class="bg-zinc-50 dark:bg-zinc-800/50">
                             <tr class="text-left font-bold uppercase text-[10px] text-zinc-500">
-                                <th class="px-3 py-2">{!! $thBtn('nomor_spr', 'Nomor SPR') !!}</th>
-                                <th class="px-3 py-2">Nama Konsumen</th>
-                                <th class="px-3 py-2">Unit</th>
-                                <th class="px-3 py-2">Sales</th>
-                                <th class="px-3 py-2">Alasan</th>
-                                <th class="px-3 py-2">{!! $thBtn('cancelled_at', 'Tgl Batal') !!}</th>
-                                <th class="px-3 py-2 text-right">{!! $thBtn('refund_amount', 'Pengembalian', 'right') !!}</th>
-                                <th class="px-3 py-2">{!! $thBtn('refund_status', 'Status') !!}</th>
+                                <th class="px-2 py-2 text-center">No</th>
+                                <th class="px-2 py-2">Nama</th>
+                                <th class="px-2 py-2">Sales</th>
+                                <th class="px-2 py-2">{!! $thBtn('cancelled_at', 'Tgl Jual') !!}</th>
+                                <th class="px-2 py-2">Type</th>
+                                <th class="px-2 py-2">Blok</th>
+                                <th class="px-2 py-2 text-center">No Unit</th>
+                                <th class="px-2 py-2 text-right">Total Harga Jual</th>
+                                <th class="px-2 py-2 text-right">Total UM</th>
+                                <th class="px-2 py-2 text-right">Akumulasi</th>
+                                <th class="px-2 py-2 text-right">Penalti</th>
+                                <th class="px-2 py-2 text-right">{!! $thBtn('refund_amount', 'Kembali', 'right') !!}</th>
+                                <th class="px-2 py-2">Keterangan</th>
                             </tr>
                         </thead>
                         <tbody>
                             @forelse ($sprs as $spr)
+                                @php
+                                    $bfMasuk = (float) $spr->realisasiPembayaran->where('jenis', 'bf')->sum('jumlah');
+                                    $umMasuk = (float) $spr->realisasiPembayaran->where('jenis', 'um')->sum('jumlah');
+                                    $akumulasi = $bfMasuk + $umMasuk;
+                                    $kembali = (float) ($spr->refund_amount ?? 0);
+                                    $penalti = max(0, $akumulasi - $kembali);
+                                @endphp
                                 <tr class="border-t border-zinc-100 dark:border-zinc-800">
-                                    <td class="px-3 py-2 font-mono">{{ $spr->nomor_spr }}</td>
-                                    <td class="px-3 py-2 font-semibold">{{ $spr->prospectCustomer?->nama_lengkap }}</td>
-                                    <td class="px-3 py-2 font-mono">{{ $spr->rumah?->blok }}-{{ $spr->rumah?->nomor_unit }}</td>
-                                    <td class="px-3 py-2">{{ $spr->sales?->nama }}</td>
-                                    <td class="px-3 py-2">{{ $spr->alasanPembatalan?->nama }}</td>
-                                    <td class="px-3 py-2">{{ $spr->cancelled_at?->format('d/m/y') }}</td>
-                                    <td class="px-3 py-2 text-right font-mono tabular-nums">{{ $fmt($spr->refund_amount ?? 0) }}</td>
-                                    <td class="px-3 py-2">
-                                        @php
-                                            $c = ['full' => 'emerald', 'pending' => 'amber', 'partial' => 'blue', 'tidak_ada_refund' => 'zinc'][$spr->refund_status ?? 'pending'] ?? 'zinc';
-                                            $refundLabel = ['full' => 'Selesai', 'pending' => 'Tertunda', 'partial' => 'Sebagian', 'tidak_ada_refund' => 'Tidak Ada'][$spr->refund_status ?? 'pending'] ?? '—';
-                                        @endphp
-                                        <span class="rounded bg-{{ $c }}-100 px-1.5 py-0.5 text-[10px] font-semibold text-{{ $c }}-700">{{ $refundLabel }}</span>
-                                    </td>
+                                    <td class="px-2 py-2 text-center text-zinc-500">{{ $loop->index + ($sprs->firstItem() ?? 1) }}</td>
+                                    <td class="px-2 py-2 font-semibold">{{ $spr->prospectCustomer?->nama_lengkap }}</td>
+                                    <td class="px-2 py-2">{{ $spr->sales?->nama }}</td>
+                                    <td class="whitespace-nowrap px-2 py-2">{{ $spr->tanggal_spr?->translatedFormat('d M Y') }}</td>
+                                    <td class="whitespace-nowrap px-2 py-2">{{ $spr->rumah?->tipeRumah?->tipe ?? '—' }}</td>
+                                    <td class="px-2 py-2 font-mono">{{ $spr->rumah?->blok }}</td>
+                                    <td class="px-2 py-2 text-center font-mono">{{ $spr->rumah?->nomor_unit }}</td>
+                                    <td class="px-2 py-2 text-right font-mono tabular-nums">{{ $fmt($spr->total_harga) }}</td>
+                                    <td class="px-2 py-2 text-right font-mono tabular-nums">{{ $umMasuk > 0 ? $fmt($umMasuk) : '—' }}</td>
+                                    <td class="px-2 py-2 text-right font-mono tabular-nums font-semibold">{{ $fmt($akumulasi) }}</td>
+                                    <td class="px-2 py-2 text-right font-mono tabular-nums text-rose-700 dark:text-rose-400">{{ $penalti > 0 ? $fmt($penalti) : '—' }}</td>
+                                    <td class="px-2 py-2 text-right font-mono tabular-nums text-emerald-700 dark:text-emerald-400">{{ $kembali > 0 ? $fmt($kembali) : '—' }}</td>
+                                    <td class="whitespace-nowrap px-2 py-2 text-zinc-700 dark:text-zinc-300">{{ $spr->alasanPembatalan?->nama ?? '—' }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="8" class="px-3 py-6 text-center text-zinc-400">Belum ada pembatalan.</td></tr>
+                                <tr><td colspan="13" class="px-3 py-6 text-center text-zinc-400">Belum ada pembatalan.</td></tr>
                             @endforelse
                         </tbody>
                     </table>
                 </div>
                 <div class="border-t border-zinc-100 p-3 dark:border-zinc-800">{{ $sprs->links() }}</div>
+            </div>
+        @endif
+
+        @if ($tab === 'pindah')
+            {{-- KPI cards --}}
+            <div class="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div class="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30">
+                    <div class="text-[10px] font-bold uppercase text-blue-700">Total Transaksi</div>
+                    <div class="mt-2 text-2xl font-bold tabular-nums text-blue-800 dark:text-blue-300">{{ number_format($totalEvent) }}</div>
+                </div>
+                <div class="rounded-xl border border-blue-200 bg-white p-4 dark:border-blue-900 dark:bg-zinc-900">
+                    <div class="text-[10px] font-bold uppercase text-blue-700">Pindah Unit</div>
+                    <div class="mt-2 text-2xl font-bold tabular-nums text-blue-700">{{ number_format($totalPindah) }}</div>
+                </div>
+                <div class="rounded-xl border border-indigo-200 bg-white p-4 dark:border-indigo-900 dark:bg-zinc-900">
+                    <div class="text-[10px] font-bold uppercase text-indigo-700">Tukar Unit</div>
+                    <div class="mt-2 text-2xl font-bold tabular-nums text-indigo-700">{{ number_format($totalSwap) }}</div>
+                </div>
+                <div class="rounded-xl border border-rose-200 bg-white p-4 dark:border-rose-900 dark:bg-zinc-900">
+                    <div class="text-[10px] font-bold uppercase text-rose-700">Total Pengembalian Kelebihan</div>
+                    <div class="mt-2 text-2xl font-bold tabular-nums text-rose-700">Rp {{ $fmtJt($totalRefundPindah) }}</div>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                        <thead class="bg-zinc-50 dark:bg-zinc-800/50">
+                            <tr class="text-left font-bold uppercase text-[10px] text-zinc-500">
+                                <th class="px-2 py-2 text-center">No</th>
+                                <th class="px-2 py-2">Nomor Transaksi</th>
+                                <th class="px-2 py-2">Tanggal</th>
+                                <th class="px-2 py-2">Tipe</th>
+                                <th class="px-2 py-2">Customer &amp; Perpindahan</th>
+                                <th class="px-2 py-2 text-right">Selisih Harga</th>
+                                <th class="px-2 py-2">Alasan</th>
+                                <th class="px-2 py-2">Diproses Oleh</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($switchings as $sw)
+                                <tr class="border-t border-zinc-100 dark:border-zinc-800">
+                                    <td class="px-2 py-2 text-center text-zinc-500">{{ $loop->index + ($switchings->firstItem() ?? 1) }}</td>
+                                    <td class="whitespace-nowrap px-2 py-2 font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                                        <a href="{{ route('marketing.spr-pindah.show', $sw->id) }}" wire:navigate class="underline-offset-2 hover:underline">
+                                            {{ $sw->nomor_switching }}
+                                        </a>
+                                    </td>
+                                    <td class="whitespace-nowrap px-2 py-2">{{ $sw->processed_at?->translatedFormat('d M Y') }}</td>
+                                    <td class="whitespace-nowrap px-2 py-2">
+                                        @if ($sw->tipe === 'swap')
+                                            <span class="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold uppercase text-indigo-700">Tukar</span>
+                                        @else
+                                            <span class="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase text-blue-700">Pindah</span>
+                                        @endif
+                                    </td>
+                                    <td class="px-2 py-2">
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-semibold">{{ $sw->sprLamaA?->prospectCustomer?->nama_lengkap }}</span>
+                                            <span class="font-mono text-zinc-500">{{ $sw->sprLamaA?->rumah?->blok }}-{{ $sw->sprLamaA?->rumah?->nomor_unit }}</span>
+                                            <flux:icon.arrow-right class="size-3 text-zinc-400" />
+                                            <span class="font-mono font-semibold text-emerald-700 dark:text-emerald-400">{{ $sw->sprBaruA?->rumah?->blok }}-{{ $sw->sprBaruA?->rumah?->nomor_unit }}</span>
+                                        </div>
+                                        @if ($sw->tipe === 'swap' && $sw->sprLamaB)
+                                            <div class="mt-1 flex items-center gap-2">
+                                                <span class="font-semibold">{{ $sw->sprLamaB?->prospectCustomer?->nama_lengkap }}</span>
+                                                <span class="font-mono text-zinc-500">{{ $sw->sprLamaB?->rumah?->blok }}-{{ $sw->sprLamaB?->rumah?->nomor_unit }}</span>
+                                                <flux:icon.arrow-right class="size-3 text-zinc-400" />
+                                                <span class="font-mono font-semibold text-emerald-700 dark:text-emerald-400">{{ $sw->sprBaruB?->rumah?->blok }}-{{ $sw->sprBaruB?->rumah?->nomor_unit }}</span>
+                                            </div>
+                                        @endif
+                                    </td>
+                                    <td class="px-2 py-2 text-right font-mono tabular-nums">
+                                        @php $selA = (float) $sw->selisih_a; @endphp
+                                        <span @class([
+                                            'text-amber-700 dark:text-amber-400' => $selA > 0,
+                                            'text-emerald-700 dark:text-emerald-400' => $selA < 0,
+                                            'text-zinc-500' => $selA == 0,
+                                        ])>{{ $selA > 0 ? '+' : '' }}{{ $fmt($selA) }}</span>
+                                        @if ($sw->tipe === 'swap' && (float) $sw->selisih_b != 0)
+                                            @php $selB = (float) $sw->selisih_b; @endphp
+                                            <div @class([
+                                                'text-amber-700 dark:text-amber-400' => $selB > 0,
+                                                'text-emerald-700 dark:text-emerald-400' => $selB < 0,
+                                            ])>{{ $selB > 0 ? '+' : '' }}{{ $fmt($selB) }}</div>
+                                        @endif
+                                    </td>
+                                    <td class="px-2 py-2 text-zinc-700 dark:text-zinc-300">{{ $sw->alasan }}</td>
+                                    <td class="whitespace-nowrap px-2 py-2 text-zinc-600 dark:text-zinc-400">{{ $sw->processedBy?->name ?? '—' }}</td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="8" class="px-3 py-6 text-center text-zinc-400">Belum ada perpindahan kavling di periode ini.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+                <div class="border-t border-zinc-100 p-3 dark:border-zinc-800">{{ $switchings->links() }}</div>
             </div>
         @endif
 

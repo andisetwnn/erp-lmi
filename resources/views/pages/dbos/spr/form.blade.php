@@ -104,9 +104,22 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
 
         // Prefill dari template tipe rumah
         $this->utjNominal = $tipe?->utj ? (string) $tipe->utj : '5000000';
+
+        // Komersial: force KPR + kosongkan UM/SBUM/termin (UM langsung ke bank, bukan ke developer)
+        if (($tipe?->kategori ?? '') === 'komersial') {
+            $this->jenisPembayaran = 'kpr';
+            $this->jumlahTerminUm = 0;
+            $this->sbum = '0';
+        }
     }
 
     // ============ COMPUTED HELPERS ============
+
+    /** Cek apakah unit ini kategori komersial. Kalau iya, UM+DP+SBUM=0, semua ke KPR bank. */
+    public function getIsKomersialProperty(): bool
+    {
+        return ($this->booking?->rumah?->tipeRumah?->kategori ?? '') === 'komersial';
+    }
 
     public function getTotalHargaProperty(): float
     {
@@ -118,9 +131,13 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
         return max(0, $jual + $tambahan + $ppn - $diskon);
     }
 
-    /** Plafon KPR dari master tipe rumah. */
+    /** Plafon KPR dari master tipe rumah. Untuk komersial: 100% dari total harga. */
     public function getPlafonKprProperty(): float
     {
+        if ($this->isKomersial) {
+            return $this->totalHarga;
+        }
+
         return (float) ($this->booking?->rumah?->tipeRumah?->plafon_kpr ?? 0);
     }
 
@@ -132,11 +149,16 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
 
     /**
      * Total UM (yang bukan KPR / bukan pinjaman bank).
-     * - KPR: total_harga (all in) − plafon_kpr
+     * - Komersial: 0 (semua ke KPR bank)
+     * - KPR subsidi: total_harga − plafon_kpr
      * - Cash Bertahap & Cash: total_harga (semua ke developer)
      */
     public function getDpNominalProperty(): float
     {
+        if ($this->isKomersial) {
+            return 0;
+        }
+
         return match ($this->jenisPembayaran) {
             'kpr' => max(0, $this->totalHarga - $this->plafonKpr),
             default => $this->totalHarga, // cash & cash_bertahap
@@ -146,6 +168,10 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
     /** UM Sendiri customer (setelah dikurangi SBUM subsidi, kalau ada). */
     public function getUmNetProperty(): float
     {
+        if ($this->isKomersial) {
+            return 0;
+        }
+
         return max(0, $this->dpNominal - (float) $this->sbum);
     }
 
@@ -156,9 +182,13 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
         return $this->umNet;
     }
 
-    /** Max termin sesuai jenis pembayaran. */
+    /** Max termin sesuai jenis pembayaran. Komersial: 0 (tidak dicicil). */
     public function getMaxTerminProperty(): int
     {
+        if ($this->isKomersial) {
+            return 0;
+        }
+
         return match ($this->jenisPembayaran) {
             'cash' => 0,
             'cash_bertahap' => 6,
@@ -167,9 +197,13 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
         };
     }
 
-    /** Min termin sesuai jenis pembayaran. */
+    /** Min termin sesuai jenis pembayaran. Komersial: 0. */
     public function getMinTerminProperty(): int
     {
+        if ($this->isKomersial) {
+            return 0;
+        }
+
         return match ($this->jenisPembayaran) {
             'cash' => 0,
             'cash_bertahap' => 2,
@@ -210,6 +244,15 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
     // Auto-adjust jumlah termin & SBUM saat jenis pembayaran berubah
     public function updatedJenisPembayaran(): void
     {
+        // Komersial: force back to KPR (Cash/Cash Bertahap tidak berlaku)
+        if ($this->isKomersial) {
+            $this->jenisPembayaran = 'kpr';
+            $this->jumlahTerminUm = 0;
+            $this->sbum = '0';
+
+            return;
+        }
+
         $this->jumlahTerminUm = match ($this->jenisPembayaran) {
             'cash' => 0,
             'cash_bertahap' => 2,
@@ -319,7 +362,18 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
         $kategori = $tipeMaster?->kategori ?? 'komersial';
         $dpPersen = $totalHarga > 0 ? round(($dpNominal / $totalHarga) * 100, 2) : 0;
 
-        $sprId = DB::transaction(function () use ($totalHarga, $nilaiKpr, $dpNominal, $dpPersen, $umNet, $jadwalTermin, $kategori) {
+        // Komersial: UM tidak dicicil ke developer (langsung ke bank via KPR).
+        // Force jenis pembayaran = KPR, kosongkan termin UM & data DP/UM/SBUM.
+        $jenisPembayaran = $this->jenisPembayaran;
+        if ($kategori === 'komersial') {
+            $jenisPembayaran = 'kpr';
+            $jadwalTermin = [];
+            $umNet = 0;
+            $dpNominal = 0;
+            $dpPersen = 0;
+        }
+
+        $sprId = DB::transaction(function () use ($totalHarga, $nilaiKpr, $dpNominal, $dpPersen, $umNet, $jadwalTermin, $kategori, $jenisPembayaran) {
             $spr = Spr::create([
                 'booking_id' => $this->booking->id,
                 'sales_id' => $this->booking->sales_id,
@@ -335,11 +389,11 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                 'kelebihan_tanah_m2' => 0,
                 'harga_per_m2' => 0,
                 'total_harga' => $totalHarga,
-                'jenis_pembayaran' => $this->jenisPembayaran,
+                'jenis_pembayaran' => $jenisPembayaran,
                 'bank_kpr_id' => null, // Bank KPR nanti diisi di modul Admin KPR
                 'dp_persen' => $dpPersen,
                 'dp_nominal' => $dpNominal,
-                'sbum' => (float) $this->sbum,
+                'sbum' => $kategori === 'komersial' ? 0 : (float) $this->sbum,
                 'um_net' => $umNet,
                 'nilai_kpr' => $nilaiKpr,
                 'catatan_angsuran' => $this->catatanAngsuran ?: null,
@@ -375,8 +429,8 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                 ]);
             }
 
-            // SBUM (hanya untuk KPR subsidi)
-            if ($this->jenisPembayaran === 'kpr' && (float) $this->sbum > 0) {
+            // SBUM (hanya untuk KPR subsidi — komersial tidak ada SBUM)
+            if ($kategori !== 'komersial' && $jenisPembayaran === 'kpr' && (float) $this->sbum > 0) {
                 $spr->terminPembayaran()->create([
                     'jenis' => 'sbum',
                     'urutan' => 0,
@@ -779,7 +833,7 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
 
             {{-- Live total --}}
             <div class="rounded-2xl bg-linear-to-br from-emerald-600 to-emerald-500 p-4 text-white shadow-lg">
-                <div class="text-[10px] font-bold uppercase tracking-wider opacity-80">{{ __('Total Harga (All In)') }}</div>
+                <div class="text-[10px] font-bold uppercase tracking-wider opacity-80">{{ __('Total Harga') }}</div>
                 <div class="mt-1 text-3xl font-extrabold tabular-nums">
                     Rp {{ number_format($totalHarga, 0, ',', '.') }}
                 </div>
@@ -798,6 +852,10 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
 
                 <div class="space-y-2">
                     @foreach ($jenisPembayaranOptions as $key => $label)
+                        {{-- Komersial: hanya KPR yang tampil (Cash & Cash Bertahap belum dipakai) --}}
+                        @if ($this->isKomersial && $key !== 'kpr')
+                            @continue
+                        @endif
                         <label @class([
                             'flex cursor-pointer items-center gap-3 rounded-xl border-2 p-3 transition',
                             'border-orange-500 bg-orange-50 dark:bg-orange-950/30' => $jenisPembayaran === $key,
@@ -818,45 +876,47 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                 $perTerminStep3 = $jumlahTerminUm > 0 ? round($sisaCicilStep3 / max(1, $jumlahTerminUm), 0) : 0;
             @endphp
 
-            {{-- Jumlah termin (hidden untuk Cash) --}}
-            @if ($jenisPembayaran !== 'cash')
-                <div class="rounded-2xl bg-white p-4 shadow-sm dark:bg-zinc-900">
-                    <flux:field>
-                        <flux:label>
-                            @if ($jenisPembayaran === 'kpr')
-                                {{ __('Jumlah Termin UM') }}
-                            @else
-                                {{ __('Jumlah Termin Cicilan') }}
-                            @endif
-                        </flux:label>
-                        <flux:select wire:model.live="jumlahTerminUm">
-                            @for ($i = $this->minTermin; $i <= $this->maxTermin; $i++)
-                                <flux:select.option value="{{ $i }}">{{ $i }} kali</flux:select.option>
-                            @endfor
-                        </flux:select>
-                        <flux:error name="jumlahTerminUm" />
-                    </flux:field>
+            {{-- Komersial: tidak ada section termin UM & tidak ada info Cash --}}
+            @if (! $this->isKomersial)
+                @if ($jenisPembayaran !== 'cash')
+                    <div class="rounded-2xl bg-white p-4 shadow-sm dark:bg-zinc-900">
+                        <flux:field>
+                            <flux:label>
+                                @if ($jenisPembayaran === 'kpr')
+                                    {{ __('Jumlah Termin UM') }}
+                                @else
+                                    {{ __('Jumlah Termin Cicilan') }}
+                                @endif
+                            </flux:label>
+                            <flux:select wire:model.live="jumlahTerminUm">
+                                @for ($i = $this->minTermin; $i <= $this->maxTermin; $i++)
+                                    <flux:select.option value="{{ $i }}">{{ $i }} kali</flux:select.option>
+                                @endfor
+                            </flux:select>
+                            <flux:error name="jumlahTerminUm" />
+                        </flux:field>
 
-                    @if ($sisaCicilStep3 > 0 && $jumlahTerminUm > 0)
-                        <div class="mt-3 rounded-lg bg-orange-50 px-3 py-2 text-xs dark:bg-orange-950/30">
-                            <div class="text-orange-700 dark:text-orange-400">
-                                <span class="font-semibold">{{ __('Nominal per termin:') }}</span>
-                                <span class="ms-1 font-mono font-bold">Rp {{ number_format($perTerminStep3, 0, ',', '.') }}</span>
-                                <span class="text-[10px] text-zinc-500">/ termin (auto-hitung)</span>
+                        @if ($sisaCicilStep3 > 0 && $jumlahTerminUm > 0)
+                            <div class="mt-3 rounded-lg bg-orange-50 px-3 py-2 text-xs dark:bg-orange-950/30">
+                                <div class="text-orange-700 dark:text-orange-400">
+                                    <span class="font-semibold">{{ __('Nominal per termin:') }}</span>
+                                    <span class="ms-1 font-mono font-bold">Rp {{ number_format($perTerminStep3, 0, ',', '.') }}</span>
+                                    <span class="text-[10px] text-zinc-500">/ termin (auto-hitung)</span>
+                                </div>
                             </div>
+                        @endif
+                    </div>
+                @else
+                    <div class="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4 text-sm dark:border-emerald-900/50 dark:bg-emerald-950/30">
+                        <div class="flex items-center gap-2 font-semibold text-emerald-800 dark:text-emerald-300">
+                            <flux:icon.check-circle class="size-4" />
+                            {{ __('Cash: bayar UTJ + Cash lunas sekaligus') }}
                         </div>
-                    @endif
-                </div>
-            @else
-                <div class="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4 text-sm dark:border-emerald-900/50 dark:bg-emerald-950/30">
-                    <div class="flex items-center gap-2 font-semibold text-emerald-800 dark:text-emerald-300">
-                        <flux:icon.check-circle class="size-4" />
-                        {{ __('Cash: bayar UTJ + Cash lunas sekaligus') }}
+                        <div class="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
+                            {{ __('Tidak ada termin cicilan. Sisa (Total Harga − UTJ) dibayar lunas cash saat akad.') }}
+                        </div>
                     </div>
-                    <div class="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
-                        {{ __('Tidak ada termin cicilan. Sisa (Total Harga − UTJ) dibayar lunas cash saat akad.') }}
-                    </div>
-                </div>
+                @endif
             @endif
 
             <div class="rounded-2xl bg-white p-4 shadow-sm dark:bg-zinc-900">
@@ -912,15 +972,31 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                             <div class="mt-1 text-lg font-bold tabular-nums">Rp {{ number_format($perTerminBertahap, 0, ',', '.') }}</div>
                         </div>
                     </div>
+                @elseif ($this->isKomersial)
+                    {{-- KOMERSIAL: hanya Total Harga + UTJ + Nilai KPR (UM & DP tidak berlaku) --}}
+                    <div class="grid grid-cols-3 gap-3">
+                        <div>
+                            <div class="text-[10px] font-bold uppercase tracking-wider opacity-80">Total Harga</div>
+                            <div class="mt-1 text-lg font-bold tabular-nums">Rp {{ number_format($totalHarga, 0, ',', '.') }}</div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] font-bold uppercase tracking-wider opacity-80">UTJ</div>
+                            <div class="mt-1 text-lg font-bold tabular-nums">Rp {{ number_format($utjFloat, 0, ',', '.') }}</div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] font-bold uppercase tracking-wider opacity-80">Nilai KPR</div>
+                            <div class="mt-1 text-lg font-bold tabular-nums">Rp {{ number_format($plafonKpr, 0, ',', '.') }}</div>
+                        </div>
+                    </div>
                 @else
-                    {{-- KPR: Total Harga + Plafon KPR + Total UM + UM Sendiri --}}
+                    {{-- KPR SUBSIDI: Total Harga + Nilai KPR + Total UM + UM Sendiri --}}
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <div class="text-[10px] font-bold uppercase tracking-wider opacity-80">Total Harga</div>
                             <div class="mt-1 text-lg font-bold tabular-nums">Rp {{ number_format($totalHarga, 0, ',', '.') }}</div>
                         </div>
                         <div>
-                            <div class="text-[10px] font-bold uppercase tracking-wider opacity-80">Plafon KPR</div>
+                            <div class="text-[10px] font-bold uppercase tracking-wider opacity-80">Nilai KPR</div>
                             <div class="mt-1 text-lg font-bold tabular-nums">Rp {{ number_format($plafonKpr, 0, ',', '.') }}</div>
                         </div>
                         <div>
@@ -1001,8 +1077,7 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
             @php $jadwal = $this->jadwalTermin; @endphp
             <div class="rounded-2xl border border-purple-200 bg-white shadow-sm dark:border-purple-900/50 dark:bg-zinc-900">
                 <div class="flex items-center justify-between gap-2 border-b border-purple-100 bg-purple-50/60 px-4 py-2.5 dark:border-purple-900/50 dark:bg-purple-950/20">
-                    <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700 dark:text-purple-300">{{ __('Jadwal Termin UM') }}</span>
-                    <span class="text-[10px] text-zinc-500">{{ __('Auto: bulanan dari UTJ') }}</span>
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700 dark:text-purple-300">{{ __('Jadwal Termin') }}</span>
                 </div>
                 <table class="w-full text-xs">
                     <thead class="bg-purple-50/40 text-purple-700 dark:bg-purple-950/20 dark:text-purple-300">
@@ -1055,8 +1130,12 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                         <dd class="font-bold text-emerald-700 dark:text-emerald-300">Rp {{ number_format($totalHargaSum, 0, ',', '.') }}</dd>
                     </div>
 
-                    @if ($jenisPembayaran === 'kpr')
-                        <div class="flex justify-between"><dt class="text-zinc-600 dark:text-zinc-400">Plafon KPR</dt><dd class="font-bold text-zinc-900 dark:text-white">Rp {{ number_format($plafonKprSum, 0, ',', '.') }}</dd></div>
+                    @if ($jenisPembayaran === 'kpr' && $this->isKomersial)
+                        {{-- KOMERSIAL: cukup Nilai KPR saja (UM & DP tidak berlaku, langsung ke bank) --}}
+                        <div class="flex justify-between"><dt class="text-zinc-600 dark:text-zinc-400">Nilai KPR</dt><dd class="font-bold text-zinc-900 dark:text-white">Rp {{ number_format($plafonKprSum, 0, ',', '.') }}</dd></div>
+                    @elseif ($jenisPembayaran === 'kpr')
+                        {{-- KPR SUBSIDI: Nilai KPR + Total UM + UM Sendiri --}}
+                        <div class="flex justify-between"><dt class="text-zinc-600 dark:text-zinc-400">Nilai KPR</dt><dd class="font-bold text-zinc-900 dark:text-white">Rp {{ number_format($plafonKprSum, 0, ',', '.') }}</dd></div>
                         <div class="flex justify-between"><dt class="text-zinc-600 dark:text-zinc-400">Total UM</dt><dd class="font-bold text-zinc-900 dark:text-white">Rp {{ number_format($dpNominalSum, 0, ',', '.') }}</dd></div>
                         <div class="flex justify-between"><dt class="text-zinc-600 dark:text-zinc-400">UM Sendiri</dt><dd class="font-bold text-zinc-900 dark:text-white">Rp {{ number_format($umNetSum, 0, ',', '.') }}</dd></div>
                     @elseif ($jenisPembayaran === 'cash_bertahap')

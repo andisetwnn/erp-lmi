@@ -2,16 +2,24 @@
 
 use App\Models\Master\ProspectCustomerKontakDarurat;
 use App\Models\Master\Spr;
+use App\Support\FileOptimizer;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 new #[Title('Detail SPR'), Layout('layouts.dbos')] class extends Component
 {
+    use WithFileUploads;
+
     public Spr $spr;
+
+    /** File baru bukti transfer UTJ (upload ulang saat salah upload). */
+    public $utjBuktiNew = null;
 
     public function mount(int $id): void
     {
@@ -53,6 +61,46 @@ new #[Title('Detail SPR'), Layout('layouts.dbos')] class extends Component
             fn () => print ($pdf->output()),
             $filename,
         );
+    }
+
+    /**
+     * Sales ganti bukti transfer UTJ (kalau salah upload).
+     * Hanya bisa selama SPR belum di-verifikasi Keuangan (status = submitted).
+     */
+    public function updateBuktiUtj(): void
+    {
+        // Guard: hanya sales pemilik SPR
+        $salesId = Auth::guard('sales')->id();
+        if ($this->spr->sales_id !== $salesId) {
+            Flux::toast(variant: 'danger', text: 'Tidak berhak mengubah bukti UTJ SPR ini.');
+
+            return;
+        }
+
+        // Guard: hanya boleh diubah selama belum verif Keuangan
+        if ($this->spr->utj_confirmed_at || $this->spr->status !== 'submitted') {
+            Flux::toast(variant: 'warning', text: 'Bukti UTJ tidak bisa diubah setelah Keuangan melakukan verifikasi.');
+
+            return;
+        }
+
+        $this->validate([
+            'utjBuktiNew' => ['required', 'image', 'max:5120'],
+        ], [], ['utjBuktiNew' => 'bukti transfer']);
+
+        // Hapus file lama
+        if ($this->spr->utj_bukti_path && Storage::disk('public')->exists($this->spr->utj_bukti_path)) {
+            Storage::disk('public')->delete($this->spr->utj_bukti_path);
+        }
+
+        // Upload file baru + update DB
+        $newPath = FileOptimizer::storeOptimized($this->utjBuktiNew, 'utj-bukti');
+        $this->spr->update(['utj_bukti_path' => $newPath]);
+        $this->spr->refresh();
+        $this->utjBuktiNew = null;
+
+        Flux::modal('ganti-bukti-utj')->close();
+        Flux::toast(variant: 'success', text: 'Bukti transfer UTJ berhasil diganti.');
     }
 
     // ============ FITUR #6: Generate link TTD konsumen ============
@@ -234,15 +282,18 @@ new #[Title('Detail SPR'), Layout('layouts.dbos')] class extends Component
                     <div class="flex justify-between"><dt class="text-zinc-500">Bank KPR</dt><dd class="text-right font-semibold">{{ $spr->bankKpr->nama }}</dd></div>
                 @endif
                 @if ($spr->jenis_pembayaran === 'kpr')
-                    <div class="flex justify-between"><dt class="text-zinc-500">Plafon KPR</dt><dd class="text-right tabular-nums">Rp {{ number_format((float) $spr->nilai_kpr, 0, ',', '.') }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-zinc-500">Nilai KPR</dt><dd class="text-right tabular-nums">Rp {{ number_format((float) $spr->nilai_kpr, 0, ',', '.') }}</dd></div>
                 @endif
-                <div class="flex justify-between"><dt class="text-zinc-500">Total UM</dt><dd class="text-right font-semibold tabular-nums">Rp {{ number_format((float) $spr->dp_nominal, 0, ',', '.') }}</dd></div>
-                <div class="mt-2 flex justify-between border-t border-zinc-200 pt-2 dark:border-zinc-700">
-                    <dt class="font-bold text-zinc-900 dark:text-white">UM Sendiri (Customer)</dt>
-                    <dd class="text-right text-base font-extrabold tabular-nums text-orange-700 dark:text-orange-300">
-                        Rp {{ number_format((float) $spr->um_net, 0, ',', '.') }}
-                    </dd>
-                </div>
+                {{-- Komersial: UM langsung ke bank, tidak tercatat di sistem developer --}}
+                @if ($spr->kategori !== 'komersial')
+                    <div class="flex justify-between"><dt class="text-zinc-500">Total UM</dt><dd class="text-right font-semibold tabular-nums">Rp {{ number_format((float) $spr->dp_nominal, 0, ',', '.') }}</dd></div>
+                    <div class="mt-2 flex justify-between border-t border-zinc-200 pt-2 dark:border-zinc-700">
+                        <dt class="font-bold text-zinc-900 dark:text-white">UM Sendiri (Customer)</dt>
+                        <dd class="text-right text-base font-extrabold tabular-nums text-orange-700 dark:text-orange-300">
+                            Rp {{ number_format((float) $spr->um_net, 0, ',', '.') }}
+                        </dd>
+                    </div>
+                @endif
                 @if ($spr->catatan_angsuran)
                     <div class="mt-2 rounded-md bg-zinc-50 px-2 py-1.5 text-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300">{{ $spr->catatan_angsuran }}</div>
                 @endif
@@ -373,12 +424,28 @@ new #[Title('Detail SPR'), Layout('layouts.dbos')] class extends Component
 
             {{-- Bukti Transfer UTJ --}}
             @if ($spr->utj_bukti_path)
+                @php
+                    // Bukti masih boleh diganti kalau Keuangan belum verifikasi.
+                    $canReupload = ! $spr->utj_confirmed_at && $spr->status === 'submitted';
+                @endphp
                 <div class="border-t border-zinc-100 bg-amber-50/40 px-4 py-3 dark:border-zinc-800 dark:bg-amber-950/20">
-                    <div class="mb-2 flex items-center gap-1.5">
-                        <flux:icon.document-arrow-up class="size-3.5 text-amber-700 dark:text-amber-400" />
-                        <span class="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
-                            {{ __('Bukti Transfer UTJ') }}
-                        </span>
+                    <div class="mb-2 flex items-center justify-between gap-1.5">
+                        <div class="flex items-center gap-1.5">
+                            <flux:icon.document-arrow-up class="size-3.5 text-amber-700 dark:text-amber-400" />
+                            <span class="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                                {{ __('Bukti Transfer UTJ') }}
+                            </span>
+                        </div>
+                        @if ($canReupload)
+                            <flux:modal.trigger name="ganti-bukti-utj">
+                                <button type="button"
+                                        class="inline-flex items-center gap-1 rounded-md bg-amber-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-amber-700"
+                                        title="Ganti bukti kalau salah upload">
+                                    <flux:icon.arrow-path class="size-3" />
+                                    {{ __('Ganti Bukti') }}
+                                </button>
+                            </flux:modal.trigger>
+                        @endif
                     </div>
                     @php $ext = strtolower(pathinfo($spr->utj_bukti_path, PATHINFO_EXTENSION)); @endphp
                     @if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp']))
@@ -395,6 +462,38 @@ new #[Title('Detail SPR'), Layout('layouts.dbos')] class extends Component
                         </a>
                     @endif
                 </div>
+
+                {{-- MODAL: Ganti bukti UTJ --}}
+                @if ($canReupload)
+                    <flux:modal name="ganti-bukti-utj" class="md:w-md" focusable>
+                        <form wire:submit="updateBuktiUtj" class="space-y-4">
+                            <div>
+                                <flux:heading size="lg">{{ __('Ganti Bukti Transfer UTJ') }}</flux:heading>
+                                <flux:subheading>
+                                    {{ __('Upload file baru — file lama akan digantikan.') }}
+                                </flux:subheading>
+                            </div>
+
+                            <flux:field>
+                                <flux:label>{{ __('File Bukti Baru') }} <span class="text-red-500">*</span></flux:label>
+                                <input type="file" wire:model="utjBuktiNew" accept="image/*"
+                                       class="block w-full text-sm text-zinc-700 file:mr-3 file:rounded-md file:border-0 file:bg-amber-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-amber-700 hover:file:bg-amber-200 dark:text-zinc-300 dark:file:bg-amber-950 dark:file:text-amber-300" />
+                                <flux:description class="text-[10px]">{{ __('PNG/JPG maks 5MB. File lama otomatis dihapus.') }}</flux:description>
+                                <flux:error name="utjBuktiNew" />
+                                <div wire:loading wire:target="utjBuktiNew" class="mt-1 text-xs text-zinc-500">
+                                    {{ __('Mengunggah...') }}
+                                </div>
+                            </flux:field>
+
+                            <div class="flex justify-end gap-2">
+                                <flux:modal.close>
+                                    <flux:button variant="filled" type="button">{{ __('Batal') }}</flux:button>
+                                </flux:modal.close>
+                                <flux:button variant="primary" type="submit">{{ __('Simpan Bukti Baru') }}</flux:button>
+                            </div>
+                        </form>
+                    </flux:modal>
+                @endif
             @endif
         </div>
 

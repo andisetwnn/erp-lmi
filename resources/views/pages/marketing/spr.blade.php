@@ -172,7 +172,7 @@ new #[Title('SPR')] class extends Component
         </div>
 
         {{-- ACTION CARDS --}}
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
 
             {{-- CARD: Data SPR --}}
             <a href="{{ route('marketing.spr.list') }}" wire:navigate
@@ -238,6 +238,36 @@ new #[Title('SPR')] class extends Component
                     <flux:icon.arrow-up-right class="size-5 shrink-0 text-zinc-400 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-rose-600 dark:group-hover:text-rose-400" />
                 </div>
             </a>
+
+            {{-- CARD: Pindah Kavling — hanya untuk role yg punya permission --}}
+            @can('spr.pindah-unit')
+            <a href="{{ route('marketing.spr-pindah.list') }}" wire:navigate
+               class="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-blue-700">
+                <div class="absolute right-0 top-0 -mr-12 -mt-12 h-32 w-32 rounded-full bg-blue-50 opacity-60 transition group-hover:scale-110 dark:bg-blue-950/20"></div>
+
+                <div class="relative flex items-start gap-4">
+                    <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
+                        <flux:icon.arrows-right-left class="size-6" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h3 class="text-base font-bold text-zinc-900 dark:text-white">{{ __('Pindah Kavling') }}</h3>
+                        <p class="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                            {{ __('Pindahkan customer ke unit lain yang tersedia, atau tukar unit antar 2 SPR aktif. Selisih harga dan realisasi otomatis diproses.') }}
+                        </p>
+
+                        <div class="mt-3 flex flex-wrap gap-1.5">
+                            <span class="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+                                {{ __('Pindah Unit') }}
+                            </span>
+                            <span class="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300">
+                                {{ __('Tukar Unit') }}
+                            </span>
+                        </div>
+                    </div>
+                    <flux:icon.arrow-up-right class="size-5 shrink-0 text-zinc-400 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-blue-600 dark:group-hover:text-blue-400" />
+                </div>
+            </a>
+            @endcan
         </div>
     </div>
 </section>

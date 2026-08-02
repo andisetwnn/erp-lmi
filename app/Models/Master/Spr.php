@@ -2,11 +2,14 @@
 
 namespace App\Models\Master;
 
+use App\Models\User;
 use App\Observers\SprObserver;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 #[ObservedBy(SprObserver::class)]
 class Spr extends Model
@@ -74,6 +77,8 @@ class Spr extends Model
         'alasan_reject',
         'alasan_pembatalan_id',
         'cancel_keterangan',
+        'switched_from_spr_id',
+        'switched_to_spr_id',
         'cancelled_at',
         'cancelled_by_user_id',
         'refund_status',
@@ -170,22 +175,22 @@ class Spr extends Model
 
     public function approvedBy(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'approved_by_user_id');
+        return $this->belongsTo(User::class, 'approved_by_user_id');
     }
 
     public function pmApprovedBy(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'pm_approved_by_user_id');
+        return $this->belongsTo(User::class, 'pm_approved_by_user_id');
     }
 
     public function utjConfirmedBy(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'utj_confirmed_by_user_id');
+        return $this->belongsTo(User::class, 'utj_confirmed_by_user_id');
     }
 
     public function dokumenSignedBy(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'dokumen_signed_by_user_id');
+        return $this->belongsTo(User::class, 'dokumen_signed_by_user_id');
     }
 
     public function alasanPembatalan(): BelongsTo
@@ -193,9 +198,61 @@ class Spr extends Model
         return $this->belongsTo(AlasanPembatalan::class, 'alasan_pembatalan_id');
     }
 
+    /** SPR ini berasal dari SPR mana (kalau ini hasil switching, arah ke SPR lama). */
+    public function switchedFromSpr(): BelongsTo
+    {
+        return $this->belongsTo(Spr::class, 'switched_from_spr_id');
+    }
+
+    /** SPR ini pindah ke SPR mana (kalau ini voided karena switching, arah ke SPR baru). */
+    public function switchedToSpr(): BelongsTo
+    {
+        return $this->belongsTo(Spr::class, 'switched_to_spr_id');
+    }
+
+    /**
+     * Record SprSwitching yang mencatat event pindah kavling melibatkan SPR ini
+     * (baik sebagai spr_lama_a/lama_b atau spr_baru_a/baru_b).
+     */
+    public function switching(): ?SprSwitching
+    {
+        return SprSwitching::query()
+            ->where('spr_lama_a_id', $this->id)
+            ->orWhere('spr_baru_a_id', $this->id)
+            ->orWhere('spr_lama_b_id', $this->id)
+            ->orWhere('spr_baru_b_id', $this->id)
+            ->first();
+    }
+
+    /** Realisasi historis: kwitansi yg dulu tercatat di SPR ini sebelum dipindah karena switching. */
+    public function realisasiHistoris(): Collection
+    {
+        $sw = $this->switching();
+        if (! $sw) {
+            return new Collection;
+        }
+
+        $sprBaruIds = [];
+        if ($sw->spr_lama_a_id === $this->id) {
+            $sprBaruIds[] = $sw->spr_baru_a_id;
+        }
+        if ($sw->spr_lama_b_id === $this->id) {
+            $sprBaruIds[] = $sw->spr_baru_b_id;
+        }
+        if ($sprBaruIds === []) {
+            return new Collection;
+        }
+
+        return SprRealisasiPembayaran::where('switching_id', $sw->id)
+            ->whereIn('spr_id', $sprBaruIds)
+            ->orderBy('tanggal_bayar')
+            ->orderBy('id')
+            ->get();
+    }
+
     public function cancelledBy(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'cancelled_by_user_id');
+        return $this->belongsTo(User::class, 'cancelled_by_user_id');
     }
 
     public function terminPembayaran(): HasMany
@@ -221,35 +278,43 @@ class Spr extends Model
     public function progressUm(): float
     {
         $umNet = (float) $this->um_net;
-        if ($umNet <= 0) return 0;
+        if ($umNet <= 0) {
+            return 0;
+        }
         $dibayar = (float) $this->terminPembayaran()
             ->whereIn('jenis', ['bf', 'um'])
             ->whereNotNull('tanggal_realisasi')
             ->sum('jumlah');
+
         return round(($dibayar / $umNet) * 100, 0);
     }
 
     // ====== Helpers ======
 
     /**
-     * Generate nomor SPR berikutnya format: SPR/YYYY/MM/XXXX
-     * Counter reset per bulan.
+     * Generate nomor SPR berikutnya format: SPR/YYYY/MM/XXXX (counter reset per bulan).
+     *
+     * Increment-safe pakai pessimistic lock (lockForUpdate) supaya concurrent generation
+     * dari process paralel tidak menghasilkan nomor duplikat.
+     *
+     * WAJIB dipanggil di dalam DB::transaction — lock baru efektif sampai transaction commit.
+     * Semua caller (form SPR create, SprSwitchingService, seeder) sudah wrap transaction.
      */
     public static function generateNextNomor(?\DateTimeInterface $for = null): string
     {
         $for = $for ?: now();
         $prefix = sprintf('SPR/%s/%s/', $for->format('Y'), $for->format('m'));
 
-        $last = self::where('nomor_spr', 'like', $prefix.'%')
-            ->orderByDesc('id')
-            ->value('nomor_spr');
+        $driver = DB::connection()->getDriverName();
+        $suffixSql = $driver === 'mysql'
+            ? "CAST(SUBSTRING_INDEX(nomor_spr, '/', -1) AS UNSIGNED)"
+            : 'CAST(substr(nomor_spr, length(nomor_spr) - 3) AS INTEGER)';
 
-        $num = 0;
-        if ($last && preg_match('#^'.preg_quote($prefix, '#').'(\d+)$#', $last, $m)) {
-            $num = (int) $m[1];
-        }
+        $lastNum = (int) self::where('nomor_spr', 'like', $prefix.'%')
+            ->lockForUpdate()
+            ->max(DB::raw($suffixSql));
 
-        return $prefix.str_pad((string) ($num + 1), 4, '0', STR_PAD_LEFT);
+        return $prefix.str_pad((string) ($lastNum + 1), 4, '0', STR_PAD_LEFT);
     }
 
     /**
@@ -288,7 +353,7 @@ class Spr extends Model
 
     public function stampedBy(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'materai_by_user_id');
+        return $this->belongsTo(User::class, 'materai_by_user_id');
     }
 
     /** SPR siap dikirim link TTD ke konsumen: sudah di-approve PM + belum di-sign konsumen. */
@@ -314,6 +379,7 @@ class Spr extends Model
         do {
             $hash = bin2hex(random_bytes(20)); // 40 char hex
         } while (self::where('konsumen_signing_link_hash', $hash)->exists());
+
         return $hash;
     }
 
@@ -323,6 +389,7 @@ class Spr extends Model
         do {
             $hash = bin2hex(random_bytes(20));
         } while (self::where('konsumen_download_link_hash', $hash)->exists());
+
         return $hash;
     }
 

@@ -67,7 +67,7 @@ new #[Title('Input Pembatalan SPR')] class extends Component
             'rumah:id,blok,nomor_unit,tipe_rumah_id,proyek_id',
             'rumah.tipeRumah:id,tipe,nama_tipe',
             'sales:id,kode,nama',
-            'terminPembayaran',
+            'realisasiPembayaran',
         ])->find($id);
 
         if (! $this->spr) {
@@ -155,14 +155,15 @@ new #[Title('Input Pembatalan SPR')] class extends Component
 
         $alasanList = AlasanPembatalan::where('is_aktif', true)->orderBy('nama')->get(['id', 'nama', 'dapat_meneruskan_angsuran']);
 
-        // Total setoran untuk SPR yang dipilih
+        // Total uang masuk untuk SPR yang dipilih — sumber dari spr_realisasi_pembayaran
+        // (bukan lagi termin, karena realisasi sudah di-refactor jadi tabel tersendiri).
         $uangMasuk = 0;
         $bfMasuk = 0;
         $umMasuk = 0;
         if ($this->spr) {
-            $cair = $this->spr->terminPembayaran->whereNotNull('tanggal_realisasi');
-            $bfMasuk = (float) $cair->where('jenis', 'bf')->sum('jumlah');
-            $umMasuk = (float) $cair->where('jenis', 'um')->sum('jumlah');
+            $realisasi = $this->spr->realisasiPembayaran;
+            $bfMasuk = (float) $realisasi->where('jenis', 'bf')->sum('jumlah');
+            $umMasuk = (float) $realisasi->where('jenis', 'um')->sum('jumlah');
             $uangMasuk = $bfMasuk + $umMasuk;
         }
 
@@ -264,29 +265,22 @@ new #[Title('Input Pembatalan SPR')] class extends Component
                                 @endif
                             </td>
                         </tr>
-                        @php $bfTermin = $spr->terminPembayaran->where('jenis', 'bf')->first(); @endphp
                         <tr>
-                            <th class="bg-white px-4 py-2.5 text-right font-bold dark:bg-zinc-900">UTJ-1</th>
+                            <th class="bg-zinc-50 px-4 py-2.5 text-left font-bold dark:bg-zinc-800/50">{{ __('Uang Masuk') }} (UTJ)</th>
                             <td class="px-4 py-2.5 text-right font-mono text-emerald-700 dark:text-emerald-400">
                                 {{ number_format($bfMasuk, 0, ',', '.') }}
                             </td>
                         </tr>
                         <tr>
-                            <th class="bg-zinc-50 px-4 py-2.5 text-left font-bold uppercase dark:bg-zinc-800/50">{{ __('Total Setoran') }}</th>
-                            <td class="px-4 py-2.5 text-right font-mono text-emerald-700 dark:text-emerald-400">
-                                {{ number_format($uangMasuk, 0, ',', '.') }}
-                            </td>
-                        </tr>
-                        <tr>
-                            <th class="bg-zinc-50 px-4 py-2.5 text-left font-bold uppercase dark:bg-zinc-800/50">{{ __('Total Setoran UTJ') }}</th>
-                            <td class="px-4 py-2.5 text-right font-mono text-emerald-700 dark:text-emerald-400">
-                                {{ number_format($bfMasuk, 0, ',', '.') }}
-                            </td>
-                        </tr>
-                        <tr>
-                            <th class="bg-zinc-50 px-4 py-2.5 text-left font-bold uppercase dark:bg-zinc-800/50">{{ __('Total Setoran UM') }}</th>
+                            <th class="bg-zinc-50 px-4 py-2.5 text-left font-bold dark:bg-zinc-800/50">{{ __('Uang Masuk') }} (Cicilan)</th>
                             <td class="px-4 py-2.5 text-right font-mono text-emerald-700 dark:text-emerald-400">
                                 {{ number_format($umMasuk, 0, ',', '.') }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th class="bg-emerald-50 px-4 py-2.5 text-left font-bold uppercase dark:bg-emerald-950/30">{{ __('Total Uang Masuk') }}</th>
+                            <td class="bg-emerald-50 px-4 py-2.5 text-right font-mono font-extrabold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
+                                {{ number_format($uangMasuk, 0, ',', '.') }}
                             </td>
                         </tr>
                     </tbody>
@@ -312,13 +306,13 @@ new #[Title('Input Pembatalan SPR')] class extends Component
                     <flux:error name="keterangan" />
                 </flux:field>
 
-                {{-- REFUND SECTION --}}
+                {{-- PENGEMBALIAN UANG SECTION --}}
                 <div class="rounded-lg border border-amber-200 bg-amber-50/40 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
-                    <div class="mb-3 text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">{{ __('Refund (Pengembalian Uang)') }}</div>
+                    <div class="mb-3 text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">{{ __('Pengembalian Uang') }}</div>
 
                     <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
                         <flux:field>
-                            <flux:label>{{ __('Status Refund') }}</flux:label>
+                            <flux:label>{{ __('Status Pengembalian') }}</flux:label>
                             <flux:select wire:model="refundStatus">
                                 <flux:select.option value="pending">{{ __('Menunggu') }}</flux:select.option>
                                 <flux:select.option value="tidak_ada_refund">{{ __('Tidak Dikembalikan') }}</flux:select.option>
@@ -328,19 +322,19 @@ new #[Title('Input Pembatalan SPR')] class extends Component
                         </flux:field>
 
                         <flux:field>
-                            <flux:label>{{ __('Jumlah Refund (Rp)') }}</flux:label>
+                            <flux:label>{{ __('Jumlah Dikembalikan (Rp)') }}</flux:label>
                             <x-money-input wire="refundAmount" />
                             <flux:error name="refundAmount" />
                         </flux:field>
 
                         <flux:field>
-                            <flux:label>{{ __('Tgl Refund') }}</flux:label>
+                            <flux:label>{{ __('Tanggal Dikembalikan') }}</flux:label>
                             <flux:input type="date" wire:model="refundAt" />
                         </flux:field>
                     </div>
 
                     <flux:field class="mt-3">
-                        <flux:label>{{ __('Catatan Refund') }} <span class="text-xs font-normal text-zinc-500">— opsional</span></flux:label>
+                        <flux:label>{{ __('Catatan Pengembalian') }} <span class="text-xs font-normal text-zinc-500">— opsional</span></flux:label>
                         <flux:textarea wire:model="refundKeterangan" rows="2" placeholder="Mis: dipotong biaya admin Rp 2.000.000" />
                     </flux:field>
                 </div>

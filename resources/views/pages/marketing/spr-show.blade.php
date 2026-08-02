@@ -32,6 +32,17 @@ new #[Title('Detail SPR')] class extends Component
 
     public ?string $trxKeterangan = null;
 
+    // Modal Edit Realisasi UM (koreksi kwitansi yg sudah tercatat)
+    public ?int $editRealisasiId = null;
+
+    public ?string $editRealisasiTanggal = null;
+
+    public string $editRealisasiJumlah = '0';
+
+    public string $editRealisasiMetode = 'transfer';
+
+    public ?string $editRealisasiKeterangan = null;
+
     // Upload dokumen SPR ttd + meterai dari customer
     public $dokumenSignedFile = null;
 
@@ -56,6 +67,8 @@ new #[Title('Detail SPR')] class extends Component
             'dokumenSignedBy',
             'terminPembayaran',
             'realisasiPembayaran.inputBy',
+            'switchedFromSpr.rumah',
+            'switchedToSpr.rumah',
         ])->findOrFail($id);
     }
 
@@ -148,6 +161,12 @@ new #[Title('Detail SPR')] class extends Component
 
     public function saveTransaksi(): void
     {
+        // Komersial: UM langsung ke bank, bukan ke developer. Block realisasi UM.
+        if ($this->spr->kategori === 'komersial') {
+            Flux::toast(variant: 'danger', text: 'SPR komersial tidak menerima realisasi UM ke developer.');
+            return;
+        }
+
         $validated = $this->validate([
             'trxTanggal' => ['required', 'date'],
             'trxJumlah' => ['required', 'numeric', 'min:1'],
@@ -170,16 +189,20 @@ new #[Title('Detail SPR')] class extends Component
 
         $jumlah = min((float) $validated['trxJumlah'], $sisaUm);
 
-        $realisasi = SprRealisasiPembayaran::create([
-            'spr_id' => $this->spr->id,
-            'jenis' => 'um',
-            'tanggal_bayar' => $validated['trxTanggal'],
-            'jumlah' => $jumlah,
-            'nomor_kwitansi' => SprRealisasiPembayaran::generateNextNomor(),
-            'metode' => $validated['trxMetode'],
-            'keterangan' => $validated['trxKeterangan'] ?: null,
-            'input_by_user_id' => Auth::id(),
-        ]);
+        // Wrap DB::transaction supaya lockForUpdate di generateNextNomor efektif
+        // (mencegah race condition pada nomor kwitansi saat concurrent insert).
+        $realisasi = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $jumlah) {
+            return SprRealisasiPembayaran::create([
+                'spr_id' => $this->spr->id,
+                'jenis' => 'um',
+                'tanggal_bayar' => $validated['trxTanggal'],
+                'jumlah' => $jumlah,
+                'nomor_kwitansi' => SprRealisasiPembayaran::generateNextNomor(),
+                'metode' => $validated['trxMetode'],
+                'keterangan' => $validated['trxKeterangan'] ?: null,
+                'input_by_user_id' => Auth::id(),
+            ]);
+        });
 
         $realisasi->load('spr.prospectCustomer');
         BusinessActivityLogger::realisasiCreated($realisasi);
@@ -189,10 +212,91 @@ new #[Title('Detail SPR')] class extends Component
 
         Flux::toast(variant: 'success', text: 'Realisasi UM Rp '.number_format($jumlah, 0, ',', '.').' tercatat.');
     }
+
+    public function openEditRealisasi(int $id): void
+    {
+        abort_unless(Auth::user()?->can('pembayaran.kelola'), 403);
+
+        $r = SprRealisasiPembayaran::where('spr_id', $this->spr->id)
+            ->where('jenis', 'um')
+            ->findOrFail($id);
+
+        $this->editRealisasiId = $r->id;
+        $this->editRealisasiTanggal = $r->tanggal_bayar?->format('Y-m-d');
+        $this->editRealisasiJumlah = (string) (int) (float) $r->jumlah;
+        $this->editRealisasiMetode = $r->metode ?: 'transfer';
+        $this->editRealisasiKeterangan = $r->keterangan;
+        $this->resetErrorBag();
+        Flux::modal('edit-realisasi')->show();
+    }
+
+    public function saveEditRealisasi(): void
+    {
+        abort_unless(Auth::user()?->can('pembayaran.kelola'), 403);
+
+        $validated = $this->validate([
+            'editRealisasiTanggal' => ['required', 'date'],
+            'editRealisasiJumlah' => ['required', 'numeric', 'min:1'],
+            'editRealisasiMetode' => ['required', 'in:transfer,tunai'],
+            'editRealisasiKeterangan' => ['nullable', 'string', 'max:500'],
+        ], [], [
+            'editRealisasiTanggal' => 'tanggal',
+            'editRealisasiJumlah' => 'jumlah',
+            'editRealisasiMetode' => 'metode pembayaran',
+        ]);
+
+        $r = SprRealisasiPembayaran::where('spr_id', $this->spr->id)
+            ->where('jenis', 'um')
+            ->findOrFail($this->editRealisasiId);
+
+        $newJumlah = (float) $validated['editRealisasiJumlah'];
+
+        // Cap: jumlah + total realisasi UM lain (exclude row ini) tidak boleh > um_net.
+        $totalUmLain = (float) SprRealisasiPembayaran::where('spr_id', $this->spr->id)
+            ->where('jenis', 'um')
+            ->where('id', '!=', $r->id)
+            ->sum('jumlah');
+        $maxAllowed = max(0, (float) $this->spr->um_net - $totalUmLain);
+        if ($newJumlah > $maxAllowed) {
+            $this->addError('editRealisasiJumlah', 'Jumlah melebihi sisa UM (maks Rp '.number_format($maxAllowed, 0, ',', '.').').');
+
+            return;
+        }
+
+        $old = [
+            'tanggal_bayar' => $r->tanggal_bayar?->format('Y-m-d'),
+            'jumlah' => (float) $r->jumlah,
+            'metode' => $r->metode,
+            'keterangan' => $r->keterangan,
+        ];
+
+        $r->update([
+            'tanggal_bayar' => $validated['editRealisasiTanggal'],
+            'jumlah' => $newJumlah,
+            'metode' => $validated['editRealisasiMetode'],
+            'keterangan' => $validated['editRealisasiKeterangan'] ?: null,
+        ]);
+
+        BusinessActivityLogger::realisasiUpdated($r, $old);
+
+        Flux::modal('edit-realisasi')->close();
+        $this->loadSpr($this->spr->id);
+        $this->reset(['editRealisasiId', 'editRealisasiTanggal', 'editRealisasiJumlah', 'editRealisasiMetode', 'editRealisasiKeterangan']);
+
+        Flux::toast(variant: 'success', text: 'Realisasi kwitansi '.$r->nomor_kwitansi.' diperbarui.');
+    }
 }; ?>
 
 @php
     $spr = $this->spr;
+
+    // Kalau SPR ini sudah dipindah ke SPR baru (Pindah Kavling) → override realisasi
+    // dengan kwitansi historis (yg dulu di SPR ini, sekarang link via switching_id).
+    // Dilakukan di render (bukan di mount) supaya selalu fresh & lolos Livewire dehydrate.
+    if ($spr->switched_to_spr_id) {
+        $spr->setRelation('realisasiPembayaran', $spr->realisasiHistoris()->load('inputBy'));
+    }
+
     $prospect = $spr->prospectCustomer;
     $rumah = $spr->rumah;
     $tipe = $rumah?->tipeRumah;
@@ -255,6 +359,57 @@ new #[Title('Detail SPR')] class extends Component
                 {{ __('Cari SPR Lain') }}
             </a>
         </div>
+
+        {{-- BANNER SWITCHING (Pindah Kavling) --}}
+        @php $switching = $spr->switching(); @endphp
+        @if ($switching)
+            @if ($switching->spr_lama_a_id === $spr->id || $switching->spr_lama_b_id === $spr->id)
+                @php
+                    $sprBaru = $switching->spr_lama_a_id === $spr->id ? $switching->sprBaruA : $switching->sprBaruB;
+                @endphp
+                <div class="mb-4 rounded-lg border border-orange-200 bg-orange-50 p-3 dark:border-orange-900 dark:bg-orange-950/30">
+                    <div class="flex items-start gap-2">
+                        <flux:icon.arrows-right-left class="mt-0.5 size-4 shrink-0 text-orange-600" />
+                        <div class="flex-1 text-xs text-orange-800 dark:text-orange-200">
+                            <div class="font-bold">{{ __('SPR ini sudah dipindah (Pindah Kavling)') }}</div>
+                            <div class="mt-0.5">
+                                Nomor referensi: <span class="font-mono font-bold">{{ $switching->nomor_switching }}</span>
+                                · Diproses {{ $switching->processed_at?->translatedFormat('d M Y H:i') }}
+                                · Oleh {{ $switching->processedBy?->name ?? '—' }}
+                            </div>
+                            <div class="mt-1">
+                                {{ __('SPR baru:') }}
+                                <a href="{{ route('marketing.spr.show', $sprBaru->id) }}" wire:navigate class="font-mono font-bold underline">
+                                    {{ $sprBaru?->nomor_display }} (unit {{ $sprBaru?->rumah?->blok }}-{{ $sprBaru?->rumah?->nomor_unit }})
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @elseif ($switching->spr_baru_a_id === $spr->id || $switching->spr_baru_b_id === $spr->id)
+                @php
+                    $sprLama = $switching->spr_baru_a_id === $spr->id ? $switching->sprLamaA : $switching->sprLamaB;
+                @endphp
+                <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
+                    <div class="flex items-start gap-2">
+                        <flux:icon.sparkles class="mt-0.5 size-4 shrink-0 text-emerald-600" />
+                        <div class="flex-1 text-xs text-emerald-800 dark:text-emerald-200">
+                            <div class="font-bold">{{ __('SPR ini hasil Pindah Kavling') }}</div>
+                            <div class="mt-0.5">
+                                Nomor referensi: <span class="font-mono font-bold">{{ $switching->nomor_switching }}</span>
+                                · Diproses {{ $switching->processed_at?->translatedFormat('d M Y H:i') }}
+                            </div>
+                            <div class="mt-1">
+                                {{ __('Berasal dari SPR lama:') }}
+                                <a href="{{ route('marketing.spr.show', $sprLama->id) }}" wire:navigate class="font-mono font-bold underline">
+                                    {{ $sprLama?->nomor_display }} (unit {{ $sprLama?->rumah?->blok }}-{{ $sprLama?->rumah?->nomor_unit }})
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endif
+        @endif
 
         {{-- TABS --}}
         <div class="mb-4 flex items-center gap-1 border-b border-zinc-200 dark:border-zinc-700">
@@ -892,11 +1047,14 @@ new #[Title('Detail SPR')] class extends Component
 
                         <div class="mt-3 space-y-1 border-t border-dashed border-zinc-300 pt-2 dark:border-zinc-700">
                             <div class="flex justify-between"><dt class="text-zinc-500">Nilai KPR Bank</dt><dd class="font-mono tabular-nums">{{ $fmt($spr->nilai_kpr) }}</dd></div>
-                            <div class="flex justify-between"><dt class="text-zinc-500">Uang Muka (UM)</dt><dd class="font-mono tabular-nums">{{ $fmt($spr->dp_nominal) }}</dd></div>
-                            <div class="flex justify-between rounded-md bg-orange-50 px-2 py-1.5 dark:bg-orange-950/30">
-                                <dt class="font-bold text-orange-900 dark:text-orange-300">UM yang harus dibayar</dt>
-                                <dd class="font-mono font-extrabold tabular-nums text-orange-700 dark:text-orange-300">{{ $fmt($spr->um_net) }}</dd>
-                            </div>
+                            {{-- Komersial: UM langsung ke bank, tidak dicatat di sistem developer --}}
+                            @if ($spr->kategori !== 'komersial')
+                                <div class="flex justify-between"><dt class="text-zinc-500">Uang Muka (UM)</dt><dd class="font-mono tabular-nums">{{ $fmt($spr->dp_nominal) }}</dd></div>
+                                <div class="flex justify-between rounded-md bg-orange-50 px-2 py-1.5 dark:bg-orange-950/30">
+                                    <dt class="font-bold text-orange-900 dark:text-orange-300">UM yang harus dibayar</dt>
+                                    <dd class="font-mono font-extrabold tabular-nums text-orange-700 dark:text-orange-300">{{ $fmt($spr->um_net) }}</dd>
+                                </div>
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -916,11 +1074,11 @@ new #[Title('Detail SPR')] class extends Component
                     </div>
                     <div class="space-y-3 px-4 py-3 text-xs">
 
-                        {{-- Uang Muka --}}
+                        {{-- UTJ + Uang Muka --}}
                         <div>
                             <div class="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-orange-700 dark:text-orange-400">
                                 <flux:icon.banknotes class="size-3" />
-                                {{ __('Uang Muka') }}
+                                {{ $spr->kategori === 'komersial' ? __('UTJ') : __('Uang Muka') }}
                             </div>
 
                             {{-- UTJ row: cek berdasarkan realisasi jenis 'bf' --}}
@@ -941,54 +1099,56 @@ new #[Title('Detail SPR')] class extends Component
                                 </div>
                             @endif
 
-                            {{-- UM termin: FIFO alokasi dari total realisasi UM --}}
-                            @php
-                                $totalUmRealisasi = (float) $spr->realisasiPembayaran->where('jenis', 'um')->sum('jumlah');
-                                $sisaAlokasi = $totalUmRealisasi;
-                            @endphp
-                            @foreach ($ums as $t)
+                            {{-- UM cicilan — hanya subsidi (komersial: langsung ke bank) --}}
+                            @if ($spr->kategori !== 'komersial')
                                 @php
-                                    $terminJumlah = (float) $t->jumlah_jadwal;
-                                    if ($sisaAlokasi >= $terminJumlah) {
-                                        $status = 'lunas';
-                                        $terbayar = $terminJumlah;
-                                        $sisaAlokasi -= $terminJumlah;
-                                    } elseif ($sisaAlokasi > 0) {
-                                        $status = 'partial';
-                                        $terbayar = $sisaAlokasi;
-                                        $sisaAlokasi = 0;
-                                    } else {
-                                        $status = 'belum';
-                                        $terbayar = 0;
-                                    }
+                                    $totalUmRealisasi = (float) $spr->realisasiPembayaran->where('jenis', 'um')->sum('jumlah');
+                                    $sisaAlokasi = $totalUmRealisasi;
                                 @endphp
-                                <div class="flex items-center justify-between gap-2 border-b border-zinc-100 py-1 dark:border-zinc-800">
-                                    <span class="w-14 font-mono text-zinc-600">UM-{{ $t->urutan }}</span>
-                                    <span class="flex-1 text-zinc-500">{{ $t->tanggal_jadwal?->format('d/m/Y') ?? '—' }}</span>
-                                    <div class="flex flex-col items-end">
-                                        <span class="font-mono tabular-nums">{{ $fmt($terminJumlah) }}</span>
-                                        @if ($status === 'partial')
-                                            <span class="font-mono text-[9px] text-amber-600">Terbayar {{ $fmt($terbayar) }}</span>
+                                @foreach ($ums as $t)
+                                    @php
+                                        $terminJumlah = (float) $t->jumlah_jadwal;
+                                        if ($sisaAlokasi >= $terminJumlah) {
+                                            $status = 'lunas';
+                                            $terbayar = $terminJumlah;
+                                            $sisaAlokasi -= $terminJumlah;
+                                        } elseif ($sisaAlokasi > 0) {
+                                            $status = 'partial';
+                                            $terbayar = $sisaAlokasi;
+                                            $sisaAlokasi = 0;
+                                        } else {
+                                            $status = 'belum';
+                                            $terbayar = 0;
+                                        }
+                                    @endphp
+                                    <div class="flex items-center justify-between gap-2 border-b border-zinc-100 py-1 dark:border-zinc-800">
+                                        <span class="w-14 font-mono text-zinc-600">UM-{{ $t->urutan }}</span>
+                                        <span class="flex-1 text-zinc-500">{{ $t->tanggal_jadwal?->format('d/m/Y') ?? '—' }}</span>
+                                        <div class="flex flex-col items-end">
+                                            <span class="font-mono tabular-nums">{{ $fmt($terminJumlah) }}</span>
+                                            @if ($status === 'partial')
+                                                <span class="font-mono text-[9px] text-amber-600">Terbayar {{ $fmt($terbayar) }}</span>
+                                            @endif
+                                        </div>
+                                        @if ($status === 'lunas')
+                                            <flux:icon.check-circle class="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" title="Lunas" />
+                                        @elseif ($status === 'partial')
+                                            <flux:icon.clock class="size-3.5 shrink-0 text-amber-500" title="Partial: Rp {{ number_format($terbayar, 0, ',', '.') }}" />
+                                        @else
+                                            <flux:icon.minus-circle class="size-3.5 shrink-0 text-zinc-300 dark:text-zinc-600" title="Belum" />
                                         @endif
                                     </div>
-                                    @if ($status === 'lunas')
-                                        <flux:icon.check-circle class="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" title="Lunas" />
-                                    @elseif ($status === 'partial')
-                                        <flux:icon.clock class="size-3.5 shrink-0 text-amber-500" title="Partial: Rp {{ number_format($terbayar, 0, ',', '.') }}" />
-                                    @else
-                                        <flux:icon.minus-circle class="size-3.5 shrink-0 text-zinc-300 dark:text-zinc-600" title="Belum" />
-                                    @endif
+                                @endforeach
+                                <div class="flex justify-between rounded-md bg-emerald-50 px-2 py-1.5 dark:bg-emerald-950/30">
+                                    <dt class="font-bold text-emerald-900 dark:text-emerald-200">Total UM</dt>
+                                    <dd class="font-mono font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{{ $fmt($totalUm) }}</dd>
                                 </div>
-                            @endforeach
-                            <div class="flex justify-between rounded-md bg-emerald-50 px-2 py-1.5 dark:bg-emerald-950/30">
-                                <dt class="font-bold text-emerald-900 dark:text-emerald-200">Total UM</dt>
-                                <dd class="font-mono font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{{ $fmt($totalUm) }}</dd>
-                            </div>
-                            @if ($kurangUm > 0)
-                                <div class="mt-1 flex justify-between rounded-md bg-amber-50 px-2 py-1 text-[11px] dark:bg-amber-950/30">
-                                    <dt class="font-semibold text-amber-800 dark:text-amber-300">Sisa Kurang</dt>
-                                    <dd class="font-mono font-bold tabular-nums text-amber-700 dark:text-amber-300">{{ $fmt($kurangUm) }}</dd>
-                                </div>
+                                @if ($kurangUm > 0)
+                                    <div class="mt-1 flex justify-between rounded-md bg-amber-50 px-2 py-1 text-[11px] dark:bg-amber-950/30">
+                                        <dt class="font-semibold text-amber-800 dark:text-amber-300">Sisa Kurang</dt>
+                                        <dd class="font-mono font-bold tabular-nums text-amber-700 dark:text-amber-300">{{ $fmt($kurangUm) }}</dd>
+                                    </div>
+                                @endif
                             @endif
                         </div>
 
@@ -1043,11 +1203,23 @@ new #[Title('Detail SPR')] class extends Component
                 </div>
 
                 {{-- ===== REALISASI PEMBAYARAN ===== --}}
-                @php $canAddTrx = in_array($spr->status, ['approved', 'submitted']); @endphp
+                @php
+                    $canAddTrx = in_array($spr->status, ['approved', 'submitted']);
+                    // Komersial: UM cicilan langsung ke bank (bukan ke developer) → tidak boleh input realisasi UM
+                    $canAddUmTrx = $canAddTrx && $spr->kategori !== 'komersial';
+                @endphp
                 <div class="rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
                     <div class="flex items-center justify-between gap-2 border-b border-zinc-200 px-4 py-2.5 dark:border-zinc-700">
-                        <h3 class="text-sm font-bold text-zinc-900 dark:text-white">{{ __('Realisasi Pembayaran') }}</h3>
-                        @if ($canAddTrx)
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-sm font-bold text-zinc-900 dark:text-white">{{ __('Realisasi Pembayaran') }}</h3>
+                            @if ($spr->switched_to_spr_id)
+                                <span class="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-orange-700 dark:bg-orange-950/50 dark:text-orange-300">
+                                    <flux:icon.archive-box class="size-2.5" />
+                                    {{ __('Riwayat · sudah dipindah') }}
+                                </span>
+                            @endif
+                        </div>
+                        @if ($canAddUmTrx)
                             <flux:button size="sm" variant="primary" icon="plus" wire:click="openTambahTransaksi">
                                 {{ __('Tambah Transaksi') }}
                             </flux:button>
@@ -1104,7 +1276,8 @@ new #[Title('Detail SPR')] class extends Component
                             @endif
                         </div>
 
-                        {{-- ============ UANG MUKA (cicilan) ============ --}}
+                        {{-- ============ UANG MUKA (cicilan) — hanya subsidi ============ --}}
+                        @if ($spr->kategori !== 'komersial')
                         <div class="border-t border-dashed border-zinc-200 pt-3 dark:border-zinc-700">
                             <div class="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-orange-700 dark:text-orange-400">
                                 <flux:icon.banknotes class="size-3" />
@@ -1116,11 +1289,19 @@ new #[Title('Detail SPR')] class extends Component
                                         <th class="py-1 text-left font-semibold">Kuitansi</th>
                                         <th class="py-1 text-left font-semibold">Tanggal</th>
                                         <th class="py-1 text-right font-semibold">Masuk</th>
+                                        @can('pembayaran.kelola')
+                                            @if (! $spr->switched_to_spr_id && $spr->status !== 'cancelled')
+                                                <th class="py-1 text-right font-semibold w-8"></th>
+                                            @endif
+                                        @endcan
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @php
                                         $realisasiUm = $spr->realisasiPembayaran->where('jenis', 'um');
+                                        $canEditRealisasi = auth()->user()?->can('pembayaran.kelola')
+                                            && ! $spr->switched_to_spr_id
+                                            && $spr->status !== 'cancelled';
                                     @endphp
                                     @forelse ($realisasiUm as $r)
                                         <tr class="border-b border-zinc-100 dark:border-zinc-800">
@@ -1138,10 +1319,19 @@ new #[Title('Detail SPR')] class extends Component
                                             </td>
                                             <td class="py-1">{{ $r->tanggal_bayar?->format('d/m/Y') }}</td>
                                             <td class="py-1 text-right font-mono tabular-nums">{{ $fmt($r->jumlah) }}</td>
+                                            @if ($canEditRealisasi)
+                                                <td class="py-1 text-right">
+                                                    <button type="button" wire:click="openEditRealisasi({{ $r->id }})"
+                                                            class="rounded p-1 text-zinc-400 transition hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-950/30"
+                                                            title="{{ __('Edit realisasi (koreksi nominal / tanggal)') }}">
+                                                        <flux:icon.pencil-square class="size-3.5" />
+                                                    </button>
+                                                </td>
+                                            @endif
                                         </tr>
                                     @empty
                                         <tr>
-                                            <td colspan="3" class="py-3 text-center italic text-zinc-400">{{ __('Belum ada UM cair.') }}</td>
+                                            <td colspan="{{ $canEditRealisasi ? 4 : 3 }}" class="py-3 text-center italic text-zinc-400">{{ __('Belum ada UM cair.') }}</td>
                                         </tr>
                                     @endforelse
                                 </tbody>
@@ -1164,6 +1354,7 @@ new #[Title('Detail SPR')] class extends Component
                                 </div>
                             @endif
                         </div>
+                        @endif {{-- end kategori !== komersial (UM cicilan section) --}}
 
                         {{-- KPR realisasi - placeholder --}}
                         @if ($spr->jenis_pembayaran === 'kpr')
@@ -1263,6 +1454,68 @@ new #[Title('Detail SPR')] class extends Component
                             {{ __('Simpan') }}
                         </flux:button>
                     @endif
+                </div>
+            </form>
+        </flux:modal>
+
+        {{-- ============ MODAL: EDIT REALISASI UM ============ --}}
+        <flux:modal name="edit-realisasi" class="md:w-lg" focusable>
+            <form wire:submit="saveEditRealisasi" class="space-y-5">
+                <div>
+                    <flux:heading size="lg">{{ __('Edit Realisasi Pembayaran') }}</flux:heading>
+                    <flux:subheading>
+                        {{ __('Koreksi tanggal, jumlah, metode, atau keterangan realisasi UM. Nomor kwitansi tetap. Perubahan tercatat di log audit.') }}
+                    </flux:subheading>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <flux:field>
+                        <flux:label>{{ __('Tanggal Bayar') }} <span class="ms-1 text-red-500">*</span></flux:label>
+                        <flux:input type="date" wire:model="editRealisasiTanggal" required />
+                        <flux:error name="editRealisasiTanggal" />
+                    </flux:field>
+
+                    <flux:field>
+                        <flux:label>{{ __('Jumlah (Rp)') }} <span class="ms-1 text-red-500">*</span></flux:label>
+                        <x-money-input wire="editRealisasiJumlah" required />
+                        <flux:error name="editRealisasiJumlah" />
+                    </flux:field>
+                </div>
+
+                <div>
+                    <flux:label class="mb-2 block">{{ __('Metode Pembayaran') }}</flux:label>
+                    <div class="grid grid-cols-2 gap-2">
+                        @foreach (['transfer' => 'Transfer', 'tunai' => 'Tunai'] as $key => $label)
+                            <label @class([
+                                'flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 px-3 py-2 text-sm font-semibold transition',
+                                'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300' => $editRealisasiMetode === $key,
+                                'border-zinc-200 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300' => $editRealisasiMetode !== $key,
+                            ])>
+                                <input type="radio" wire:model="editRealisasiMetode" value="{{ $key }}" class="accent-amber-600" />
+                                {{ $label }}
+                            </label>
+                        @endforeach
+                    </div>
+                </div>
+
+                <flux:field>
+                    <flux:label>{{ __('Keterangan') }} <span class="text-xs font-normal text-zinc-500">— opsional</span></flux:label>
+                    <flux:textarea wire:model="editRealisasiKeterangan" rows="2" placeholder="Contoh: transfer BCA / cash di kasir" />
+                    <flux:error name="editRealisasiKeterangan" />
+                </flux:field>
+
+                <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] italic text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+                    <flux:icon.exclamation-triangle class="-mt-0.5 mr-1 inline size-3" />
+                    {{ __('Perubahan tercatat di log audit dengan nilai lama & baru. Nomor kwitansi tidak berubah.') }}
+                </div>
+
+                <div class="flex justify-end gap-2">
+                    <flux:modal.close>
+                        <flux:button variant="ghost" type="button">{{ __('Batal') }}</flux:button>
+                    </flux:modal.close>
+                    <flux:button variant="primary" type="submit" icon="check">
+                        {{ __('Simpan Perubahan') }}
+                    </flux:button>
                 </div>
             </form>
         </flux:modal>

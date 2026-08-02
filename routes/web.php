@@ -1,9 +1,9 @@
 <?php
 
 use App\Models\Master\Perusahaan;
+use App\Models\Master\Sales;
 use App\Models\Master\Spr;
 use App\Models\Master\SprRealisasiPembayaran;
-use App\Models\Master\SprTerminPembayaran;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -50,6 +50,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Dashboard dispatcher — redirect ke dashboard per role
     Route::get('dashboard', function () {
         $user = Auth::user();
+
         return redirect(match (true) {
             $user->hasRole('finance') => route('dashboard.finance'),
             $user->hasRole('project-manager') => route('dashboard.pm'),
@@ -155,11 +156,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
             abort_if(! $spr->materai_file_path, 404, 'File materai belum tersedia.');
             $path = storage_path('app/public/'.$spr->materai_file_path);
             abort_unless(is_file($path), 404, 'File tidak ditemukan.');
+
             return response()->file($path, ['Content-Type' => 'application/pdf']);
         })->where('id', '[0-9]+')->name('spr.materai-pdf');
         // Pembatalan SPR
         Route::livewire('spr-batal', 'pages::marketing.spr-pembatalan-list')->name('spr-batal.list');
         Route::livewire('spr-batal/input', 'pages::marketing.spr-pembatalan-input')->name('spr-batal.input');
+
+        // Pindah Kavling (Switching)
+        Route::middleware('permission:spr.pindah-unit')->group(function () {
+            Route::livewire('spr-pindah', 'pages::marketing.spr-pindah-list')->name('spr-pindah.list');
+            Route::livewire('spr-pindah/{id}', 'pages::marketing.spr-pindah-show')
+                ->where('id', '[0-9]+')->name('spr-pindah.show');
+        });
     });
 });
 
@@ -171,14 +180,16 @@ Route::prefix('dbos')->name('dbos.')->group(function () {
         Auth::guard('sales')->logout();
         request()->session()->invalidate();
         request()->session()->regenerateToken();
+
         return redirect()->route('dbos.login');
     })->name('logout');
 
     Route::middleware('auth:sales')->group(function () {
         // HOME dispatcher: pimpinan → pimpinan.home, sales lapangan → sales-home
         Route::get('/', function () {
-            /** @var \App\Models\Master\Sales $sales */
+            /** @var Sales $sales */
             $sales = Auth::guard('sales')->user();
+
             return $sales->isPimpinan()
                 ? redirect()->route('dbos.pimpinan.home')
                 : redirect()->route('dbos.sales-home');
@@ -191,42 +202,42 @@ Route::prefix('dbos')->name('dbos.')->group(function () {
             Route::livewire('cara-kerja', 'pages::dbos.cara-kerja')->name('cara-kerja');
 
             // DATABASE prospect customer
-            Route::livewire('database',             'pages::dbos.database.index')->name('database.index');
-            Route::livewire('database/create',      'pages::dbos.database.form')->name('database.create');
-            Route::livewire('database/{id}/edit',   'pages::dbos.database.form')->name('database.edit');
+            Route::livewire('database', 'pages::dbos.database.index')->name('database.index');
+            Route::livewire('database/create', 'pages::dbos.database.form')->name('database.create');
+            Route::livewire('database/{id}/edit', 'pages::dbos.database.form')->name('database.edit');
 
             // BOOKING — list & create flow
-            Route::livewire('booking',                                  'pages::dbos.booking.index')->name('booking.index');
-            Route::livewire('booking/baru',                             'pages::dbos.booking.picker')->name('booking.create');
-            Route::livewire('booking/proyek/{id}',                      'pages::dbos.booking.blok')->name('booking.blok');
-            Route::livewire('booking/proyek/{id}/blok/{blok}',          'pages::dbos.booking.unit')->name('booking.unit');
-            Route::livewire('booking/unit/{id}',                        'pages::dbos.booking.form')->name('booking.form');
+            Route::livewire('booking', 'pages::dbos.booking.index')->name('booking.index');
+            Route::livewire('booking/baru', 'pages::dbos.booking.picker')->name('booking.create');
+            Route::livewire('booking/proyek/{id}', 'pages::dbos.booking.blok')->name('booking.blok');
+            Route::livewire('booking/proyek/{id}/blok/{blok}', 'pages::dbos.booking.unit')->name('booking.unit');
+            Route::livewire('booking/unit/{id}', 'pages::dbos.booking.form')->name('booking.form');
 
             // SPR — list, form 4-step, view detail
-            Route::livewire('spr',                          'pages::dbos.spr.index')->name('spr.index');
-            Route::livewire('spr/buat/{bookingId}',         'pages::dbos.spr.form')->name('spr.create');
-            Route::livewire('spr/{id}',                     'pages::dbos.spr.show')->name('spr.show');
+            Route::livewire('spr', 'pages::dbos.spr.index')->name('spr.index');
+            Route::livewire('spr/buat/{bookingId}', 'pages::dbos.spr.form')->name('spr.create');
+            Route::livewire('spr/{id}', 'pages::dbos.spr.show')->name('spr.show');
         });
 
         // ========== PIMPINAN ZONE (sales lapangan diblok) ==========
         Route::middleware('pimpinan')->prefix('pimpinan')->name('pimpinan.')->group(function () {
-            Route::livewire('/',                      'pages::dbos.pimpinan.home')->name('home');
+            Route::livewire('/', 'pages::dbos.pimpinan.home')->name('home');
 
-            Route::livewire('anggota',                'pages::dbos.pimpinan.anggota.index')->name('anggota.index');
-            Route::livewire('anggota/compare',        'pages::dbos.pimpinan.anggota.compare')->name('anggota.compare');
-            Route::livewire('anggota/{id}',           'pages::dbos.pimpinan.anggota.show')->name('anggota.show');
+            Route::livewire('anggota', 'pages::dbos.pimpinan.anggota.index')->name('anggota.index');
+            Route::livewire('anggota/compare', 'pages::dbos.pimpinan.anggota.compare')->name('anggota.compare');
+            Route::livewire('anggota/{id}', 'pages::dbos.pimpinan.anggota.show')->name('anggota.show');
 
-            Route::livewire('prospect',               'pages::dbos.pimpinan.prospect.index')->name('prospect.index');
-            Route::livewire('prospect/{id}',          'pages::dbos.pimpinan.prospect.show')->name('prospect.show');
+            Route::livewire('prospect', 'pages::dbos.pimpinan.prospect.index')->name('prospect.index');
+            Route::livewire('prospect/{id}', 'pages::dbos.pimpinan.prospect.show')->name('prospect.show');
 
-            Route::livewire('booking',                'pages::dbos.pimpinan.booking.index')->name('booking.index');
-            Route::livewire('booking/{id}',           'pages::dbos.pimpinan.booking.show')->name('booking.show');
+            Route::livewire('booking', 'pages::dbos.pimpinan.booking.index')->name('booking.index');
+            Route::livewire('booking/{id}', 'pages::dbos.pimpinan.booking.show')->name('booking.show');
 
-            Route::livewire('spr',                    'pages::dbos.pimpinan.spr.index')->name('spr.index');
+            Route::livewire('spr', 'pages::dbos.pimpinan.spr.index')->name('spr.index');
 
-            Route::livewire('activity',               'pages::dbos.pimpinan.activity')->name('activity');
+            Route::livewire('activity', 'pages::dbos.pimpinan.activity')->name('activity');
 
-            Route::livewire('profil',                 'pages::dbos.pimpinan.profil')->name('profil');
+            Route::livewire('profil', 'pages::dbos.pimpinan.profil')->name('profil');
         });
     });
 });
