@@ -62,5 +62,32 @@ class SalesSeeder extends Seeder
                 $grup->update(['pimpinan_id' => $pimpinanId]);
             }
         }
+
+        // Sales solo (tidak bagian dari tim) — mis. Delta Kahuripan (DKH).
+        // Ambil MAX kode SLS-* dari DB supaya tidak bentrok kalau ada sales lain yg
+        // dibikin manual di luar seeder (mis. Andi).
+        $maxKode = (int) preg_replace('/[^0-9]/', '', Sales::where('kode', 'like', 'SLS-%')->max('kode') ?: '0');
+        $urutSolo = max($urut, $maxKode + 1);
+
+        $solo = [
+            ['nama' => 'Delta Kahuripan', 'dbos' => 'dkh'],
+        ];
+        foreach ($solo as $data) {
+            $kode = 'SLS-'.str_pad((string) $urutSolo, 3, '0', STR_PAD_LEFT);
+            $password = str_replace('.', '', $data['dbos']).'123';
+
+            Sales::updateOrCreate(
+                ['dbos_username' => $data['dbos']],
+                [
+                    'kode' => $kode,
+                    'nama' => $data['nama'],
+                    'jenis_sales_id' => $jenisAgent->id,
+                    'sales_grup_id' => null,
+                    'is_aktif' => true,
+                    'dbos_password' => $password,
+                ],
+            );
+            $urutSolo++;
+        }
     }
 }
