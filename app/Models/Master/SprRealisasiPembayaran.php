@@ -52,8 +52,11 @@ class SprRealisasiPembayaran extends Model
     /**
      * Generate nomor kuitansi berikutnya (5-digit sequential global).
      *
-     * Increment-safe pakai pessimistic lock supaya concurrent generation tidak collide.
-     * WAJIB dipanggil di dalam DB::transaction — lock berlaku sampai transaction commit.
+     * Bisa di-boost dari data legacy lewat env LEGACY_MAX_NOMOR_KWITANSI
+     * (lihat config/legacy.php). Nomor baru = max(DB MAX, LEGACY MAX) + 1.
+     *
+     * Increment-safe pakai pessimistic lock. WAJIB dipanggil di dalam
+     * DB::transaction — lock berlaku sampai transaction commit.
      */
     public static function generateNextNomor(): string
     {
@@ -71,6 +74,8 @@ class SprRealisasiPembayaran extends Model
             $last = (int) $query->max(\DB::raw('CAST(nomor_kwitansi AS INTEGER)'));
         }
 
-        return str_pad((string) ($last + 1), 5, '0', STR_PAD_LEFT);
+        $lastNum = max($last, (int) config('legacy.max_nomor_kwitansi', 0));
+
+        return str_pad((string) ($lastNum + 1), 5, '0', STR_PAD_LEFT);
     }
 }

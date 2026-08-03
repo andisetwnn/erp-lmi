@@ -292,13 +292,17 @@ class Spr extends Model
     // ====== Helpers ======
 
     /**
-     * Generate nomor SPR berikutnya format: SPR/YYYY/MM/XXXX (counter reset per bulan).
+     * Generate nomor SPR berikutnya format: SPR/YYYY/MM/XXXX.
      *
-     * Increment-safe pakai pessimistic lock (lockForUpdate) supaya concurrent generation
-     * dari process paralel tidak menghasilkan nomor duplikat.
+     * Suffix XXXX = **global counter** (bukan reset per bulan) supaya kontinu dgn
+     * sistem legacy Grha Aryana yg pakai nomor global 00001..00235. Prefix YYYY/MM
+     * tetap ada untuk info bulan penerbitan.
      *
-     * WAJIB dipanggil di dalam DB::transaction — lock baru efektif sampai transaction commit.
-     * Semua caller (form SPR create, SprSwitchingService, seeder) sudah wrap transaction.
+     * Bisa di-boost dari data legacy lewat env LEGACY_MAX_NOMOR_SPR (lihat
+     * config/legacy.php). Nomor baru = max(DB MAX, LEGACY MAX) + 1.
+     *
+     * Increment-safe pakai pessimistic lock (lockForUpdate). WAJIB dipanggil
+     * di dalam DB::transaction — lock berlaku sampai transaction commit.
      */
     public static function generateNextNomor(?\DateTimeInterface $for = null): string
     {
@@ -306,13 +310,16 @@ class Spr extends Model
         $prefix = sprintf('SPR/%s/%s/', $for->format('Y'), $for->format('m'));
 
         $driver = DB::connection()->getDriverName();
+        // Extract suffix numeric global — MAX across all SPR, bukan per prefix.
         $suffixSql = $driver === 'mysql'
             ? "CAST(SUBSTRING_INDEX(nomor_spr, '/', -1) AS UNSIGNED)"
-            : 'CAST(substr(nomor_spr, length(nomor_spr) - 3) AS INTEGER)';
+            : "CAST(substr(nomor_spr, length(nomor_spr) - instr(reverse(nomor_spr), '/') + 2) AS INTEGER)";
 
-        $lastNum = (int) self::where('nomor_spr', 'like', $prefix.'%')
+        $dbMax = (int) self::query()
             ->lockForUpdate()
             ->max(DB::raw($suffixSql));
+
+        $lastNum = max($dbMax, (int) config('legacy.max_nomor_spr', 0));
 
         return $prefix.str_pad((string) ($lastNum + 1), 4, '0', STR_PAD_LEFT);
     }
