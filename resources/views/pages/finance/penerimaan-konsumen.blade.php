@@ -255,7 +255,7 @@ new #[Title('Penerimaan Konsumen')] class extends Component
                                     @endif
                                 </td>
                                 <td class="whitespace-nowrap px-3 py-3 text-xs">{{ $s->rumah?->proyek?->nama_proyek ?? '—' }}</td>
-                                <td class="whitespace-nowrap px-3 py-3 font-mono text-xs">{{ $s->rumah?->blok }}-{{ $s->rumah?->nomor_unit }}</td>
+                                <td class="whitespace-nowrap px-3 py-3 font-mono text-xs">{{ $s->rumah?->kode_unit }}</td>
                                 <td class="whitespace-nowrap px-3 py-3 text-xs">
                                     @if ($s->utj_bukti_path)
                                         <span class="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">

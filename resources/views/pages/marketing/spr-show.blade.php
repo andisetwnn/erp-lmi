@@ -380,7 +380,7 @@ new #[Title('Detail SPR')] class extends Component
                             <div class="mt-1">
                                 {{ __('SPR baru:') }}
                                 <a href="{{ route('marketing.spr.show', $sprBaru->id) }}" wire:navigate class="font-mono font-bold underline">
-                                    {{ $sprBaru?->nomor_display }} (unit {{ $sprBaru?->rumah?->blok }}-{{ $sprBaru?->rumah?->nomor_unit }})
+                                    {{ $sprBaru?->nomor_display }} (unit {{ $sprBaru?->rumah?->kode_unit }})
                                 </a>
                             </div>
                         </div>
@@ -402,7 +402,7 @@ new #[Title('Detail SPR')] class extends Component
                             <div class="mt-1">
                                 {{ __('Berasal dari SPR lama:') }}
                                 <a href="{{ route('marketing.spr.show', $sprLama->id) }}" wire:navigate class="font-mono font-bold underline">
-                                    {{ $sprLama?->nomor_display }} (unit {{ $sprLama?->rumah?->blok }}-{{ $sprLama?->rumah?->nomor_unit }})
+                                    {{ $sprLama?->nomor_display }} (unit {{ $sprLama?->rumah?->kode_unit }})
                                 </a>
                             </div>
                         </div>
@@ -887,7 +887,7 @@ new #[Title('Detail SPR')] class extends Component
                     @endif
                 </div>
                 <dl class="grid grid-cols-1 gap-x-6 gap-y-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
-                    <div class="flex justify-between gap-2"><dt class="text-zinc-500">Blok</dt><dd class="font-mono font-semibold">{{ $rumah?->blok }}-{{ $rumah?->nomor_unit }}</dd></div>
+                    <div class="flex justify-between gap-2"><dt class="text-zinc-500">Blok</dt><dd class="font-mono font-semibold">{{ $rumah?->kode_unit }}</dd></div>
                     <div class="flex justify-between gap-2"><dt class="text-zinc-500">Pelunasan</dt><dd class="font-semibold uppercase">{{ Spr::JENIS_PEMBAYARAN[$spr->jenis_pembayaran] ?? $spr->jenis_pembayaran }}</dd></div>
                     <div class="flex justify-between gap-2"><dt class="text-zinc-500">Type</dt><dd class="font-semibold">{{ $tipe?->nama_tipe ?? '—' }}</dd></div>
                     <div class="flex justify-between gap-2"><dt class="text-zinc-500">Sales</dt><dd class="font-semibold">{{ $sales?->nama ?? '—' }}</dd></div>

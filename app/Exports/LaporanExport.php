@@ -2,12 +2,12 @@
 
 namespace App\Exports;
 
-use App\Models\Master\ProspectCustomer;
 use App\Models\Master\Rumah;
 use App\Models\Master\Sales;
+use App\Models\Master\SalesGrup;
 use App\Models\Master\Spr;
 use App\Models\Master\SprRealisasiPembayaran;
-use Illuminate\Support\Carbon;
+use Carbon\Carbon;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithStyles;
@@ -40,6 +40,7 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
             'outstanding' => 'Outstanding UM',
             'pembatalan' => 'Pembatalan SPR',
             'performance' => 'Sales Performance',
+            'rekap' => 'Rekap Lengkap',
             default => 'Laporan',
         };
     }
@@ -53,6 +54,18 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
             'outstanding' => ['No SPR', 'Tanggal SPR', 'Customer', 'NIK', 'HP', 'Blok-Unit', 'Tipe', 'Sales', 'UM Net', 'UTJ + UM Cair', 'Sisa Kurang', 'Progress %', 'Umur (hari)', 'Age Bucket'],
             'pembatalan' => ['No SPR', 'Tanggal SPR', 'Customer', 'NIK', 'Blok-Unit', 'Tipe', 'Sales', 'Alasan Pembatalan', 'Cancel Keterangan', 'Cancelled At', 'Refund Amount', 'Refund Status', 'Refund At', 'Total Harga'],
             'performance' => ['Rank', 'Kode Sales', 'Nama Sales', 'DBOS Username', 'Jumlah SPR', 'Total Nilai', 'Total KPR', 'Cash In', 'Grup'],
+            'rekap' => [
+                'No SPR', 'Tanggal SPR', 'Kategori',
+                'Nama Customer', 'NIK', 'HP', 'Tempat Lahir', 'Tgl Lahir', 'JK', 'Alamat', 'Agama', 'Status Kawin', 'Pekerjaan', 'Penghasilan',
+                'Blok-Unit', 'Blok', 'No Unit', 'Tipe', 'LB (m²)', 'LT (m²)',
+                'Sales',
+                'Harga Jual', 'Biaya Tambahan', 'Diskon', 'PPN', 'Total Harga', 'Jenis Bayar', 'Bank KPR', 'Nilai KPR', 'BBA', 'SBUM', 'DP Nominal', 'UM Net',
+                'UTJ Nominal', 'UTJ Tgl Bayar', 'UTJ Metode',
+                'Tgl Akad',
+                'Total BF Masuk', 'Total UM Masuk', 'Total Bayar', 'Jumlah Kwitansi', 'Kwt Terakhir', 'Tgl Kwt Terakhir', 'Sisa UM', 'Progress %',
+                'Alasan Pembatalan', 'Cancel Keterangan', 'Cancelled At', 'Refund Amount', 'Refund Status',
+                'Approved At', 'PM Approved At', 'Materai At',
+            ],
             default => [],
         };
     }
@@ -66,6 +79,7 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
             'outstanding' => $this->rowsOutstanding(),
             'pembatalan' => $this->rowsPembatalan(),
             'performance' => $this->rowsPerformance(),
+            'rekap' => $this->rowsRekap(),
             default => [],
         };
     }
@@ -73,10 +87,18 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
     private function baseSprQuery(?array $statuses = null)
     {
         $q = Spr::query()->with(['prospectCustomer', 'rumah.tipeRumah', 'rumah.proyek', 'sales', 'bankKpr']);
-        if ($statuses) $q->whereIn('spr.status', $statuses);
-        if ($this->proyekId) $q->whereHas('rumah', fn ($r) => $r->where('proyek_id', $this->proyekId));
-        if ($this->salesId) $q->where('spr.sales_id', $this->salesId);
-        if ($this->tipeId) $q->whereHas('rumah', fn ($r) => $r->where('tipe_rumah_id', $this->tipeId));
+        if ($statuses) {
+            $q->whereIn('spr.status', $statuses);
+        }
+        if ($this->proyekId) {
+            $q->whereHas('rumah', fn ($r) => $r->where('proyek_id', $this->proyekId));
+        }
+        if ($this->salesId) {
+            $q->where('spr.sales_id', $this->salesId);
+        }
+        if ($this->tipeId) {
+            $q->whereHas('rumah', fn ($r) => $r->where('tipe_rumah_id', $this->tipeId));
+        }
         if ($this->search) {
             $s = $this->search;
             $q->where(function ($qq) use ($s) {
@@ -85,13 +107,16 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
                     ->orWhereHas('rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", ["%{$s}%"]));
             });
         }
+
         return $q;
     }
 
     private function rowsPenjualan(): array
     {
         $q = $this->baseSprQuery(['approved', 'akad']);
-        if ($this->from && $this->to) $q->whereBetween('spr.tanggal_spr', [$this->from, $this->to]);
+        if ($this->from && $this->to) {
+            $q->whereBetween('spr.tanggal_spr', [$this->from, $this->to]);
+        }
 
         return $q->orderByDesc('spr.tanggal_spr')->get()->map(fn ($s) => [
             $s->nomor_spr,
@@ -100,7 +125,7 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
             $s->prospectCustomer?->nik,
             $s->prospectCustomer?->hp,
             $s->prospectCustomer?->alamat,
-            ($s->rumah?->blok ?? '').'-'.($s->rumah?->nomor_unit ?? ''),
+            ($s->rumah?->kode_unit ?? ''),
             $s->rumah?->tipeRumah?->tipe,
             $s->rumah?->proyek?->nama_proyek,
             $s->sales?->nama,
@@ -126,17 +151,21 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
     private function rowsStock(): array
     {
         $q = Rumah::query()->with(['tipeRumah', 'proyek']);
-        if ($this->proyekId) $q->where('proyek_id', $this->proyekId);
-        if ($this->tipeId) $q->where('tipe_rumah_id', $this->tipeId);
+        if ($this->proyekId) {
+            $q->where('proyek_id', $this->proyekId);
+        }
+        if ($this->tipeId) {
+            $q->where('tipe_rumah_id', $this->tipeId);
+        }
         if ($this->search) {
             $s = $this->search;
             $q->where(fn ($qq) => $qq->where('blok', 'like', "%{$s}%")->orWhere('nomor_unit', 'like', "%{$s}%")->orWhereRaw("CONCAT(blok,'-',nomor_unit) like ?", ["%{$s}%"]));
         }
 
         return $q->orderBy('blok')->orderBy('nomor_unit')->get()->map(fn ($r) => [
-            $r->blok.'-'.$r->nomor_unit,
+            $r->kode_unit,
             $r->blok,
-            $r->nomor_unit,
+            $r->nomor_unit_padded,
             $r->tipeRumah?->tipe,
             $r->tipeRumah?->nama_tipe,
             $r->tipeRumah?->kategori,
@@ -155,10 +184,18 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
     private function rowsRealisasi(): array
     {
         $q = SprRealisasiPembayaran::query()->with(['spr.prospectCustomer', 'spr.sales', 'spr.rumah', 'inputBy']);
-        if ($this->from && $this->to) $q->whereBetween('tanggal_bayar', [$this->from, $this->to]);
-        if ($this->proyekId) $q->whereHas('spr.rumah', fn ($r) => $r->where('proyek_id', $this->proyekId));
-        if ($this->salesId) $q->whereHas('spr', fn ($s) => $s->where('sales_id', $this->salesId));
-        if ($this->tipeId) $q->whereHas('spr.rumah', fn ($r) => $r->where('tipe_rumah_id', $this->tipeId));
+        if ($this->from && $this->to) {
+            $q->whereBetween('tanggal_bayar', [$this->from, $this->to]);
+        }
+        if ($this->proyekId) {
+            $q->whereHas('spr.rumah', fn ($r) => $r->where('proyek_id', $this->proyekId));
+        }
+        if ($this->salesId) {
+            $q->whereHas('spr', fn ($s) => $s->where('sales_id', $this->salesId));
+        }
+        if ($this->tipeId) {
+            $q->whereHas('spr.rumah', fn ($r) => $r->where('tipe_rumah_id', $this->tipeId));
+        }
         if ($this->search) {
             $s = $this->search;
             $q->where(function ($qq) use ($s) {
@@ -174,7 +211,7 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
             $r->spr?->nomor_spr,
             $r->spr?->prospectCustomer?->nama_lengkap,
             $r->spr?->prospectCustomer?->nik,
-            ($r->spr?->rumah?->blok ?? '').'-'.($r->spr?->rumah?->nomor_unit ?? ''),
+            ($r->spr?->rumah?->kode_unit ?? ''),
             $r->spr?->sales?->nama,
             strtoupper($r->jenis),
             ucfirst($r->metode),
@@ -190,10 +227,14 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
         $rows = [];
         foreach ($sprs as $spr) {
             $umNet = (float) $spr->um_net;
-            if ($umNet <= 0) continue;
+            if ($umNet <= 0) {
+                continue;
+            }
             $dibayar = (float) SprRealisasiPembayaran::where('spr_id', $spr->id)->whereIn('jenis', ['bf', 'um'])->sum('jumlah');
             $sisa = max(0, $umNet - $dibayar);
-            if ($sisa <= 0) continue;
+            if ($sisa <= 0) {
+                continue;
+            }
             $tglAwal = $spr->utj_tanggal_transaksi ?: $spr->tanggal_spr;
             $ageDays = $tglAwal ? $tglAwal->diffInDays(now()) : 0;
             $ageBucket = match (true) {
@@ -208,32 +249,37 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
                 $spr->prospectCustomer?->nama_lengkap,
                 $spr->prospectCustomer?->nik,
                 $spr->prospectCustomer?->hp,
-                ($spr->rumah?->blok ?? '').'-'.($spr->rumah?->nomor_unit ?? ''),
+                ($spr->rumah?->kode_unit ?? ''),
                 $spr->rumah?->tipeRumah?->tipe,
                 $spr->sales?->nama,
                 $umNet,
                 $dibayar,
                 $sisa,
-                $umNet > 0 ? (int) round(($dibayar / $umNet) * 100) : 0,
+                $umNet > 0
+                    ? ($dibayar > 0 ? max(1, (int) round(($dibayar / $umNet) * 100)) : 0)
+                    : 0,
                 $ageDays,
                 $ageBucket,
             ];
         }
         usort($rows, fn ($a, $b) => $b[10] <=> $a[10]);
+
         return $rows;
     }
 
     private function rowsPembatalan(): array
     {
         $q = $this->baseSprQuery(['cancelled'])->with('alasanPembatalan');
-        if ($this->from && $this->to) $q->whereBetween('spr.tanggal_spr', [$this->from, $this->to]);
+        if ($this->from && $this->to) {
+            $q->whereBetween('spr.tanggal_spr', [$this->from, $this->to]);
+        }
 
         return $q->orderByDesc('spr.cancelled_at')->get()->map(fn ($s) => [
             $s->nomor_spr,
             $s->tanggal_spr?->format('d/m/Y'),
             $s->prospectCustomer?->nama_lengkap,
             $s->prospectCustomer?->nik,
-            ($s->rumah?->blok ?? '').'-'.($s->rumah?->nomor_unit ?? ''),
+            ($s->rumah?->kode_unit ?? ''),
             $s->rumah?->tipeRumah?->tipe,
             $s->sales?->nama,
             $s->alasanPembatalan?->nama,
@@ -249,9 +295,15 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
     private function rowsPerformance(): array
     {
         $sprQ = Spr::query()->whereIn('status', ['approved', 'akad']);
-        if ($this->from && $this->to) $sprQ->whereBetween('tanggal_spr', [$this->from, $this->to]);
-        if ($this->proyekId) $sprQ->whereHas('rumah', fn ($r) => $r->where('proyek_id', $this->proyekId));
-        if ($this->tipeId) $sprQ->whereHas('rumah', fn ($r) => $r->where('tipe_rumah_id', $this->tipeId));
+        if ($this->from && $this->to) {
+            $sprQ->whereBetween('tanggal_spr', [$this->from, $this->to]);
+        }
+        if ($this->proyekId) {
+            $sprQ->whereHas('rumah', fn ($r) => $r->where('proyek_id', $this->proyekId));
+        }
+        if ($this->tipeId) {
+            $sprQ->whereHas('rumah', fn ($r) => $r->where('tipe_rumah_id', $this->tipeId));
+        }
         $sprIds = $sprQ->pluck('id');
 
         $ranking = Sales::query()->with('grup')
@@ -283,8 +335,104 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
             (float) $s->total_nilai,
             (float) $s->total_kpr,
             (float) ($cashInPerSales[$s->id] ?? 0),
-            \App\Models\Master\SalesGrup::find($s->sales_grup_id)?->nama,
+            SalesGrup::find($s->sales_grup_id)?->nama,
         ])->values()->toArray();
+    }
+
+    /** Rekap Lengkap — all-in-one per SPR. Grain: 1 SPR = 1 row. */
+    private function rowsRekap(): array
+    {
+        $q = $this->baseSprQuery();
+        $q->with('alasanPembatalan');
+        if ($this->from && $this->to) {
+            $q->whereBetween('spr.tanggal_spr', [$this->from, $this->to]);
+        }
+
+        $sprs = $q->orderBy('spr.nomor_spr')->get();
+        $sprIds = $sprs->pluck('id')->all();
+
+        $kwtAgg = SprRealisasiPembayaran::query()
+            ->selectRaw('spr_id,
+                SUM(CASE WHEN jenis="bf" THEN jumlah ELSE 0 END) as total_bf,
+                SUM(CASE WHEN jenis="um" THEN jumlah ELSE 0 END) as total_um,
+                COUNT(*) as jumlah_kwt,
+                MAX(tanggal_bayar) as tgl_terakhir,
+                MAX(nomor_kwitansi) as kwt_terakhir')
+            ->whereIn('spr_id', $sprIds)
+            ->groupBy('spr_id')
+            ->get()
+            ->keyBy('spr_id');
+
+        return $sprs->map(function ($s) use ($kwtAgg) {
+            $pc = $s->prospectCustomer;
+            $r = $s->rumah;
+            $tp = $r?->tipeRumah;
+            $agg = $kwtAgg->get($s->id);
+            $totalBf = (float) ($agg->total_bf ?? 0);
+            $totalUm = (float) ($agg->total_um ?? 0);
+            $totalBayar = $totalBf + $totalUm;
+            $umNet = (float) $s->um_net;
+            $sisa = max(0, $umNet - $totalBayar);
+            $pct = $umNet > 0
+                ? ($totalBayar > 0 ? max(1, (int) round($totalBayar / $umNet * 100)) : 0)
+                : 0;
+
+            return [
+                $s->nomor_display,
+                $s->tanggal_spr?->format('d/m/Y'),
+                strtoupper((string) $s->kategori),
+                $pc?->nama_lengkap,
+                $pc?->nik,
+                $pc?->hp,
+                $pc?->tempat_lahir,
+                $pc?->tanggal_lahir?->format('d/m/Y'),
+                $pc?->jenis_kelamin,
+                $pc?->alamat,
+                $pc?->agama,
+                $pc?->status_perkawinan,
+                $pc?->pekerjaan_ktp,
+                (float) ($pc?->penghasilan_bulanan ?? 0),
+                ($r?->kode_unit ?? ''),
+                $r?->blok,
+                $r?->nomor_unit_padded,
+                $tp?->tipe,
+                $tp?->luas_bangunan,
+                $tp?->luas_tanah,
+                $s->sales?->nama,
+                (float) $s->harga_jual,
+                (float) $s->biaya_tambahan,
+                (float) $s->diskon,
+                (float) ($s->ppn ?? 0),
+                (float) $s->total_harga,
+                strtoupper((string) $s->jenis_pembayaran),
+                $s->bankKpr?->nama,
+                (float) $s->nilai_kpr,
+                max(0, (float) $s->total_harga - (float) $s->nilai_kpr - (float) $s->sbum - (float) $s->um_net),
+                (float) $s->sbum,
+                (float) $s->dp_nominal,
+                (float) $s->um_net,
+                (float) $s->utj_nominal,
+                $s->utj_tanggal_bayar?->format('d/m/Y'),
+                strtoupper((string) $s->utj_metode),
+                $s->tgl_akad?->format('d/m/Y'),
+                $totalBf,
+                $totalUm,
+                $totalBayar,
+                (int) ($agg?->jumlah_kwt ?? 0),
+                $agg?->kwt_terakhir ?? '',
+                $agg?->tgl_terakhir ? Carbon::parse($agg->tgl_terakhir)->format('d/m/Y') : '',
+                $sisa,
+                $pct,
+                $s->alasanPembatalan?->nama,
+                $s->cancel_keterangan,
+                $s->cancelled_at?->format('d/m/Y H:i'),
+                (float) ($s->refund_amount ?? 0),
+                strtoupper((string) $s->refund_status),
+                $s->approved_at?->format('d/m/Y H:i'),
+                $s->pm_approved_at?->format('d/m/Y H:i'),
+                $s->materai_stamped_at?->format('d/m/Y H:i'),
+            ];
+        })->values()->toArray();
     }
 
     public function styles(Worksheet $sheet): array

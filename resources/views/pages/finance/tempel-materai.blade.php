@@ -225,7 +225,7 @@ new #[Title('e-Materai')] class extends Component
                                 <td class="whitespace-nowrap px-3 py-3 text-xs">{{ $s->sales?->nama ?? '—' }}</td>
                                 <td class="whitespace-nowrap px-3 py-3 text-xs font-semibold">{{ $s->prospectCustomer?->nama_lengkap ?? '—' }}</td>
                                 <td class="whitespace-nowrap px-3 py-3 text-xs">{{ $s->rumah?->proyek?->nama_proyek ?? '—' }}</td>
-                                <td class="whitespace-nowrap px-3 py-3 font-mono text-xs">{{ $s->rumah?->blok }}-{{ $s->rumah?->nomor_unit }}</td>
+                                <td class="whitespace-nowrap px-3 py-3 font-mono text-xs">{{ $s->rumah?->kode_unit }}</td>
                                 <td class="whitespace-nowrap px-3 py-3 text-xs">{{ $s->pm_approved_at?->format('d/m/Y H:i') ?? '—' }}</td>
                                 <td class="whitespace-nowrap px-3 py-3 text-xs">
                                     <span class="font-semibold text-emerald-700 dark:text-emerald-400">{{ $s->konsumen_signed_at?->format('d/m/Y H:i') ?? '—' }}</span>

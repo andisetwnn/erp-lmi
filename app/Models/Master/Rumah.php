@@ -72,10 +72,22 @@ class Rumah extends Model
         return $this->belongsTo(User::class, 'updated_by_user_id');
     }
 
+    /**
+     * Kode unit display, mis. "DC-08". Nomor unit selalu zero-padded 2 digit
+     * biar konsisten (DC-8 vs DC-08 di UI/laporan operasional).
+     */
     protected function kodeUnit(): Attribute
     {
         return Attribute::make(
-            get: fn () => "{$this->blok}-{$this->nomor_unit}",
+            get: fn () => "{$this->blok}-".str_pad((string) $this->nomor_unit, 2, '0', STR_PAD_LEFT),
+        );
+    }
+
+    /** Nomor unit dgn zero-pad 2 digit ("8" → "08"). Untuk display standalone. */
+    protected function nomorUnitPadded(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => str_pad((string) $this->nomor_unit, 2, '0', STR_PAD_LEFT),
         );
     }
 

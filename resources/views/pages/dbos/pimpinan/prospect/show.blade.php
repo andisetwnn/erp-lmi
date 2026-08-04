@@ -461,7 +461,7 @@ new #[Title('Detail Prospect'), Layout('layouts.pimpinan')] class extends Compon
                                         <a href="{{ route('dbos.pimpinan.booking.show', $bk->id) }}" wire:navigate
                                            class="mt-1 inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1.5 text-[11px] text-blue-800 hover:bg-blue-100 dark:bg-blue-950/30 dark:text-blue-300">
                                             {{ $bk->proyek?->nama_proyek ?? '—' }}
-                                            @if ($bk->rumah) · {{ $bk->rumah->blok }}-{{ $bk->rumah->nomor_unit }} @endif
+                                            @if ($bk->rumah) · {{ $bk->rumah->kode_unit }} @endif
                                             <flux:icon.arrow-right class="size-3" />
                                         </a>
                                         @break

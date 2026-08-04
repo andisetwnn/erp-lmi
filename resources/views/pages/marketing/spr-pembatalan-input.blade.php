@@ -251,7 +251,7 @@ new #[Title('Input Pembatalan SPR')] class extends Component
                         </tr>
                         <tr>
                             <th class="bg-zinc-50 px-4 py-2.5 text-left font-bold dark:bg-zinc-800/50">{{ __('Blok & Type Rumah') }}</th>
-                            <td class="px-4 py-2.5">Blok {{ $rumah?->blok }}-{{ $rumah?->nomor_unit }} Type {{ $tipe?->nama_tipe ?? '—' }}</td>
+                            <td class="px-4 py-2.5">Blok {{ $rumah?->kode_unit }} Type {{ $tipe?->nama_tipe ?? '—' }}</td>
                         </tr>
                         <tr>
                             <th class="bg-zinc-50 px-4 py-2.5 text-left align-top font-bold dark:bg-zinc-800/50">{{ __('Harga Net') }}</th>

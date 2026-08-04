@@ -58,7 +58,7 @@
     $nominal = (float) $realisasi->jumlah;
     $terbilangStr = ucfirst(trim(kuitansi_terbilang((int) $nominal))).' Rupiah';
 
-    $blokUnit = trim(($rumah?->blok ?? '').'-'.($rumah?->nomor_unit ?? ''), '-');
+    $blokUnit = trim(($rumah?->kode_unit ?? ''), '-');
 
     $namaPerusahaan = $perusahaan?->nama ?? 'PT LANGIT MEMBANGUN INDONESIA';
     $alamatPerusahaan = $perusahaan?->alamat ?? '';

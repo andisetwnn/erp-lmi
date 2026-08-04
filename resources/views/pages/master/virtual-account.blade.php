@@ -477,7 +477,7 @@ new #[Title('Master Virtual Account')] class extends Component
                                     <td rowspan="{{ $count }}" class="whitespace-nowrap px-4 py-2 align-top text-zinc-500">{{ $loop->parent->index + ($units->firstItem() ?? 1) }}</td>
                                     <td rowspan="{{ $count }}" class="px-4 py-2 align-top">{{ $unit->proyek?->nama_proyek ?? '—' }}</td>
                                     <td rowspan="{{ $count }}" class="px-4 py-2 align-top">
-                                        <div class="font-mono font-semibold text-zinc-900 dark:text-zinc-100">{{ $unit->blok }}-{{ $unit->nomor_unit }}</div>
+                                        <div class="font-mono font-semibold text-zinc-900 dark:text-zinc-100">{{ $unit->kode_unit }}</div>
                                         @if ($count > 1)
                                             <div class="mt-0.5 text-[10px] font-medium text-zinc-500">{{ $count }} {{ __('bank') }}</div>
                                         @endif

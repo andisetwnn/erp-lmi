@@ -279,7 +279,7 @@ new #[Title('Pembatalan SPR')] class extends Component
                                     </a>
                                 </flux:table.cell>
                                 <flux:table.cell class="whitespace-nowrap">
-                                    <div class="font-mono font-semibold">{{ $row->rumah?->blok }}-{{ $row->rumah?->nomor_unit }}</div>
+                                    <div class="font-mono font-semibold">{{ $row->rumah?->kode_unit }}</div>
                                     <div class="text-[10px] text-zinc-500">{{ $row->rumah?->tipeRumah?->tipe ?? '—' }}</div>
                                 </flux:table.cell>
                                 <flux:table.cell class="whitespace-nowrap text-xs">{{ $row->sales?->nama ?? '—' }}</flux:table.cell>
@@ -371,7 +371,7 @@ new #[Title('Pembatalan SPR')] class extends Component
                         <flux:subheading>
                             <span class="font-mono">{{ $history->nomor_display }}</span> ·
                             {{ $history->prospectCustomer?->nama_lengkap }} ·
-                            {{ $history->rumah?->blok }}-{{ $history->rumah?->nomor_unit }}
+                            {{ $history->rumah?->kode_unit }}
                         </flux:subheading>
                     </div>
 

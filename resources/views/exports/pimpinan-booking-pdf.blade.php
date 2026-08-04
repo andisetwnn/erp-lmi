@@ -49,7 +49,7 @@
                     <td>
                         {{ $b->proyek?->nama_proyek ?? '—' }}
                         @if ($b->rumah)
-                            <div class="small">{{ $b->rumah->blok }}-{{ $b->rumah->nomor_unit }}</div>
+                            <div class="small">{{ $b->rumah->kode_unit }}</div>
                         @endif
                     </td>
                     <td class="small">{{ $b->tanggal_booking?->translatedFormat('d M Y') }}</td>

@@ -97,7 +97,7 @@ new #[Title('Detail Pindah Kavling')] class extends Component
                         {{ $lamaA?->nomor_display }}
                     </a>
                     <div class="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-                        {{ __('Unit') }}: <b>{{ $lamaA?->rumah?->blok }}-{{ $lamaA?->rumah?->nomor_unit }}</b> · {{ $lamaA?->kategori }}
+                        {{ __('Unit') }}: <b>{{ $lamaA?->rumah?->kode_unit }}</b> · {{ $lamaA?->kategori }}
                     </div>
                     <div class="mt-2 text-xs">
                         <span class="text-zinc-500">{{ __('Total harga') }}</span>
@@ -115,7 +115,7 @@ new #[Title('Detail Pindah Kavling')] class extends Component
                         {{ $baruA?->nomor_display }}
                     </a>
                     <div class="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-                        {{ __('Unit') }}: <b>{{ $baruA?->rumah?->blok }}-{{ $baruA?->rumah?->nomor_unit }}</b> · {{ $baruA?->kategori }}
+                        {{ __('Unit') }}: <b>{{ $baruA?->rumah?->kode_unit }}</b> · {{ $baruA?->kategori }}
                     </div>
                     <div class="mt-2 grid grid-cols-2 gap-2 text-xs">
                         <div>
@@ -160,7 +160,7 @@ new #[Title('Detail Pindah Kavling')] class extends Component
                             {{ $lamaB?->nomor_display }}
                         </a>
                         <div class="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-                            {{ __('Unit') }}: <b>{{ $lamaB?->rumah?->blok }}-{{ $lamaB?->rumah?->nomor_unit }}</b> · {{ $lamaB?->kategori }}
+                            {{ __('Unit') }}: <b>{{ $lamaB?->rumah?->kode_unit }}</b> · {{ $lamaB?->kategori }}
                         </div>
                         <div class="mt-2 text-xs">
                             <span class="text-zinc-500">{{ __('Total harga') }}</span>
@@ -177,7 +177,7 @@ new #[Title('Detail Pindah Kavling')] class extends Component
                             {{ $baruB?->nomor_display }}
                         </a>
                         <div class="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-                            {{ __('Unit') }}: <b>{{ $baruB?->rumah?->blok }}-{{ $baruB?->rumah?->nomor_unit }}</b> · {{ $baruB?->kategori }}
+                            {{ __('Unit') }}: <b>{{ $baruB?->rumah?->kode_unit }}</b> · {{ $baruB?->kategori }}
                         </div>
                         <div class="mt-2 grid grid-cols-2 gap-2 text-xs">
                             <div>

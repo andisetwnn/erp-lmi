@@ -205,7 +205,7 @@ new class extends Component {
                                         </div>
                                         <div class="text-[11px] text-zinc-500">
                                             @if ($b->rumah)
-                                                {{ $b->rumah->blok }}-{{ $b->rumah->nomor_unit }} ·
+                                                {{ $b->rumah->kode_unit }} ·
                                             @endif
                                             {{ $b->sales?->nama ?? '—' }}
                                         </div>

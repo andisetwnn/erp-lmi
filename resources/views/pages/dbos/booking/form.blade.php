@@ -237,7 +237,7 @@ new #[Title('Form Booking'), Layout('layouts.dbos')] class extends Component {
     <div class="mb-4 overflow-hidden rounded-2xl bg-linear-to-r from-orange-600 to-amber-500 p-4 text-white shadow">
         <div class="flex items-center gap-3">
             <div class="flex h-14 w-14 items-center justify-center rounded-xl bg-white/20 text-lg font-bold backdrop-blur-sm">
-                {{ $rumah->blok }}-{{ $rumah->nomor_unit }}
+                {{ $rumah->kode_unit }}
             </div>
             <div class="min-w-0 flex-1">
                 <div class="truncate font-bold">{{ $rumah->proyek?->nama_proyek }}</div>

@@ -335,21 +335,21 @@ new #[Title('Pindah Kavling')] class extends Component
                                     {{-- Sisi A --}}
                                     <div class="flex items-center gap-2">
                                         <span class="font-semibold">{{ $h->sprLamaA?->prospectCustomer?->nama_lengkap }}</span>
-                                        <span class="font-mono text-zinc-500">{{ $h->sprLamaA?->rumah?->blok }}-{{ $h->sprLamaA?->rumah?->nomor_unit }}</span>
+                                        <span class="font-mono text-zinc-500">{{ $h->sprLamaA?->rumah?->kode_unit }}</span>
                                         <flux:icon.arrow-right class="size-3 text-zinc-400" />
                                         <a href="{{ route('marketing.spr.show', $h->sprBaruA->id) }}" wire:navigate
                                            class="font-mono font-semibold text-emerald-700 hover:underline dark:text-emerald-400">
-                                            {{ $h->sprBaruA?->rumah?->blok }}-{{ $h->sprBaruA?->rumah?->nomor_unit }}
+                                            {{ $h->sprBaruA?->rumah?->kode_unit }}
                                         </a>
                                     </div>
                                     @if ($h->tipe === 'swap' && $h->sprLamaB)
                                         <div class="mt-1 flex items-center gap-2">
                                             <span class="font-semibold">{{ $h->sprLamaB?->prospectCustomer?->nama_lengkap }}</span>
-                                            <span class="font-mono text-zinc-500">{{ $h->sprLamaB?->rumah?->blok }}-{{ $h->sprLamaB?->rumah?->nomor_unit }}</span>
+                                            <span class="font-mono text-zinc-500">{{ $h->sprLamaB?->rumah?->kode_unit }}</span>
                                             <flux:icon.arrow-right class="size-3 text-zinc-400" />
                                             <a href="{{ route('marketing.spr.show', $h->sprBaruB->id) }}" wire:navigate
                                                class="font-mono font-semibold text-emerald-700 hover:underline dark:text-emerald-400">
-                                                {{ $h->sprBaruB?->rumah?->blok }}-{{ $h->sprBaruB?->rumah?->nomor_unit }}
+                                                {{ $h->sprBaruB?->rumah?->kode_unit }}
                                             </a>
                                         </div>
                                     @endif
@@ -388,7 +388,7 @@ new #[Title('Pindah Kavling')] class extends Component
                     <flux:select.option value="">— {{ __('Pilih SPR') }} —</flux:select.option>
                     @foreach ($sprAktifOptions as $s)
                         <flux:select.option value="{{ $s->id }}">
-                            {{ $s->nomor_display }} · {{ $s->prospectCustomer?->nama_lengkap }} · {{ $s->rumah?->blok }}-{{ $s->rumah?->nomor_unit }}
+                            {{ $s->nomor_display }} · {{ $s->prospectCustomer?->nama_lengkap }} · {{ $s->rumah?->kode_unit }}
                         </flux:select.option>
                     @endforeach
                 </flux:select>
@@ -402,7 +402,7 @@ new #[Title('Pindah Kavling')] class extends Component
                     <div class="rounded-lg bg-zinc-50 p-3 text-xs dark:bg-zinc-800/50">
                         <div class="font-semibold">{{ $sprPilih->prospectCustomer?->nama_lengkap }}</div>
                         <div class="text-zinc-500">
-                            SPR {{ $sprPilih->nomor_display }} · Unit {{ $sprPilih->rumah?->blok }}-{{ $sprPilih->rumah?->nomor_unit }} · Rp {{ number_format((float) $sprPilih->total_harga, 0, ',', '.') }}
+                            SPR {{ $sprPilih->nomor_display }} · Unit {{ $sprPilih->rumah?->kode_unit }} · Rp {{ number_format((float) $sprPilih->total_harga, 0, ',', '.') }}
                         </div>
                     </div>
 
@@ -413,7 +413,7 @@ new #[Title('Pindah Kavling')] class extends Component
                             <flux:select.option value="">— {{ __('Pilih unit tujuan') }} —</flux:select.option>
                             @foreach ($rumahAvailable as $r)
                                 <flux:select.option value="{{ $r->id }}">
-                                    {{ $r->blok }}-{{ $r->nomor_unit }} · {{ $r->tipeRumah?->nama_tipe }} · Rp {{ number_format((float) ($r->tipeRumah?->harga_jual ?? 0), 0, ',', '.') }}
+                                    {{ $r->kode_unit }} · {{ $r->tipeRumah?->nama_tipe }} · Rp {{ number_format((float) ($r->tipeRumah?->harga_jual ?? 0), 0, ',', '.') }}
                                 </flux:select.option>
                             @endforeach
                         </flux:select>
@@ -480,7 +480,7 @@ new #[Title('Pindah Kavling')] class extends Component
                     <flux:select.option value="">— {{ __('Pilih SPR A') }} —</flux:select.option>
                     @foreach ($sprAktifOptions as $s)
                         <flux:select.option value="{{ $s->id }}">
-                            {{ $s->nomor_display }} · {{ $s->prospectCustomer?->nama_lengkap }} · {{ $s->rumah?->blok }}-{{ $s->rumah?->nomor_unit }}
+                            {{ $s->nomor_display }} · {{ $s->prospectCustomer?->nama_lengkap }} · {{ $s->rumah?->kode_unit }}
                         </flux:select.option>
                     @endforeach
                 </flux:select>
@@ -493,7 +493,7 @@ new #[Title('Pindah Kavling')] class extends Component
                     <div class="rounded-lg bg-zinc-50 p-3 text-xs dark:bg-zinc-800/50">
                         <div class="text-[10px] font-bold uppercase tracking-wider text-zinc-500">SPR A</div>
                         <div class="mt-1 font-semibold">{{ $sprAPilih->prospectCustomer?->nama_lengkap }}</div>
-                        <div class="text-zinc-500">SPR {{ $sprAPilih->nomor_display }} · Unit {{ $sprAPilih->rumah?->blok }}-{{ $sprAPilih->rumah?->nomor_unit }} · Rp {{ number_format((float) $sprAPilih->total_harga, 0, ',', '.') }}</div>
+                        <div class="text-zinc-500">SPR {{ $sprAPilih->nomor_display }} · Unit {{ $sprAPilih->rumah?->kode_unit }} · Rp {{ number_format((float) $sprAPilih->total_harga, 0, ',', '.') }}</div>
                     </div>
 
                     {{-- SPR B --}}
@@ -503,7 +503,7 @@ new #[Title('Pindah Kavling')] class extends Component
                             <flux:select.option value="">— {{ __('Pilih SPR B') }} —</flux:select.option>
                             @foreach ($sprBOptions as $sB)
                                 <flux:select.option value="{{ $sB->id }}">
-                                    {{ $sB->nomor_display }} · {{ $sB->prospectCustomer?->nama_lengkap }} · {{ $sB->rumah?->blok }}-{{ $sB->rumah?->nomor_unit }}
+                                    {{ $sB->nomor_display }} · {{ $sB->prospectCustomer?->nama_lengkap }} · {{ $sB->rumah?->kode_unit }}
                                 </flux:select.option>
                             @endforeach
                         </flux:select>
@@ -522,12 +522,12 @@ new #[Title('Pindah Kavling')] class extends Component
                             <div class="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs dark:border-indigo-900 dark:bg-indigo-950/30">
                                 <div class="text-[10px] font-bold uppercase tracking-wider text-indigo-600">SPR B</div>
                                 <div class="mt-1 font-semibold">{{ $sprBPilih->prospectCustomer?->nama_lengkap }}</div>
-                                <div class="text-zinc-600 dark:text-zinc-400">Unit {{ $sprBPilih->rumah?->blok }}-{{ $sprBPilih->rumah?->nomor_unit }} · Rp {{ number_format((float) $sprBPilih->total_harga, 0, ',', '.') }}</div>
+                                <div class="text-zinc-600 dark:text-zinc-400">Unit {{ $sprBPilih->rumah?->kode_unit }} · Rp {{ number_format((float) $sprBPilih->total_harga, 0, ',', '.') }}</div>
                                 <div class="mt-2 border-t border-indigo-200 pt-2 dark:border-indigo-800">
                                     <div class="text-[10px] font-semibold">{{ __('Setelah dipindahkan:') }}</div>
                                     <div class="mt-1 text-zinc-700 dark:text-zinc-300">
-                                        {{ $sprAPilih->prospectCustomer?->nama_lengkap }} → pindah ke <b>{{ $sprBPilih->rumah?->blok }}-{{ $sprBPilih->rumah?->nomor_unit }}</b><br>
-                                        {{ $sprBPilih->prospectCustomer?->nama_lengkap }} → pindah ke <b>{{ $sprAPilih->rumah?->blok }}-{{ $sprAPilih->rumah?->nomor_unit }}</b>
+                                        {{ $sprAPilih->prospectCustomer?->nama_lengkap }} → pindah ke <b>{{ $sprBPilih->rumah?->kode_unit }}</b><br>
+                                        {{ $sprBPilih->prospectCustomer?->nama_lengkap }} → pindah ke <b>{{ $sprAPilih->rumah?->kode_unit }}</b>
                                     </div>
                                 </div>
                             </div>

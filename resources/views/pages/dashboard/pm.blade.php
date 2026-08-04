@@ -546,7 +546,7 @@ new #[Title('Dashboard PM')] class extends Component
                                 <span class="truncate text-sm font-semibold">{{ $spr->prospectCustomer?->nama_lengkap ?? '—' }}</span>
                             </div>
                             <div class="mt-0.5 text-[11px] text-zinc-500">
-                                {{ $spr->rumah?->proyek?->nama_proyek ?? '—' }} · {{ $spr->rumah?->blok }}-{{ $spr->rumah?->nomor_unit }} · Sales: {{ $spr->sales?->nama }}
+                                {{ $spr->rumah?->proyek?->nama_proyek ?? '—' }} · {{ $spr->rumah?->kode_unit }} · Sales: {{ $spr->sales?->nama }}
                             </div>
                         </div>
                         <flux:icon.arrow-right class="size-4 shrink-0 text-zinc-400" />

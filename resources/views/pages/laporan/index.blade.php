@@ -176,6 +176,7 @@ new #[Title('Laporan')] class extends Component
         'performance'  => ['Peringkat Sales',  'trophy',           'indigo',  'penjualan'],
         'realisasi'    => ['Kwitansi Masuk',   'banknotes',        'purple',  'keuangan'],
         'outstanding'  => ['Tunggakan UM',     'clock',            'amber',   'keuangan'],
+        'rekap'        => ['Laporan Lengkap',  'document-text',    'emerald', 'keuangan'],
     ];
 
     public const CATEGORIES = [
@@ -240,6 +241,7 @@ public function setPeriod(string $p): void
             'pembatalan' => $this->dataPembatalan($from, $to),
             'pindah' => $this->dataPindah($from, $to),
             'performance' => $this->dataPerformance($from, $to),
+            'rekap' => $this->dataRekap($from, $to),
             default => [],
         };
 
@@ -446,7 +448,9 @@ public function setPeriod(string $p): void
                 'um_net' => $umNet,
                 'dibayar' => $dibayar,
                 'sisa' => $sisa,
-                'progress' => $umNet > 0 ? (int) round(($dibayar / $umNet) * 100) : 0,
+                'progress' => $umNet > 0
+                    ? ($dibayar > 0 ? max(1, (int) round(($dibayar / $umNet) * 100)) : 0)
+                    : 0,
                 'age_days' => $ageDays,
                 'age_bucket' => $ageBucket,
             ];
@@ -456,7 +460,7 @@ public function setPeriod(string $p): void
         $sortDir = $this->sortDir;
         $accessor = fn ($r) => match ($sortCol) {
             'customer' => $r->spr->prospectCustomer?->nama_lengkap ?? '',
-            'unit' => ($r->spr->rumah?->blok ?? '').'-'.($r->spr->rumah?->nomor_unit ?? ''),
+            'unit' => ($r->spr->rumah?->kode_unit ?? ''),
             'sales' => $r->spr->sales?->nama ?? '',
             'um_net' => $r->um_net,
             'dibayar' => $r->dibayar,
@@ -490,6 +494,70 @@ public function setPeriod(string $p): void
             'totalDibayarUm' => $totalDibayar,
             'ageBuckets' => $ageBuckets,
         ];
+    }
+
+    /**
+     * Laporan Lengkap — all-in-one view per SPR.
+     * UI tampil 12 kolom ringkas, Excel export tampil 54 kolom penuh (di LaporanExport).
+     * Grain: 1 SPR = 1 row, kwitansi diaggregate jadi kolom summary.
+     */
+    private function dataRekap($from, $to): array
+    {
+        $query = $this->baseSprQuery(); // semua status
+        if ($this->dateFrom || $this->dateTo) {
+            $query->whereBetween('spr.tanggal_spr', [$from, $to]);
+        }
+
+        // Sort: DB-columns (fast). Untuk agregat (total_bayar/sisa/progress) → post-fetch.
+        $needJoinCustomer = in_array($this->sortCol, ['customer', 'nik']);
+        $needJoinRumah = $this->sortCol === 'unit';
+        $needJoinSales = $this->sortCol === 'sales';
+        if ($needJoinCustomer) {
+            $query->join('prospect_customer as pc', 'pc.id', '=', 'spr.prospect_customer_id')
+                ->select('spr.*');
+        }
+        if ($needJoinRumah) {
+            $query->join('rumah as rm', 'rm.id', '=', 'spr.rumah_id')->select('spr.*');
+        }
+        if ($needJoinSales) {
+            $query->join('sales as sl', 'sl.id', '=', 'spr.sales_id')->select('spr.*');
+        }
+
+        $sortMap = [
+            'nomor_spr' => 'spr.nomor_spr',
+            'tanggal_spr' => 'spr.tanggal_spr',
+            'total_harga' => 'spr.total_harga',
+            'utj_nominal' => 'spr.utj_nominal',
+            'status' => 'spr.status',
+            'customer' => 'pc.nama_lengkap',
+            'nik' => 'pc.nik',
+            'unit' => ['rm.blok', 'rm.nomor_unit'],
+            'sales' => 'sl.nama',
+        ];
+        $sprs = $this->applySort((clone $query), $sortMap, 'nomor_spr', 'asc')
+            ->paginate($this->effectivePerPage());
+
+        // Pre-aggregate kwitansi per SPR utk page ini saja
+        $sprIds = collect($sprs->items())->pluck('id')->all();
+        $kwtAgg = SprRealisasiPembayaran::query()
+            ->selectRaw('spr_id,
+                SUM(CASE WHEN jenis="bf" THEN jumlah ELSE 0 END) as total_bf,
+                SUM(CASE WHEN jenis="um" THEN jumlah ELSE 0 END) as total_um,
+                COUNT(*) as jumlah_kwt,
+                MAX(tanggal_bayar) as tgl_terakhir')
+            ->whereIn('spr_id', $sprIds)
+            ->groupBy('spr_id')
+            ->get()
+            ->keyBy('spr_id');
+
+        // Summary total (all data, tidak per page)
+        $totalSpr = (clone $query)->count();
+        $totalNilai = (float) (clone $query)->sum('total_harga');
+        $totalUmNet = (float) (clone $query)->sum('um_net');
+        $totalBayarAll = (float) SprRealisasiPembayaran::whereIn('spr_id', (clone $query)->pluck('spr.id'))
+            ->whereIn('jenis', ['bf', 'um'])->sum('jumlah');
+
+        return compact('sprs', 'kwtAgg', 'totalSpr', 'totalNilai', 'totalUmNet', 'totalBayarAll');
     }
 
     private function dataPindah($from, $to): array
@@ -655,101 +723,97 @@ public function setPeriod(string $p): void
         @else
 
         {{-- FILTER BAR --}}
-        <div class="mb-5 space-y-3">
-            {{-- Row 1: Search + Export button --}}
-            <div class="flex flex-wrap items-center gap-3">
-                @php
-                    $searchPlaceholder = match ($tab) {
-                        'stock' => 'Cari blok / nomor unit...',
-                        'realisasi' => 'Cari nomor kwitansi / nomor SPR...',
-                        'penjualan', 'pembatalan', 'outstanding' => 'Cari nomor SPR / nama customer / blok...',
-                        'pindah' => 'Cari nomor transaksi (PK/...) / nama customer / blok...',
-                        default => null,
-                    };
-                @endphp
+        @php
+            $searchPlaceholder = match ($tab) {
+                'stock' => 'Cari blok / nomor unit...',
+                'realisasi' => 'Cari nomor kwitansi / nomor SPR...',
+                'penjualan', 'pembatalan', 'outstanding', 'rekap' => 'Cari nomor SPR / nama customer / blok...',
+                'pindah' => 'Cari nomor transaksi (PK/...) / nama customer / blok...',
+                default => null,
+            };
+            $showSales = in_array($tab, ['penjualan', 'realisasi', 'performance', 'outstanding', 'pembatalan', 'pindah', 'rekap']);
+            $showPerpage = $tab !== 'performance';
+            $inputCls = 'h-9 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white';
+        @endphp
+        <div class="mb-5 space-y-2">
+            {{-- Row 1: Search + Filter dropdowns + Export --}}
+            <div class="flex flex-wrap items-center gap-2">
                 @if ($searchPlaceholder)
-                    <div class="relative flex-1 min-w-50 max-w-md">
+                    <div class="relative min-w-52 flex-1 max-w-sm">
                         <flux:icon.magnifying-glass class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
                         <input type="search" wire:model.live.debounce.400ms="search"
                                placeholder="{{ $searchPlaceholder }}"
-                               class="block h-9 w-full rounded-lg border border-zinc-200 bg-white pl-9 pr-3 text-xs shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white" />
+                               class="{{ $inputCls }} block w-full pl-9" />
                     </div>
                 @endif
 
-                <button type="button" wire:click="exportExcel" wire:loading.attr="disabled"
-                        class="inline-flex items-center gap-2 rounded-lg border border-emerald-600 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50">
-                    <flux:icon.arrow-down-tray class="size-4" wire:loading.remove wire:target="exportExcel" />
-                    <flux:icon.arrow-path class="size-4 animate-spin" wire:loading wire:target="exportExcel" />
-                    <span wire:loading.remove wire:target="exportExcel">Export Excel</span>
-                    <span wire:loading wire:target="exportExcel">Menyiapkan...</span>
-                </button>
-
-                @if ($search || $filterSales || $filterTipe || $filterKategori || $dateFrom || $dateTo)
-                    <button type="button" wire:click="resetFilters"
-                            class="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
-                        <flux:icon.x-mark class="size-3" />
-                        Reset
-                    </button>
-                @endif
-            </div>
-
-            {{-- Row 2: Period + Date range + Tipe + Sales --}}
-            <div class="flex flex-wrap items-center gap-3">
-                {{-- Period preset --}}
-                <div class="inline-flex items-center rounded-lg border border-zinc-200 bg-white p-1 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    @foreach ($this::PERIODS as $k => $lbl)
-                        @php $active = $period === $k && ! $dateFrom && ! $dateTo; @endphp
-                        <button type="button" wire:click="setPeriod('{{ $k }}')"
-                                @class([
-                                    'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition',
-                                    'bg-emerald-600 text-white shadow' => $active,
-                                    'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800' => ! $active,
-                                ])>{{ $lbl }}</button>
-                    @endforeach
-                </div>
-
-                {{-- Date Range custom --}}
-                <div class="flex items-center gap-1">
-                    <input type="date" wire:model.live="dateFrom"
-                           class="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-white" />
-                    <span class="text-xs text-zinc-500">s/d</span>
-                    <input type="date" wire:model.live="dateTo"
-                           class="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-white" />
-                </div>
-
-                {{-- Kategori filter (Subsidi / Komersial) --}}
-                <select wire:model.live="filterKategori" class="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-white">
-                    <option value="">— Semua Kategori —</option>
+                <select wire:model.live="filterKategori" class="{{ $inputCls }}">
+                    <option value="">Semua Kategori</option>
                     <option value="subsidi">Subsidi</option>
                     <option value="komersial">Komersial</option>
                 </select>
 
-                {{-- Tipe filter --}}
-                <select wire:model.live="filterTipe" class="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-white">
-                    <option value="">— Semua Tipe —</option>
+                <select wire:model.live="filterTipe" class="{{ $inputCls }}">
+                    <option value="">Semua Tipe</option>
                     @foreach ($tipeList as $t)
                         <option value="{{ $t->id }}">{{ $t->tipe }} {{ $t->nama_tipe }}</option>
                     @endforeach
                 </select>
 
-                {{-- Sales filter --}}
-                @if (in_array($tab, ['penjualan', 'realisasi', 'performance', 'outstanding', 'pembatalan', 'pindah']))
-                    <select wire:model.live="filterSales" class="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-white">
-                        <option value="">— Semua Sales —</option>
+                @if ($showSales)
+                    <select wire:model.live="filterSales" class="{{ $inputCls }}">
+                        <option value="">Semua Sales</option>
                         @foreach ($salesList as $s)
                             <option value="{{ $s->id }}">{{ $s->kode }} - {{ $s->nama }}</option>
                         @endforeach
                     </select>
                 @endif
 
-                {{-- Page size --}}
-                @if ($tab !== 'performance')
-                    <select wire:model.live="perPage" class="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-white">
+                @if ($showPerpage)
+                    <select wire:model.live="perPage" class="{{ $inputCls }}">
                         @foreach ([10, 25, 50, 100, 0] as $pp)
                             <option value="{{ $pp }}">{{ $pp === 0 ? 'Semua' : $pp.' baris' }}</option>
                         @endforeach
                     </select>
                 @endif
+
+                <div class="ml-auto flex items-center gap-2">
+                    @if ($search || $filterSales || $filterTipe || $filterKategori || $dateFrom || $dateTo || $period !== 'all')
+                        <button type="button" wire:click="resetFilters"
+                                class="inline-flex h-9 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 text-[11px] font-semibold text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
+                            <flux:icon.x-mark class="size-3" />
+                            Reset
+                        </button>
+                    @endif
+                    <button type="button" wire:click="exportExcel" wire:loading.attr="disabled"
+                            class="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-600 bg-emerald-600 px-3 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50">
+                        <flux:icon.arrow-down-tray class="size-4" wire:loading.remove wire:target="exportExcel" />
+                        <flux:icon.arrow-path class="size-4 animate-spin" wire:loading wire:target="exportExcel" />
+                        <span wire:loading.remove wire:target="exportExcel">Export Excel</span>
+                        <span wire:loading wire:target="exportExcel">Menyiapkan...</span>
+                    </button>
+                </div>
+            </div>
+
+            {{-- Row 2: Period preset + Date range --}}
+            <div class="flex flex-wrap items-center gap-2">
+                <div class="inline-flex items-center rounded-lg border border-zinc-200 bg-white p-1 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                    @foreach ($this::PERIODS as $k => $lbl)
+                        @php $active = $period === $k && ! $dateFrom && ! $dateTo; @endphp
+                        <button type="button" wire:click="setPeriod('{{ $k }}')"
+                                @class([
+                                    'inline-flex items-center rounded-md px-3 py-1 text-xs font-semibold transition',
+                                    'bg-emerald-600 text-white shadow' => $active,
+                                    'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800' => ! $active,
+                                ])>{{ $lbl }}</button>
+                    @endforeach
+                </div>
+
+                <div class="flex items-center gap-1">
+                    <input type="date" wire:model.live="dateFrom" class="{{ $inputCls }} py-1" />
+                    <span class="text-xs text-zinc-500">s/d</span>
+                    <input type="date" wire:model.live="dateTo" class="{{ $inputCls }} py-1" />
+                </div>
             </div>
         </div>
 
@@ -787,19 +851,31 @@ public function setPeriod(string $p): void
             {{-- KPI Cards --}}
             <div class="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
                 <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    <div class="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Total Unit Terjual</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Total Unit Terjual</div>
+                        <x-info-button title="Total Unit Terjual">Jumlah unit rumah yang sudah punya SPR aktif (approved/akad) pada periode terpilih.</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums">{{ number_format($totalUnit) }}</div>
                 </div>
                 <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    <div class="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Total Nilai Kontrak</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Total Nilai Kontrak</div>
+                        <x-info-button title="Total Nilai Kontrak">Total harga jual seluruh unit (Total Harga All-in) berdasarkan SPR aktif pada periode. Catatan: nilai kontrak bukan pendapatan — pendapatan diakui saat akad kredit.</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums">Rp {{ $fmtJt($totalNilai) }}</div>
                 </div>
                 <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    <div class="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Total Nilai KPR</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Total Nilai KPR</div>
+                        <x-info-button title="Total Nilai KPR">Total nilai KPR yang diajukan/disetujui bank dari SPR aktif. Sub-total dari Nilai Kontrak.</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums">Rp {{ $fmtJt($totalKpr) }}</div>
                 </div>
                 <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    <div class="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Rata-rata Nilai Kontrak</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Rata-rata Nilai Kontrak</div>
+                        <x-info-button title="Rata-rata Nilai Kontrak">Rata-rata harga jual per unit = Total Nilai Kontrak ÷ Total Unit Terjual.</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums">Rp {{ $fmtJt($avgTicket) }}</div>
                 </div>
             </div>
@@ -842,7 +918,7 @@ public function setPeriod(string $p): void
                                     <td class="px-3 py-2 font-mono">{{ $spr->nomor_display }}</td>
                                     <td class="px-3 py-2">{{ $spr->tanggal_spr?->format('d/m/y') }}</td>
                                     <td class="px-3 py-2 font-semibold">{{ $spr->prospectCustomer?->nama_lengkap }}</td>
-                                    <td class="px-3 py-2 font-mono">{{ $spr->rumah?->blok }}-{{ $spr->rumah?->nomor_unit }}</td>
+                                    <td class="px-3 py-2 font-mono">{{ $spr->rumah?->kode_unit }}</td>
                                     <td class="px-3 py-2">{{ $spr->rumah?->tipeRumah?->tipe }}</td>
                                     <td class="px-3 py-2">{{ $spr->sales?->nama }}</td>
                                     <td class="px-3 py-2 text-right font-mono tabular-nums">{{ $fmt($spr->total_harga) }}</td>
@@ -870,23 +946,38 @@ public function setPeriod(string $p): void
         @if ($tab === 'stock')
             <div class="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5">
                 <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    <div class="text-[10px] font-bold uppercase text-zinc-500">Total Unit</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-zinc-500">Total Unit</div>
+                        <x-info-button title="Total Unit">Jumlah seluruh unit rumah di proyek terpilih (semua status).</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums">{{ number_format($totalUnit) }}</div>
                 </div>
                 <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
-                    <div class="text-[10px] font-bold uppercase text-emerald-700">Terjual</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-emerald-700">Terjual</div>
+                        <x-info-button title="Terjual">Unit yang sudah punya SPR aktif (approved/akad).</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums text-emerald-800 dark:text-emerald-300">{{ number_format($terjual) }}</div>
                 </div>
                 <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
-                    <div class="text-[10px] font-bold uppercase text-amber-700">Booking</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-amber-700">Booking</div>
+                        <x-info-button title="Booking">Unit yang sedang dalam proses booking/NUP tapi belum SPR.</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums text-amber-800 dark:text-amber-300">{{ number_format($booking) }}</div>
                 </div>
                 <div class="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950/30">
-                    <div class="text-[10px] font-bold uppercase text-blue-700">Tersedia</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-blue-700">Tersedia</div>
+                        <x-info-button title="Tersedia">Unit yang belum ada booking atau SPR — siap dijual.</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums text-blue-800 dark:text-blue-300">{{ number_format($available) }}</div>
                 </div>
                 <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    <div class="text-[10px] font-bold uppercase text-zinc-500">Draft</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-zinc-500">Draft</div>
+                        <x-info-button title="Draft">Unit dengan status draft (belum ready dijual/masih dalam persiapan).</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums">{{ number_format($draft) }}</div>
                 </div>
             </div>
@@ -948,7 +1039,7 @@ public function setPeriod(string $p): void
                         <tbody>
                             @foreach ($rumahList as $r)
                                 <tr class="border-t border-zinc-100 dark:border-zinc-800">
-                                    <td class="px-3 py-2 font-mono font-semibold">{{ $r->blok }}-{{ $r->nomor_unit }}</td>
+                                    <td class="px-3 py-2 font-mono font-semibold">{{ $r->kode_unit }}</td>
                                     <td class="px-3 py-2">{{ $r->tipeRumah?->tipe }}</td>
                                     <td class="px-3 py-2">{{ $r->proyek?->nama_proyek }}</td>
                                     <td class="px-3 py-2 text-right font-mono tabular-nums">{{ $fmt($r->tipeRumah?->harga_jual ?? 0) }}</td>
@@ -1044,33 +1135,32 @@ public function setPeriod(string $p): void
         @if ($tab === 'outstanding')
             <div class="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
                 <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
-                    <div class="text-[10px] font-bold uppercase text-amber-700">Total Tunggakan UM</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-amber-700">Total Tunggakan UM</div>
+                        <x-info-button title="Total Tunggakan UM">Total sisa UM yang belum dibayar konsumen = Total UM Netto − Sudah Terbayar. Hanya SPR approved.</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums text-amber-800 dark:text-amber-300">Rp {{ $fmtJt($totalOutstanding) }}</div>
                 </div>
                 <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    <div class="text-[10px] font-bold uppercase text-zinc-500">Total UM Netto</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-zinc-500">Total UM Netto</div>
+                        <x-info-button title="Total UM Netto">Total target UM (Uang Muka bersih) dari semua SPR approved. Sudah exclude subsidi BBA/SBUM.</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums">Rp {{ $fmtJt($totalUmNet) }}</div>
                 </div>
                 <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
-                    <div class="text-[10px] font-bold uppercase text-emerald-700">Sudah Terbayar</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-emerald-700">Sudah Terbayar</div>
+                        <x-info-button title="Sudah Terbayar">Total UTJ + cicilan UM yang sudah masuk dari konsumen (untuk SPR yang belum lunas).</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums text-emerald-800 dark:text-emerald-300">Rp {{ $fmtJt($totalDibayarUm) }}</div>
                 </div>
                 <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    <div class="text-[10px] font-bold uppercase text-zinc-500">SPR Belum Lunas UM</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-zinc-500">SPR Belum Lunas UM</div>
+                        <x-info-button title="SPR Belum Lunas UM">Jumlah SPR yang UM-nya belum lunas (masih ada sisa tunggakan).</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums">{{ number_format(count($outstandingRows)) }}</div>
-                </div>
-            </div>
-
-            <div class="mb-5 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                <div class="mb-3 text-sm font-bold">Umur Tunggakan</div>
-                <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    @foreach ($ageBuckets as $b => $val)
-                        @php $color = match($b) { '0-30' => 'emerald', '31-60' => 'amber', '61-90' => 'orange', '>90' => 'rose' }; @endphp
-                        <div class="rounded-lg bg-{{ $color }}-50 p-3 dark:bg-{{ $color }}-950/30">
-                            <div class="text-[10px] font-bold uppercase text-{{ $color }}-700">{{ $b }} hari</div>
-                            <div class="mt-1 text-lg font-bold tabular-nums text-{{ $color }}-800">Rp {{ $fmtJt($val) }}</div>
-                        </div>
-                    @endforeach
                 </div>
             </div>
 
@@ -1087,7 +1177,6 @@ public function setPeriod(string $p): void
                                 <th class="px-3 py-2 text-right">{!! $thBtn('dibayar', 'Terbayar', 'right') !!}</th>
                                 <th class="px-3 py-2 text-right">{!! $thBtn('sisa', 'Sisa', 'right') !!}</th>
                                 <th class="px-3 py-2 text-right">{!! $thBtn('progress', '%', 'right') !!}</th>
-                                <th class="px-3 py-2 text-right">{!! $thBtn('age_days', 'Umur', 'right') !!}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1095,19 +1184,15 @@ public function setPeriod(string $p): void
                                 <tr class="border-t border-zinc-100 dark:border-zinc-800">
                                     <td class="px-3 py-2 font-mono">{{ $row->spr->nomor_display }}</td>
                                     <td class="px-3 py-2 font-semibold">{{ $row->spr->prospectCustomer?->nama_lengkap }}</td>
-                                    <td class="px-3 py-2 font-mono">{{ $row->spr->rumah?->blok }}-{{ $row->spr->rumah?->nomor_unit }}</td>
+                                    <td class="px-3 py-2 font-mono">{{ $row->spr->rumah?->kode_unit }}</td>
                                     <td class="px-3 py-2">{{ $row->spr->sales?->nama }}</td>
                                     <td class="px-3 py-2 text-right font-mono tabular-nums">{{ $fmt($row->um_net) }}</td>
                                     <td class="px-3 py-2 text-right font-mono tabular-nums text-emerald-700">{{ $fmt($row->dibayar) }}</td>
                                     <td class="px-3 py-2 text-right font-mono font-bold tabular-nums text-amber-700">{{ $fmt($row->sisa) }}</td>
                                     <td class="px-3 py-2 text-right tabular-nums">{{ $row->progress }}%</td>
-                                    <td class="px-3 py-2 text-right">
-                                        @php $ageColor = match($row->age_bucket) { '0-30' => 'emerald', '31-60' => 'amber', '61-90' => 'orange', '>90' => 'rose' }; @endphp
-                                        <span class="rounded bg-{{ $ageColor }}-100 px-1.5 py-0.5 text-[10px] font-semibold text-{{ $ageColor }}-700">{{ $row->age_bucket }} h</span>
-                                    </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="9" class="px-3 py-6 text-center text-zinc-400">Semua SPR lunas.</td></tr>
+                                <tr><td colspan="8" class="px-3 py-6 text-center text-zinc-400">Semua SPR lunas.</td></tr>
                             @endforelse
                         </tbody>
                     </table>
@@ -1116,26 +1201,128 @@ public function setPeriod(string $p): void
             </div>
         @endif
 
+        @if ($tab === 'rekap')
+            {{-- KPI Cards --}}
+            <div class="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-emerald-700">Total SPR</div>
+                        <x-info-button title="Total SPR">Jumlah seluruh SPR (termasuk approved, akad, dan cancelled) di periode terpilih.</x-info-button>
+                    </div>
+                    <div class="mt-2 text-2xl font-bold tabular-nums text-emerald-800">{{ number_format($totalSpr) }}</div>
+                </div>
+                <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-zinc-500">Total Nilai</div>
+                        <x-info-button title="Total Nilai">Total harga jual seluruh SPR (all-in, termasuk cancelled). Untuk lihat nilai kontrak SPR aktif saja, cek tab Penjualan.</x-info-button>
+                    </div>
+                    <div class="mt-2 text-2xl font-bold tabular-nums">Rp {{ $fmtJt($totalNilai) }}</div>
+                </div>
+                <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-zinc-500">Total UM Netto</div>
+                        <x-info-button title="Total UM Netto">Total target UM (Uang Muka bersih) dari semua SPR di periode. Sudah exclude BBA subsidi.</x-info-button>
+                    </div>
+                    <div class="mt-2 text-2xl font-bold tabular-nums">Rp {{ $fmtJt($totalUmNet) }}</div>
+                </div>
+                <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-emerald-700">Total Bayar Masuk</div>
+                        <x-info-button title="Total Bayar Masuk">Total UTJ + cicilan UM yang sudah masuk dari semua SPR (termasuk cancelled yang belum di-refund).</x-info-button>
+                    </div>
+                    <div class="mt-2 text-2xl font-bold tabular-nums text-emerald-800">Rp {{ $fmtJt($totalBayarAll) }}</div>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                        <thead class="bg-zinc-50 dark:bg-zinc-800/50">
+                            <tr class="text-left font-bold uppercase text-[10px] text-zinc-500">
+                                <th class="px-2 py-2">{!! $thBtn('nomor_spr', 'No SPR') !!}</th>
+                                <th class="px-2 py-2">{!! $thBtn('tanggal_spr', 'Tgl') !!}</th>
+                                <th class="px-2 py-2">{!! $thBtn('customer', 'Nama Konsumen') !!}</th>
+                                <th class="px-2 py-2">{!! $thBtn('nik', 'NIK') !!}</th>
+                                <th class="px-2 py-2">{!! $thBtn('unit', 'Unit') !!}</th>
+                                <th class="px-2 py-2">{!! $thBtn('sales', 'Sales') !!}</th>
+                                <th class="px-2 py-2 text-right">{!! $thBtn('total_harga', 'Total', 'right') !!}</th>
+                                <th class="px-2 py-2 text-right">{!! $thBtn('utj_nominal', 'UTJ', 'right') !!}</th>
+                                <th class="px-2 py-2 text-right">Total Bayar</th>
+                                <th class="px-2 py-2 text-right">Sisa UM</th>
+                                <th class="px-2 py-2 text-right">Progress</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($sprs as $spr)
+                                @php
+                                    $agg = $kwtAgg->get($spr->id);
+                                    $totalBf = (float) ($agg->total_bf ?? 0);
+                                    $totalUm = (float) ($agg->total_um ?? 0);
+                                    $totalBayar = $totalBf + $totalUm;
+                                    $umNet = (float) $spr->um_net;
+                                    $sisaUm = max(0, $umNet - $totalBayar);
+                                    $pct = $umNet > 0
+                                        ? ($totalBayar > 0 ? max(1, (int) round($totalBayar / $umNet * 100)) : 0)
+                                        : 0;
+                                @endphp
+                                <tr class="border-t border-zinc-100 dark:border-zinc-800">
+                                    <td class="px-2 py-2 font-mono">{{ $spr->nomor_display }}</td>
+                                    <td class="px-2 py-2">{{ $spr->tanggal_spr?->format('d/m/y') }}</td>
+                                    <td class="px-2 py-2 font-semibold">{{ $spr->prospectCustomer?->nama_lengkap }}</td>
+                                    <td class="px-2 py-2 font-mono text-[10px]">{{ $spr->prospectCustomer?->nik }}</td>
+                                    <td class="px-2 py-2 font-mono">{{ $spr->rumah?->kode_unit }}</td>
+                                    <td class="px-2 py-2">{{ $spr->sales?->nama }}</td>
+                                    <td class="px-2 py-2 text-right font-mono tabular-nums">{{ $fmt($spr->total_harga) }}</td>
+                                    <td class="px-2 py-2 text-right font-mono tabular-nums">{{ $fmt($spr->utj_nominal) }}</td>
+                                    <td class="px-2 py-2 text-right font-mono tabular-nums text-emerald-700">{{ $fmt($totalBayar) }}</td>
+                                    <td class="px-2 py-2 text-right font-mono tabular-nums text-amber-700">{{ $fmt($sisaUm) }}</td>
+                                    <td class="px-2 py-2 text-right tabular-nums font-semibold">{{ $pct }}%</td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="11" class="px-3 py-6 text-center text-zinc-400">Belum ada data SPR.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+                <div class="border-t border-zinc-100 p-3 dark:border-zinc-800">{{ $sprs->links() }}</div>
+            </div>
+        @endif
+
         @if ($tab === 'pembatalan')
             <div class="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5">
                 <div class="rounded-xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-800 dark:bg-rose-950/30">
-                    <div class="text-[10px] font-bold uppercase text-rose-700">SPR Dibatalkan</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-rose-700">SPR Dibatalkan</div>
+                        <x-info-button title="SPR Dibatalkan">Jumlah SPR yang dibatalkan pada periode (customer mundur, pindah kavling, atau alasan lain).</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums text-rose-800 dark:text-rose-300">{{ number_format($totalBatal) }}</div>
                 </div>
                 <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    <div class="text-[10px] font-bold uppercase text-zinc-500">Total Pengembalian</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-zinc-500">Total Pengembalian</div>
+                        <x-info-button title="Total Pengembalian">Total uang yang di-refund ke konsumen atas SPR yang dibatalkan.</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums">Rp {{ $fmtJt($totalRefund) }}</div>
                 </div>
                 <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
-                    <div class="text-[10px] font-bold uppercase text-emerald-700">Pengembalian Selesai</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-emerald-700">Pengembalian Selesai</div>
+                        <x-info-button title="Pengembalian Selesai">Jumlah SPR yang refund-nya sudah selesai diproses (full atau partial).</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums text-emerald-800">{{ number_format($refundSelesai) }}</div>
                 </div>
                 <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
-                    <div class="text-[10px] font-bold uppercase text-amber-700">Pengembalian Tertunda</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-amber-700">Pengembalian Tertunda</div>
+                        <x-info-button title="Pengembalian Tertunda">Jumlah SPR cancelled dengan refund_status pending (menunggu pencairan).</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums text-amber-800">{{ number_format($refundPending) }}</div>
                 </div>
                 <div class="rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-800/50">
-                    <div class="text-[10px] font-bold uppercase text-zinc-600">UTJ Hangus</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-zinc-600">UTJ Hangus</div>
+                        <x-info-button title="UTJ Hangus">Jumlah SPR cancelled tanpa refund — UTJ menjadi hak developer (customer tidak dapat pengembalian).</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums text-zinc-700">{{ number_format($tidakAdaRefund) }}</div>
                 </div>
             </div>
@@ -1212,19 +1399,31 @@ public function setPeriod(string $p): void
             {{-- KPI cards --}}
             <div class="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
                 <div class="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30">
-                    <div class="text-[10px] font-bold uppercase text-blue-700">Total Transaksi</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-blue-700">Total Transaksi</div>
+                        <x-info-button title="Total Transaksi">Total transaksi pindah + tukar kavling pada periode.</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums text-blue-800 dark:text-blue-300">{{ number_format($totalEvent) }}</div>
                 </div>
                 <div class="rounded-xl border border-blue-200 bg-white p-4 dark:border-blue-900 dark:bg-zinc-900">
-                    <div class="text-[10px] font-bold uppercase text-blue-700">Pindah Unit</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-blue-700">Pindah Unit</div>
+                        <x-info-button title="Pindah Unit">Transaksi 1 customer pindah dari unit A ke unit B (unit A jadi tersedia lagi).</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums text-blue-700">{{ number_format($totalPindah) }}</div>
                 </div>
                 <div class="rounded-xl border border-indigo-200 bg-white p-4 dark:border-indigo-900 dark:bg-zinc-900">
-                    <div class="text-[10px] font-bold uppercase text-indigo-700">Tukar Unit</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-indigo-700">Tukar Unit</div>
+                        <x-info-button title="Tukar Unit">Transaksi 2 customer bertukar unit (customer A ke unit B, customer B ke unit A).</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums text-indigo-700">{{ number_format($totalSwap) }}</div>
                 </div>
                 <div class="rounded-xl border border-rose-200 bg-white p-4 dark:border-rose-900 dark:bg-zinc-900">
-                    <div class="text-[10px] font-bold uppercase text-rose-700">Total Pengembalian Kelebihan</div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-rose-700">Total Pengembalian Kelebihan</div>
+                        <x-info-button title="Total Pengembalian Kelebihan">Total refund selisih harga saat customer pindah ke unit yang lebih murah dari unit asal.</x-info-button>
+                    </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums text-rose-700">Rp {{ $fmtJt($totalRefundPindah) }}</div>
                 </div>
             </div>
@@ -1264,16 +1463,16 @@ public function setPeriod(string $p): void
                                     <td class="px-2 py-2">
                                         <div class="flex items-center gap-2">
                                             <span class="font-semibold">{{ $sw->sprLamaA?->prospectCustomer?->nama_lengkap }}</span>
-                                            <span class="font-mono text-zinc-500">{{ $sw->sprLamaA?->rumah?->blok }}-{{ $sw->sprLamaA?->rumah?->nomor_unit }}</span>
+                                            <span class="font-mono text-zinc-500">{{ $sw->sprLamaA?->rumah?->kode_unit }}</span>
                                             <flux:icon.arrow-right class="size-3 text-zinc-400" />
-                                            <span class="font-mono font-semibold text-emerald-700 dark:text-emerald-400">{{ $sw->sprBaruA?->rumah?->blok }}-{{ $sw->sprBaruA?->rumah?->nomor_unit }}</span>
+                                            <span class="font-mono font-semibold text-emerald-700 dark:text-emerald-400">{{ $sw->sprBaruA?->rumah?->kode_unit }}</span>
                                         </div>
                                         @if ($sw->tipe === 'swap' && $sw->sprLamaB)
                                             <div class="mt-1 flex items-center gap-2">
                                                 <span class="font-semibold">{{ $sw->sprLamaB?->prospectCustomer?->nama_lengkap }}</span>
-                                                <span class="font-mono text-zinc-500">{{ $sw->sprLamaB?->rumah?->blok }}-{{ $sw->sprLamaB?->rumah?->nomor_unit }}</span>
+                                                <span class="font-mono text-zinc-500">{{ $sw->sprLamaB?->rumah?->kode_unit }}</span>
                                                 <flux:icon.arrow-right class="size-3 text-zinc-400" />
-                                                <span class="font-mono font-semibold text-emerald-700 dark:text-emerald-400">{{ $sw->sprBaruB?->rumah?->blok }}-{{ $sw->sprBaruB?->rumah?->nomor_unit }}</span>
+                                                <span class="font-mono font-semibold text-emerald-700 dark:text-emerald-400">{{ $sw->sprBaruB?->rumah?->kode_unit }}</span>
                                             </div>
                                         @endif
                                     </td>

@@ -323,17 +323,18 @@ class Spr extends Model
 
         $lastNum = max($dbMax, (int) config('legacy.max_nomor_spr', 0));
 
-        return $prefix.str_pad((string) ($lastNum + 1), 4, '0', STR_PAD_LEFT);
+        return $prefix.str_pad((string) ($lastNum + 1), 5, '0', STR_PAD_LEFT);
     }
 
     /**
      * Suffix nomor SPR untuk display (5 digit, mis. "00026").
      * Cetak/tampilan UI pakai ini; DB tetap simpan format lengkap SPR/YYYY/MM/XXXX.
+     * Handle suffix duplicate: "SPR/2026/02/00043-A" → "00043-A".
      */
     public function getNomorDisplayAttribute(): string
     {
-        return preg_match('#/(\d+)$#', $this->nomor_spr, $m)
-            ? str_pad($m[1], 5, '0', STR_PAD_LEFT)
+        return preg_match('#/(\d+)(-\w+)?$#', $this->nomor_spr, $m)
+            ? str_pad($m[1], 5, '0', STR_PAD_LEFT).($m[2] ?? '')
             : $this->nomor_spr;
     }
 

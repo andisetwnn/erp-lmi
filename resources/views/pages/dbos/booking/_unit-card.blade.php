@@ -3,7 +3,7 @@
     'flex h-24 w-24 shrink-0 flex-col items-center justify-center text-white',
     $statusInfo['bg'],
 ])>
-    <div class="text-lg font-bold leading-tight">{{ $u->blok }}-{{ $u->nomor_unit }}</div>
+    <div class="text-lg font-bold leading-tight">{{ $u->kode_unit }}</div>
 </div>
 
 <div class="flex flex-1 items-center justify-between p-3">

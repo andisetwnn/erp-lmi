@@ -135,7 +135,7 @@ new #[Title('Review SPR')] class extends Component
                         <div class="flex justify-between gap-2"><dt class="text-zinc-500">NIK</dt><dd class="font-mono font-semibold">{{ $prospect?->nik ?? '—' }}</dd></div>
                         <div class="flex justify-between gap-2"><dt class="text-zinc-500">Sales</dt><dd class="font-semibold">{{ $sales?->kode }} · {{ $sales?->nama }}</dd></div>
                         <div class="flex justify-between gap-2"><dt class="text-zinc-500">Proyek</dt><dd class="font-semibold">{{ $proyek?->nama_proyek }}</dd></div>
-                        <div class="flex justify-between gap-2"><dt class="text-zinc-500">Unit</dt><dd class="font-mono font-semibold">{{ $rumah?->blok }}-{{ $rumah?->nomor_unit }} · {{ $tipe?->tipe }}</dd></div>
+                        <div class="flex justify-between gap-2"><dt class="text-zinc-500">Unit</dt><dd class="font-mono font-semibold">{{ $rumah?->kode_unit }} · {{ $tipe?->tipe }}</dd></div>
                     </dl>
                 </div>
 

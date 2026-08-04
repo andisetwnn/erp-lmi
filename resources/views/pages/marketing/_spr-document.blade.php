@@ -140,7 +140,7 @@
                         {{ __('I. Unit & Harga') }}
                     </h3>
                     <div class="grid grid-cols-3 gap-2 border-b border-zinc-200 px-3 py-2 text-xs dark:border-zinc-700">
-                        <div><span class="text-zinc-500">Blok/No :</span> <span class="ms-1 font-mono font-bold">{{ $rumah?->blok }}-{{ $rumah?->nomor_unit }}</span></div>
+                        <div><span class="text-zinc-500">Blok/No :</span> <span class="ms-1 font-mono font-bold">{{ $rumah?->kode_unit }}</span></div>
                         <div><span class="text-zinc-500">Type :</span> <span class="ms-1 font-bold">{{ $tipe?->nama_tipe ?? '—' }}</span></div>
                         <div><span class="text-zinc-500">LT/LB :</span> <span class="ms-1 font-mono">{{ (int) ($rumah?->luas_tanah ?? 0) }}/{{ (int) ($rumah?->luas_bangunan ?? 0) }}</span></div>
                     </div>

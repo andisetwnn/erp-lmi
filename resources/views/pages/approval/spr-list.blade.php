@@ -193,7 +193,7 @@ new #[Title('Persetujuan SPR')] class extends Component
                                     </a>
                                 </flux:table.cell>
                                 <flux:table.cell class="whitespace-nowrap">
-                                    <div class="font-mono font-semibold">{{ $row->rumah?->blok }}-{{ $row->rumah?->nomor_unit }}</div>
+                                    <div class="font-mono font-semibold">{{ $row->rumah?->kode_unit }}</div>
                                     <div class="text-[10px] text-zinc-500">{{ $row->rumah?->tipeRumah?->tipe ?? '—' }}</div>
                                 </flux:table.cell>
                                 <flux:table.cell class="whitespace-nowrap">
