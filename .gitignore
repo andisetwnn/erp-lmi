@@ -58,6 +58,13 @@ yarn-error.log
 *.rar
 *.7z
 
+# Dump DB (SENSITIF — password hash + data customer)
+/*.sql
+/database/*.sql
+
+# Scripts internal / temporary
+/scripts/
+
 # File temporary / OS
 .DS_Store
 Thumbs.db

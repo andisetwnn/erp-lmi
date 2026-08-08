@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\BukuBesarPdfController;
+use App\Http\Controllers\LaporanAkuntingPdfController;
 use App\Models\Master\Perusahaan;
 use App\Models\Master\Sales;
 use App\Models\Master\Spr;
@@ -93,6 +95,46 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('permission:pembayaran.kelola')->prefix('finance')->name('finance.')->group(function () {
         Route::livewire('penerimaan-konsumen', 'pages::finance.penerimaan-konsumen')->name('penerimaan-konsumen.index');
         Route::livewire('tempel-materai', 'pages::finance.tempel-materai')->name('tempel-materai.index');
+    });
+
+    // AKUNTING — Input Jurnal (Umum/Bank/Kas Kecil) + Buku Besar
+    Route::prefix('akunting')->name('akunting.')->group(function () {
+        // Landing page 3 card: butuh minimal salah satu permission jurnal
+        Route::livewire('input-jurnal', 'pages::akunting.input-jurnal')
+            ->middleware('permission:jurnal.umum.kelola|jurnal.bank.kelola|jurnal.kaskecil.kelola')
+            ->name('input-jurnal.index');
+
+        // Jurnal Umum
+        Route::middleware('permission:jurnal.umum.kelola')->group(function () {
+            Route::livewire('jurnal-umum', 'pages::akunting.jurnal-umum')->name('jurnal-umum.index');
+        });
+
+        // Buku Besar
+        Route::middleware('permission:bukubesar.lihat')->group(function () {
+            Route::livewire('buku-besar', 'pages::akunting.buku-besar')->name('buku-besar.index');
+            Route::get('buku-besar/print', function () {
+                return app(BukuBesarPdfController::class)->__invoke(request());
+            })->name('buku-besar.print');
+        });
+
+        // Laba Rugi
+        Route::middleware('permission:labarugi.lihat')->group(function () {
+            Route::livewire('laba-rugi', 'pages::akunting.laba-rugi')->name('laba-rugi.index');
+            Route::get('laba-rugi/print', [LaporanAkuntingPdfController::class, 'labaRugi'])
+                ->name('laba-rugi.print');
+        });
+
+        // Neraca
+        Route::middleware('permission:neraca.lihat')->group(function () {
+            Route::livewire('neraca', 'pages::akunting.neraca')->name('neraca.index');
+            Route::get('neraca/print', [LaporanAkuntingPdfController::class, 'neraca'])
+                ->name('neraca.print');
+        });
+
+        // Buku Bank Dashboard
+        Route::middleware('permission:bukubank.lihat')->group(function () {
+            Route::livewire('buku-bank', 'pages::akunting.buku-bank')->name('buku-bank.index');
+        });
     });
 
     // LAPORAN — laporan penjualan, stock, realisasi, outstanding, pembatalan, sales performance

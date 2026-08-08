@@ -18,6 +18,34 @@
                 overflow: visible !important;
                 line-height: 1.25 !important;
             }
+
+            /* Print — hide semua UI chrome, keep konten saja */
+            @media print {
+                @page { margin: 10mm; }
+                body { background: white !important; }
+                [data-flux-sidebar],
+                [data-flux-header],
+                [data-flux-toast-group],
+                [data-flux-modal],
+                [data-flux-dropdown-menu] { display: none !important; }
+                /* Notif bell + user menu fixed top-right */
+                .fixed.right-4.top-3,
+                .fixed.top-3.right-4 { display: none !important; }
+                /* Tombol print sendiri jangan ikut ter-print */
+                .print\:hidden { display: none !important; }
+                /* Konten full width saat print (main slot) */
+                body > main,
+                body > div:not([data-flux-sidebar]):not([data-flux-header]) {
+                    margin-left: 0 !important;
+                    max-width: 100% !important;
+                }
+                /* Container Tailwind — remove padding */
+                .max-w-screen-xl, .max-w-screen-2xl {
+                    max-width: 100% !important;
+                    padding-left: 0 !important;
+                    padding-right: 0 !important;
+                }
+            }
         </style>
         <flux:sidebar sticky collapsible class="border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
             <flux:sidebar.header>
@@ -155,6 +183,51 @@
                         </flux:sidebar.item>
                     </flux:sidebar.group>
                 @endcan
+
+                @if (auth()->user()?->can('jurnal.umum.kelola')
+                    || auth()->user()?->can('jurnal.bank.kelola')
+                    || auth()->user()?->can('jurnal.kaskecil.kelola')
+                    || auth()->user()?->can('bukubesar.lihat')
+                    || auth()->user()?->can('bukubank.lihat')
+                    || auth()->user()?->can('labarugi.lihat')
+                    || auth()->user()?->can('neraca.lihat'))
+                    <flux:sidebar.group :heading="__('Akunting')" icon="calculator" expandable
+                                        :expanded="request()->routeIs('akunting.*')">
+                        @if (auth()->user()?->can('jurnal.umum.kelola')
+                            || auth()->user()?->can('jurnal.bank.kelola')
+                            || auth()->user()?->can('jurnal.kaskecil.kelola'))
+                            <flux:sidebar.item icon="pencil-square" :href="route('akunting.input-jurnal.index')"
+                                               :current="request()->routeIs('akunting.input-jurnal.*') || request()->routeIs('akunting.jurnal-umum.*') || request()->routeIs('akunting.jurnal-bank.*') || request()->routeIs('akunting.jurnal-kaskecil.*')"
+                                               wire:navigate>
+                                {{ __('Input Jurnal') }}
+                            </flux:sidebar.item>
+                        @endif
+                        @can('bukubesar.lihat')
+                            <flux:sidebar.item icon="book-open" :href="route('akunting.buku-besar.index')"
+                                               :current="request()->routeIs('akunting.buku-besar.*')" wire:navigate>
+                                {{ __('Buku Besar') }}
+                            </flux:sidebar.item>
+                        @endcan
+                        @can('bukubank.lihat')
+                            <flux:sidebar.item icon="building-library" :href="route('akunting.buku-bank.index')"
+                                               :current="request()->routeIs('akunting.buku-bank.*')" wire:navigate>
+                                {{ __('Buku Bank') }}
+                            </flux:sidebar.item>
+                        @endcan
+                        @can('labarugi.lihat')
+                            <flux:sidebar.item icon="chart-bar-square" :href="route('akunting.laba-rugi.index')"
+                                               :current="request()->routeIs('akunting.laba-rugi.*')" wire:navigate>
+                                {{ __('Laba Rugi') }}
+                            </flux:sidebar.item>
+                        @endcan
+                        @can('neraca.lihat')
+                            <flux:sidebar.item icon="scale" :href="route('akunting.neraca.index')"
+                                               :current="request()->routeIs('akunting.neraca.*')" wire:navigate>
+                                {{ __('Neraca') }}
+                            </flux:sidebar.item>
+                        @endcan
+                    </flux:sidebar.group>
+                @endif
 
                 @can('laporan.lihat')
                     @php $activeCat = request()->query('c', 'penjualan'); @endphp

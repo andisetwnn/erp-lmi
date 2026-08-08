@@ -1,0 +1,250 @@
+<?php
+
+use App\Models\Master\Perusahaan;
+use App\Services\LaporanAkuntingService;
+use Livewire\Attributes\Title;
+use Livewire\Attributes\Url;
+use Livewire\Component;
+
+new #[Title('Neraca')] class extends Component
+{
+    #[Url(as: 'tgl')]
+    public string $tanggal = '';
+
+    public function mount(): void
+    {
+        if ($this->tanggal === '') {
+            $this->tanggal = now()->endOfMonth()->toDateString();
+        }
+    }
+
+    public function with(): array
+    {
+        $perusahaan = Perusahaan::first();
+        $data = null;
+        if ($perusahaan) {
+            $data = app(LaporanAkuntingService::class)->neraca($perusahaan->id, $this->tanggal);
+        }
+
+        return [
+            'perusahaan' => $perusahaan,
+            'data' => $data,
+        ];
+    }
+}; ?>
+
+<section class="w-full">
+    <div class="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8">
+
+        {{-- HEADER (hidden saat print) --}}
+        <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
+            <div class="flex items-center gap-3">
+                <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-linear-to-br from-indigo-500 to-indigo-700 text-white shadow-sm">
+                    <flux:icon.scale class="size-6" />
+                </div>
+                <div>
+                    <flux:heading size="xl">{{ __('Neraca') }}</flux:heading>
+                    <flux:subheading>{{ __('Posisi Aset, Kewajiban, dan Modal per tanggal cutoff.') }}</flux:subheading>
+                </div>
+            </div>
+            <flux:button variant="ghost" icon="printer"
+                         href="{{ route('akunting.neraca.print', ['tgl' => $tanggal]) }}"
+                         target="_blank">
+                {{ __('Print / Export PDF') }}
+            </flux:button>
+        </div>
+
+        {{-- FILTER --}}
+        <div class="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900 print:hidden">
+            <div>
+                <flux:input type="date" wire:model.live="tanggal" label="Per Tanggal" />
+            </div>
+        </div>
+
+        @if ($data)
+            <div class="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-700 dark:bg-zinc-900 print:border-0 print:p-0">
+                {{-- Kop laporan --}}
+                <div class="mb-6 text-center">
+                    <div class="text-lg font-bold uppercase">
+                        {{ $perusahaan?->nama ?? 'PT LANGIT MEMBANGUN INDONESIA' }}
+                    </div>
+                    <div class="text-2xl font-bold tracking-wide">NERACA</div>
+                    <div class="text-sm">
+                        PER : {{ strtoupper(\Carbon\Carbon::parse($tanggal)->translatedFormat('d F Y')) }}
+                    </div>
+                </div>
+
+                {{-- Balance status --}}
+                <div class="mb-4 rounded p-3 text-sm text-center font-semibold
+                    {{ $data['balanced'] ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300' }}">
+                    {{ $data['balanced'] ? '✓ Neraca Balance: Aset = Kewajiban + Modal + Laba' : '⚠ Neraca TIDAK BALANCE — cek jurnal!' }}
+                    <span class="ml-2 font-mono">
+                        (Aset {{ number_format($data['aset']['total'], 0, ',', '.') }}
+                        vs Pasiva {{ number_format($data['total_pasiva'], 0, ',', '.') }})
+                    </span>
+                </div>
+
+                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    {{-- KIRI: ASET --}}
+                    <div>
+                        <table class="w-full border-collapse text-sm">
+                            <thead>
+                                <tr class="bg-indigo-50 dark:bg-indigo-950/30">
+                                    <th colspan="2" class="border border-zinc-300 px-3 py-2 text-left text-xs font-bold uppercase dark:border-zinc-600">
+                                        Aset
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($data['aset']['groups'] as $group)
+                                    <tr class="font-semibold text-zinc-700 dark:text-zinc-300">
+                                        <td class="border border-zinc-300 px-3 py-1.5 dark:border-zinc-600">
+                                            {{ $group['header']->kode }} - {{ $group['header']->nama }}
+                                        </td>
+                                        <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">
+                                            {{ number_format($group['total'], 0, ',', '.') }}
+                                        </td>
+                                    </tr>
+                                    @foreach ($group['items'] as $item)
+                                        <tr class="text-xs text-zinc-600 dark:text-zinc-400">
+                                            <td class="border border-zinc-300 px-3 py-1 pl-8 dark:border-zinc-600">
+                                                {{ $item['coa']->kode }} - {{ $item['coa']->nama }}
+                                            </td>
+                                            <td class="border border-zinc-300 px-3 py-1 text-right font-mono tabular-nums dark:border-zinc-600">
+                                                {{ number_format($item['saldo'], 0, ',', '.') }}
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                @empty
+                                    <tr>
+                                        <td colspan="2" class="border border-zinc-300 px-3 py-4 text-center italic text-zinc-400 dark:border-zinc-600">
+                                            Tidak ada aset.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                            <tfoot>
+                                <tr class="bg-indigo-100 font-bold dark:bg-indigo-950/50">
+                                    <td class="border border-zinc-300 px-3 py-2 uppercase dark:border-zinc-600">Total Aset</td>
+                                    <td class="border border-zinc-300 px-3 py-2 text-right font-mono tabular-nums dark:border-zinc-600">
+                                        {{ number_format($data['aset']['total'], 0, ',', '.') }}
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    {{-- KANAN: KEWAJIBAN + MODAL + LABA --}}
+                    <div>
+                        <table class="w-full border-collapse text-sm">
+                            <thead>
+                                <tr class="bg-amber-50 dark:bg-amber-950/30">
+                                    <th colspan="2" class="border border-zinc-300 px-3 py-2 text-left text-xs font-bold uppercase dark:border-zinc-600">
+                                        Kewajiban
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($data['kewajiban']['groups'] as $group)
+                                    <tr class="font-semibold text-zinc-700 dark:text-zinc-300">
+                                        <td class="border border-zinc-300 px-3 py-1.5 dark:border-zinc-600">
+                                            {{ $group['header']->kode }} - {{ $group['header']->nama }}
+                                        </td>
+                                        <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">
+                                            {{ number_format($group['total'], 0, ',', '.') }}
+                                        </td>
+                                    </tr>
+                                    @foreach ($group['items'] as $item)
+                                        <tr class="text-xs text-zinc-600 dark:text-zinc-400">
+                                            <td class="border border-zinc-300 px-3 py-1 pl-8 dark:border-zinc-600">
+                                                {{ $item['coa']->kode }} - {{ $item['coa']->nama }}
+                                            </td>
+                                            <td class="border border-zinc-300 px-3 py-1 text-right font-mono tabular-nums dark:border-zinc-600">
+                                                {{ number_format($item['saldo'], 0, ',', '.') }}
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                @empty
+                                    <tr>
+                                        <td colspan="2" class="border border-zinc-300 px-3 py-4 text-center italic text-zinc-400 dark:border-zinc-600">
+                                            Tidak ada kewajiban.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                                <tr class="bg-amber-100 font-semibold dark:bg-amber-950/50">
+                                    <td class="border border-zinc-300 px-3 py-1.5 dark:border-zinc-600">Total Kewajiban</td>
+                                    <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">
+                                        {{ number_format($data['kewajiban']['total'], 0, ',', '.') }}
+                                    </td>
+                                </tr>
+                            </tbody>
+
+                            <thead>
+                                <tr class="bg-cyan-50 dark:bg-cyan-950/30">
+                                    <th colspan="2" class="border border-zinc-300 px-3 py-2 text-left text-xs font-bold uppercase dark:border-zinc-600">
+                                        Modal & Laba
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($data['modal']['groups'] as $group)
+                                    <tr class="font-semibold text-zinc-700 dark:text-zinc-300">
+                                        <td class="border border-zinc-300 px-3 py-1.5 dark:border-zinc-600">
+                                            {{ $group['header']->kode }} - {{ $group['header']->nama }}
+                                        </td>
+                                        <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">
+                                            {{ number_format($group['total'], 0, ',', '.') }}
+                                        </td>
+                                    </tr>
+                                    @foreach ($group['items'] as $item)
+                                        <tr class="text-xs text-zinc-600 dark:text-zinc-400">
+                                            <td class="border border-zinc-300 px-3 py-1 pl-8 dark:border-zinc-600">
+                                                {{ $item['coa']->kode }} - {{ $item['coa']->nama }}
+                                            </td>
+                                            <td class="border border-zinc-300 px-3 py-1 text-right font-mono tabular-nums dark:border-zinc-600">
+                                                {{ number_format($item['saldo'], 0, ',', '.') }}
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                @endforeach
+                                {{-- Laba (Rugi) Periode --}}
+                                <tr class="text-xs text-zinc-600 dark:text-zinc-400 italic">
+                                    <td class="border border-zinc-300 px-3 py-1 dark:border-zinc-600">
+                                        {{ $data['laba_periode'] >= 0 ? 'Laba' : 'Rugi' }} Periode Berjalan (tahun berjalan)
+                                    </td>
+                                    <td class="border border-zinc-300 px-3 py-1 text-right font-mono tabular-nums dark:border-zinc-600 {{ $data['laba_periode'] >= 0 ? 'text-emerald-700' : 'text-rose-700' }}">
+                                        {{ number_format($data['laba_periode'], 0, ',', '.') }}
+                                    </td>
+                                </tr>
+                                <tr class="bg-cyan-100 font-semibold dark:bg-cyan-950/50">
+                                    <td class="border border-zinc-300 px-3 py-1.5 dark:border-zinc-600">Total Modal & Laba</td>
+                                    <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">
+                                        {{ number_format($data['modal']['total'] + $data['laba_periode'], 0, ',', '.') }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                            <tfoot>
+                                <tr class="bg-zinc-200 font-bold dark:bg-zinc-800">
+                                    <td class="border border-zinc-300 px-3 py-2 uppercase dark:border-zinc-600">Total Pasiva</td>
+                                    <td class="border border-zinc-300 px-3 py-2 text-right font-mono tabular-nums dark:border-zinc-600">
+                                        {{ number_format($data['total_pasiva'], 0, ',', '.') }}
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        @endif
+    </div>
+
+    <style>
+        @media print {
+            @page { size: A4 landscape; margin: 10mm; }
+            body { background: white !important; }
+            .print\:hidden { display: none !important; }
+            [data-flux-sidebar] { display: none !important; }
+            main, .max-w-screen-2xl { max-width: 100% !important; padding: 0 !important; }
+        }
+    </style>
+</section>

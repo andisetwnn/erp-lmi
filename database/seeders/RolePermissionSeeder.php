@@ -31,6 +31,15 @@ class RolePermissionSeeder extends Seeder
             // Finance (utj.konfirmasi ter-cover pembayaran.kelola)
             'pembayaran.kelola',  // Konfirmasi UTJ + realisasi cicilan + tempel materai + refund
 
+            // Akunting
+            'jurnal.umum.kelola',      // Input/edit/post jurnal umum
+            'jurnal.bank.kelola',      // Input/edit/post jurnal bank
+            'jurnal.kaskecil.kelola',  // Input/edit/post jurnal kas kecil
+            'bukubesar.lihat',         // Lihat buku besar
+            'labarugi.lihat',          // Lihat laporan laba rugi
+            'neraca.lihat',            // Lihat neraca
+            'bukubank.lihat',          // Lihat dashboard buku bank
+
             // Laporan
             'laporan.lihat',
 
@@ -51,6 +60,10 @@ class RolePermissionSeeder extends Seeder
 
             'direktur' => [
                 'spr.lihat',
+                'bukubesar.lihat',
+                'labarugi.lihat',
+                'neraca.lihat',
+                'bukubank.lihat',
                 'laporan.lihat',
                 'log.lihat',
                 'monitoring.lihat',
@@ -69,6 +82,11 @@ class RolePermissionSeeder extends Seeder
             'finance' => [
                 'spr.lihat',
                 'pembayaran.kelola',
+                'jurnal.umum.kelola',
+                'bukubesar.lihat',
+                'labarugi.lihat',
+                'neraca.lihat',
+                'bukubank.lihat',
                 'laporan.lihat',
                 'notifikasi.keuangan',
                 'ttd.kelola',
