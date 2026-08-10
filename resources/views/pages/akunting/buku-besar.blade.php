@@ -142,14 +142,14 @@ new #[Title('Buku Besar')] class extends Component
         {{-- FILTER --}}
         <div class="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900 print:hidden">
             <div class="min-w-72 flex-1">
-                <flux:select wire:model.live="coaId" label="Kode Akun" placeholder="Pilih akun...">
-                    <flux:select.option value="">— pilih akun —</flux:select.option>
-                    @foreach ($coaOptions as $coa)
-                        <flux:select.option value="{{ $coa->id }}">
-                            {{ $coa->kode }} — {{ $coa->nama }}
-                        </flux:select.option>
-                    @endforeach
-                </flux:select>
+                <x-coa-picker
+                    wire-property="coaId"
+                    label="Kode Akun"
+                    placeholder="Pilih akun..."
+                    :options="$coaOptions"
+                    allow-clear
+                    live
+                />
             </div>
             <div>
                 <flux:input type="date" wire:model.live="from" label="Dari Tanggal" />

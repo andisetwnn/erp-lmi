@@ -667,15 +667,14 @@ new #[Title('Master COA')] class extends Component {
 
                 <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <flux:field>
-                        <flux:label>{{ __('Parent Akun') }}</flux:label>
-                        <flux:select wire:model="parentId">
-                            <flux:select.option value="">{{ __('-- Tidak ada (akun root) --') }}</flux:select.option>
-                            @foreach ($parentOptions as $p)
-                                @if ($editId !== $p->id)
-                                    <flux:select.option value="{{ $p->id }}">{{ $p->kode }} — {{ $p->nama }}</flux:select.option>
-                                @endif
-                            @endforeach
-                        </flux:select>
+                        <x-coa-picker
+                            wire-property="parentId"
+                            :label="__('Parent Akun')"
+                            :placeholder="__('-- Tidak ada (akun root) --')"
+                            :options="$parentOptions->reject(fn ($p) => $editId === $p->id)"
+                            :only-leaf="false"
+                            allow-clear
+                        />
                         <flux:description>{{ __('Opsional. Untuk struktur hierarkis.') }}</flux:description>
                         <flux:error name="parentId" />
                     </flux:field>

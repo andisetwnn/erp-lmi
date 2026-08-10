@@ -36,6 +36,8 @@ new #[Title('Jurnal Umum')] class extends Component
 
     public string $no_bukti = '';
 
+    public string $kategori_bukti = 'KAS';
+
     public string $keterangan = '';
 
     /** @var array<int, array{coa_id:?int, debet:string, kredit:string}> */
@@ -43,6 +45,13 @@ new #[Title('Jurnal Umum')] class extends Component
 
     // View detail modal state
     public ?int $viewId = null;
+
+    // Confirm modal state (untuk post/reverse/hapus)
+    public ?string $confirmAction = null;
+
+    public ?int $confirmJurnalId = null;
+
+    public string $confirmJurnalLabel = '';
 
     public function mount(): void
     {
@@ -58,20 +67,29 @@ new #[Title('Jurnal Umum')] class extends Component
         ];
     }
 
-    /** Auto-generate no bukti pattern JU/mm/yy/xxxx berdasarkan tanggal. */
-    protected function generateNoBukti(?string $tanggal = null): string
+    /** Auto-generate no bukti berdasarkan kategori + tanggal. */
+    protected function generateNoBukti(?string $tanggal = null, ?string $kategori = null): string
     {
-        $tgl = $tanggal ? \Carbon\Carbon::parse($tanggal) : now();
-        $prefix = 'JU/'.$tgl->format('m').'/'.$tgl->format('y').'/';
-
         $perusahaanId = Perusahaan::query()->value('id');
-        $lastSeq = Jurnal::where('perusahaan_id', $perusahaanId)
-            ->where('no_bukti', 'like', $prefix.'%')
-            ->pluck('no_bukti')
-            ->map(fn ($n) => (int) preg_replace('/^.*\//', '', $n))
-            ->max() ?? 0;
+        $kat = $kategori ?? $this->kategori_bukti ?? 'KAS';
+        $tgl = $tanggal ?? $this->tanggal ?? now()->toDateString();
 
-        return $prefix.str_pad((string) ($lastSeq + 1), 4, '0', STR_PAD_LEFT);
+        return app(JurnalService::class)->generateNoBukti($perusahaanId, $kat, $tgl);
+    }
+
+    /** Refresh no_bukti otomatis saat kategori atau tanggal berubah (form create). */
+    public function updatedKategoriBukti(): void
+    {
+        if (! $this->editId) {
+            $this->no_bukti = $this->generateNoBukti();
+        }
+    }
+
+    public function updatedTanggal(): void
+    {
+        if (! $this->editId) {
+            $this->no_bukti = $this->generateNoBukti();
+        }
     }
 
     public function updated($property): void
@@ -120,7 +138,8 @@ new #[Title('Jurnal Umum')] class extends Component
     {
         $this->reset(['editId', 'keterangan']);
         $this->tanggal = now()->toDateString();
-        $this->no_bukti = $this->generateNoBukti($this->tanggal);
+        $this->kategori_bukti = 'KAS';
+        $this->no_bukti = $this->generateNoBukti($this->tanggal, $this->kategori_bukti);
         $this->resetDetail();
         $this->resetErrorBag();
         Flux::modal('form-jurnal')->show();
@@ -130,6 +149,35 @@ new #[Title('Jurnal Umum')] class extends Component
     {
         $this->viewId = $id;
         Flux::modal('view-jurnal')->show();
+    }
+
+    /** Buka modal konfirmasi untuk post/reverse/hapus. */
+    public function openConfirm(string $action, int $id, string $label): void
+    {
+        $this->confirmAction = $action;
+        $this->confirmJurnalId = $id;
+        $this->confirmJurnalLabel = $label;
+        Flux::modal('confirm-jurnal')->show();
+    }
+
+    public function executeConfirm(): void
+    {
+        if (! $this->confirmAction || ! $this->confirmJurnalId) {
+            return;
+        }
+        $id = $this->confirmJurnalId;
+        $action = $this->confirmAction;
+
+        // Reset state dulu biar modal close bersih
+        $this->reset(['confirmAction', 'confirmJurnalId', 'confirmJurnalLabel']);
+        Flux::modal('confirm-jurnal')->close();
+
+        match ($action) {
+            'post' => $this->postJurnal($id),
+            'reverse' => $this->reverseJurnal($id),
+            'hapus' => $this->hapusJurnal($id),
+            default => null,
+        };
     }
 
     public function openEdit(int $id): void
@@ -142,6 +190,7 @@ new #[Title('Jurnal Umum')] class extends Component
         $this->editId = $j->id;
         $this->tanggal = $j->tanggal->toDateString();
         $this->no_bukti = $j->no_bukti;
+        $this->kategori_bukti = $j->kategori_bukti ?: 'KAS';
         $this->keterangan = (string) $j->keterangan;
         $this->detail = $j->detail->map(fn ($d) => [
             'coa_id' => $d->coa_id,
@@ -197,6 +246,8 @@ new #[Title('Jurnal Umum')] class extends Component
         try {
             if ($this->editId) {
                 $jurnal = Jurnal::findOrFail($this->editId);
+                $jurnal->kategori_bukti = $this->kategori_bukti;
+                $jurnal->save();
                 $jurnal = $svc->update($jurnal, [
                     'tanggal' => $this->tanggal,
                     'no_bukti' => $this->no_bukti,
@@ -208,6 +259,7 @@ new #[Title('Jurnal Umum')] class extends Component
                     'tanggal' => $this->tanggal,
                     'no_bukti' => $this->no_bukti,
                     'tipe' => 'umum',
+                    'kategori_bukti' => $this->kategori_bukti,
                     'keterangan' => $this->keterangan ?: null,
                 ], $details);
             }
@@ -448,18 +500,15 @@ new #[Title('Jurnal Umum')] class extends Component
                                         <flux:menu.item icon="eye" wire:click="openView({{ $j->id }})">Lihat Detail</flux:menu.item>
                                         @if ($j->isDraft())
                                             <flux:menu.item icon="pencil" wire:click="openEdit({{ $j->id }})">Edit</flux:menu.item>
-                                            <flux:menu.item icon="check-circle" wire:click="postJurnal({{ $j->id }})"
-                                                            wire:confirm="Posting jurnal {{ $j->no_bukti }}? Setelah posting tidak bisa diedit.">
+                                            <flux:menu.item icon="check-circle" wire:click="openConfirm('post', {{ $j->id }}, '{{ $j->no_bukti }}')">
                                                 Posting
                                             </flux:menu.item>
                                             <flux:menu.separator />
-                                            <flux:menu.item icon="trash" variant="danger" wire:click="hapusJurnal({{ $j->id }})"
-                                                            wire:confirm="Hapus jurnal draft {{ $j->no_bukti }}?">
+                                            <flux:menu.item icon="trash" variant="danger" wire:click="openConfirm('hapus', {{ $j->id }}, '{{ $j->no_bukti }}')">
                                                 Hapus
                                             </flux:menu.item>
                                         @else
-                                            <flux:menu.item icon="arrow-uturn-left" wire:click="reverseJurnal({{ $j->id }})"
-                                                            wire:confirm="Reverse jurnal {{ $j->no_bukti }}? Akan dibuat jurnal pembalik baru.">
+                                            <flux:menu.item icon="arrow-uturn-left" wire:click="openConfirm('reverse', {{ $j->id }}, '{{ $j->no_bukti }}')">
                                                 Reverse
                                             </flux:menu.item>
                                         @endif
@@ -499,8 +548,14 @@ new #[Title('Jurnal Umum')] class extends Component
 
             {{-- Header form --}}
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <flux:input type="date" wire:model="tanggal" label="Tanggal" required />
-                <flux:input wire:model="no_bukti" label="No Bukti" placeholder="mis. JU/08/26/001" required />
+                <flux:select wire:model.live="kategori_bukti" label="Kategori Jurnal" required>
+                    @foreach (\App\Models\Akunting\Jurnal::KATEGORI_BUKTI as $kode => $label)
+                        <flux:select.option value="{{ $kode }}">{{ $kode }} — {{ $label }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+                <flux:input type="date" wire:model.live="tanggal" label="Tanggal" required />
+                <flux:input wire:model="no_bukti" label="No Bukti" placeholder="auto-generate" required
+                            description="Auto berdasarkan kategori + tanggal. Bisa di-override manual." />
                 <div class="sm:col-span-3">
                     <flux:textarea wire:model="keterangan" label="Keterangan" rows="2"
                                    placeholder="Deskripsi transaksi (muncul di buku besar)" />
@@ -530,46 +585,29 @@ new #[Title('Jurnal Umum')] class extends Component
                                 <tr>
                                     <td class="px-2 py-2 text-center text-xs text-zinc-400">{{ $i + 1 }}</td>
                                     <td class="px-3 py-1.5 min-w-56">
-                                        <div x-data="coaCombo({{ $i }})" class="relative">
-                                            <button type="button" @click="toggle()"
-                                                    class="flex w-full items-center justify-between rounded border border-zinc-300 bg-white px-2 py-1.5 text-left text-xs hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:hover:bg-zinc-700">
-                                                <span class="truncate" :class="{ 'text-zinc-400 dark:text-zinc-500': !currentValue }" x-text="currentLabel"></span>
-                                                <svg class="ml-1 size-3.5 shrink-0 text-zinc-400" fill="none" viewBox="0 0 20 20" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 8l4 4 4-4" /></svg>
-                                            </button>
-                                            <div x-show="open" x-cloak @click.outside="open = false; search = ''"
-                                                 x-transition.opacity.duration.100ms
-                                                 class="absolute left-0 z-50 mt-1 max-h-72 w-72 overflow-hidden rounded-md border border-zinc-200 bg-white shadow-lg dark:border-zinc-600 dark:bg-zinc-800">
-                                                <div class="border-b border-zinc-200 p-1.5 dark:border-zinc-700">
-                                                    <input x-model="search" x-ref="searchInput" type="text"
-                                                           placeholder="Cari kode atau nama..."
-                                                           class="w-full rounded border-0 bg-zinc-50 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 dark:bg-zinc-900" />
-                                                </div>
-                                                <ul class="max-h-56 overflow-y-auto text-xs">
-                                                    <template x-for="c in filtered" :key="c.id">
-                                                        <li @click="select(c.id)"
-                                                            class="cursor-pointer px-2 py-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/30"
-                                                            :class="c.id == currentValue ? 'bg-blue-100 dark:bg-blue-900/50 font-semibold' : ''">
-                                                            <span class="font-mono text-zinc-500 dark:text-zinc-400" x-text="c.kode"></span>
-                                                            <span class="text-zinc-800 dark:text-zinc-200" x-text="' — ' + c.nama"></span>
-                                                        </li>
-                                                    </template>
-                                                    <li x-show="filtered.length === 0" class="px-2 py-3 text-center italic text-zinc-400">
-                                                        Tidak ada akun cocok.
-                                                    </li>
-                                                </ul>
-                                            </div>
-                                        </div>
+                                        <x-coa-picker
+                                            :wire-property="'detail.'.$i.'.coa_id'"
+                                            placeholder="Pilih akun..."
+                                            :options="$coaOptions"
+                                            compact
+                                        />
                                         @error("detail.$i.coa_id")
                                             <div class="mt-1 text-xs text-rose-600">{{ $message }}</div>
                                         @enderror
                                     </td>
                                     <td class="px-3 py-1.5">
-                                        <flux:input size="sm" wire:model="detail.{{ $i }}.debet"
-                                                    class="text-right font-mono" placeholder="0" />
+                                        <div x-data="rupiahInput()" x-init="init('detail.{{ $i }}.debet')">
+                                            <input type="text" x-model="display" @input="onInput"
+                                                   class="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-right font-mono text-sm placeholder-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800"
+                                                   placeholder="0" />
+                                        </div>
                                     </td>
                                     <td class="px-3 py-1.5">
-                                        <flux:input size="sm" wire:model="detail.{{ $i }}.kredit"
-                                                    class="text-right font-mono" placeholder="0" />
+                                        <div x-data="rupiahInput()" x-init="init('detail.{{ $i }}.kredit')">
+                                            <input type="text" x-model="display" @input="onInput"
+                                                   class="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-right font-mono text-sm placeholder-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800"
+                                                   placeholder="0" />
+                                        </div>
                                     </td>
                                     <td class="px-2 py-1.5">
                                         <flux:button size="xs" variant="ghost" icon="trash"
@@ -722,43 +760,70 @@ new #[Title('Jurnal Umum')] class extends Component
         @endif
     </flux:modal>
 
-    {{-- Alpine component: searchable COA select --}}
+    {{-- MODAL KONFIRMASI (post/reverse/hapus) --}}
+    <flux:modal name="confirm-jurnal" @class(['max-w-md'])>
+        @php
+            $confirmMap = [
+                'post' => ['icon' => 'check-circle', 'color' => 'emerald',
+                    'title' => 'Posting Jurnal', 'action_label' => 'Posting',
+                    'desc' => 'Setelah diposting, jurnal ini akan muncul di Buku Besar & laporan. TIDAK bisa diedit lagi (kalau salah, harus dibuat jurnal reversal).'],
+                'reverse' => ['icon' => 'arrow-uturn-left', 'color' => 'amber',
+                    'title' => 'Reverse Jurnal', 'action_label' => 'Buat Reversal',
+                    'desc' => 'Akan dibuat jurnal pembalik baru (debet↔kredit tertukar) sebagai koreksi. Jurnal asli tetap ada di sistem.'],
+                'hapus' => ['icon' => 'trash', 'color' => 'rose',
+                    'title' => 'Hapus Jurnal Draft', 'action_label' => 'Hapus',
+                    'desc' => 'Jurnal draft ini akan dihapus permanen dari sistem. Aksi ini tidak bisa dibatalkan.'],
+            ];
+            $c = $confirmMap[$confirmAction ?? 'post'] ?? $confirmMap['post'];
+        @endphp
+        <div class="space-y-4">
+            <div class="flex items-start gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-{{ $c['color'] }}-100 text-{{ $c['color'] }}-600 dark:bg-{{ $c['color'] }}-950/40 dark:text-{{ $c['color'] }}-400">
+                    <flux:icon name="{{ $c['icon'] }}" class="size-5" />
+                </div>
+                <div>
+                    <flux:heading size="lg">{{ $c['title'] }}</flux:heading>
+                    <flux:subheading>Jurnal: <span class="font-mono font-semibold">{{ $confirmJurnalLabel }}</span></flux:subheading>
+                </div>
+            </div>
+            <p class="text-sm text-zinc-600 dark:text-zinc-400">{{ $c['desc'] }}</p>
+            <div class="flex justify-end gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-700">
+                <flux:modal.close><flux:button variant="ghost">Batal</flux:button></flux:modal.close>
+                <flux:button variant="{{ $confirmAction === 'hapus' ? 'danger' : 'primary' }}" wire:click="executeConfirm">
+                    {{ $c['action_label'] }}
+                </flux:button>
+            </div>
+        </div>
+    </flux:modal>
+
+    {{-- Alpine components --}}
     @script
     <script>
-        Alpine.data('coaCombo', (idx) => ({
-            open: false,
-            search: '',
-            options: @js($coaOptions->map(fn ($c) => ['id' => $c->id, 'kode' => $c->kode, 'nama' => $c->nama])->values()->toArray()),
-            init() {
-                // Sync UI kalau value berubah dari luar (mis. openEdit / add baris baru)
-                this.$watch('open', v => {
-                    if (v) this.$nextTick(() => this.$refs.searchInput?.focus());
-                });
+        // Format thousand separator input (rupiah)
+        Alpine.data('rupiahInput', () => ({
+            display: '',
+            wireProp: null,
+            init(prop) {
+                this.wireProp = prop;
+                // Load initial value dari wire
+                const raw = this.$wire.get(prop);
+                this.display = this.format(raw);
             },
-            get currentValue() {
-                return this.$wire.get('detail.' + idx + '.coa_id');
+            format(v) {
+                if (v === null || v === undefined || v === '') return '';
+                // Parse: strip semua kecuali digit
+                const digits = String(v).replace(/[^\d]/g, '');
+                if (! digits) return '';
+                // Format dengan titik tiap 3 digit dari belakang
+                return digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
             },
-            get currentLabel() {
-                const v = this.currentValue;
-                if (! v) return 'Pilih akun...';
-                const c = this.options.find(o => o.id == v);
-                return c ? c.kode + ' — ' + c.nama : 'Pilih akun...';
-            },
-            get filtered() {
-                if (! this.search) return this.options;
-                const s = this.search.toLowerCase();
-                return this.options.filter(c => (c.kode + ' ' + c.nama).toLowerCase().includes(s));
-            },
-            toggle() {
-                this.open = ! this.open;
-                if (! this.open) this.search = '';
-            },
-            select(id) {
-                this.$wire.set('detail.' + idx + '.coa_id', id);
-                this.open = false;
-                this.search = '';
+            onInput(e) {
+                const digits = e.target.value.replace(/[^\d]/g, '');
+                this.display = this.format(digits);
+                this.$wire.set(this.wireProp, digits);
             },
         }));
+
     </script>
     @endscript
 </section>
