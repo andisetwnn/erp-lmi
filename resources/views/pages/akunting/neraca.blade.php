@@ -11,10 +11,16 @@ new #[Title('Neraca')] class extends Component
     #[Url(as: 'tgl')]
     public string $tanggal = '';
 
+    #[Url(as: 'from')]
+    public string $from = '';
+
     public function mount(): void
     {
         if ($this->tanggal === '') {
             $this->tanggal = now()->endOfMonth()->toDateString();
+        }
+        if ($this->from === '') {
+            $this->from = now()->startOfYear()->toDateString();
         }
     }
 
@@ -23,7 +29,11 @@ new #[Title('Neraca')] class extends Component
         $perusahaan = Perusahaan::first();
         $data = null;
         if ($perusahaan) {
-            $data = app(LaporanAkuntingService::class)->neraca($perusahaan->id, $this->tanggal);
+            $data = app(LaporanAkuntingService::class)->neraca(
+                $perusahaan->id,
+                $this->tanggal,
+                $this->from,
+            );
         }
 
         return [
@@ -47,17 +57,28 @@ new #[Title('Neraca')] class extends Component
                     <flux:subheading>{{ __('Posisi Aset, Kewajiban, dan Modal per tanggal cutoff.') }}</flux:subheading>
                 </div>
             </div>
-            <flux:button variant="ghost" icon="printer"
-                         href="{{ route('akunting.neraca.print', ['tgl' => $tanggal]) }}"
-                         target="_blank">
-                {{ __('Print / Export PDF') }}
-            </flux:button>
+            <div class="flex gap-2">
+                <flux:button variant="ghost" icon="document-arrow-down"
+                             href="{{ route('akunting.neraca.excel', ['tgl' => $tanggal, 'from' => $from]) }}">
+                    {{ __('Excel') }}
+                </flux:button>
+                <flux:button variant="ghost" icon="printer"
+                             href="{{ route('akunting.neraca.print', ['tgl' => $tanggal, 'from' => $from]) }}"
+                             target="_blank">
+                    {{ __('Cetak PDF') }}
+                </flux:button>
+            </div>
         </div>
 
         {{-- FILTER --}}
         <div class="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900 print:hidden">
             <div>
-                <flux:input type="date" wire:model.live="tanggal" label="Per Tanggal" />
+                <flux:input type="date" wire:model.live="from" label="Dari Tanggal (utk Laba Periode)"
+                            description="Awal periode untuk hitung laba/rugi berjalan" />
+            </div>
+            <div>
+                <flux:input type="date" wire:model.live="tanggal" label="Per Tanggal (Cutoff)"
+                            description="Snapshot posisi aset/kewajiban/modal" />
             </div>
         </div>
 
@@ -74,15 +95,16 @@ new #[Title('Neraca')] class extends Component
                     </div>
                 </div>
 
-                {{-- Balance status --}}
-                <div class="mb-4 rounded p-3 text-sm text-center font-semibold
-                    {{ $data['balanced'] ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300' }}">
-                    {{ $data['balanced'] ? '✓ Neraca Balance: Aset = Kewajiban + Modal + Laba' : '⚠ Neraca TIDAK BALANCE — cek jurnal!' }}
-                    <span class="ml-2 font-mono">
-                        (Aset {{ number_format($data['aset']['total'], 0, ',', '.') }}
-                        vs Pasiva {{ number_format($data['total_pasiva'], 0, ',', '.') }})
-                    </span>
-                </div>
+                @unless ($data['balanced'])
+                    {{-- Warning: neraca tidak balance --}}
+                    <div class="mb-4 rounded p-3 text-center text-sm font-semibold bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
+                        ⚠ Neraca TIDAK BALANCE — cek jurnal!
+                        <span class="ml-2 font-mono">
+                            (Aset {{ number_format($data['aset']['total'], 0, ',', '.') }}
+                            vs Pasiva {{ number_format($data['total_pasiva'], 0, ',', '.') }})
+                        </span>
+                    </div>
+                @endunless
 
                 <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     {{-- KIRI: ASET --}}

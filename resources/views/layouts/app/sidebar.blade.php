@@ -104,10 +104,6 @@
                                            :current="request()->routeIs('master.notaris.*')" wire:navigate>
                             {{ __('Notaris') }}
                         </flux:sidebar.item>
-                        <flux:sidebar.item icon="calculator" :href="route('master.coa.index')"
-                                           :current="request()->routeIs('master.coa.*')" wire:navigate>
-                            {{ __('COA') }}
-                        </flux:sidebar.item>
                         <flux:sidebar.item icon="users" :href="route('master.customer.index')"
                                            :current="request()->routeIs('master.customer.*')" wire:navigate>
                             {{ __('Customer') }}
@@ -188,11 +184,20 @@
                     || auth()->user()?->can('jurnal.bank.kelola')
                     || auth()->user()?->can('jurnal.kaskecil.kelola')
                     || auth()->user()?->can('bukubesar.lihat')
-                    || auth()->user()?->can('bukubank.lihat')
                     || auth()->user()?->can('labarugi.lihat')
-                    || auth()->user()?->can('neraca.lihat'))
+                    || auth()->user()?->can('neraca.lihat')
+                    || auth()->user()?->can('neracasaldo.lihat')
+                    || auth()->user()?->can('aruskas.lihat')
+                    || auth()->user()?->can('aktivatetap.lihat')
+                    || auth()->user()?->can('master.kelola'))
                     <flux:sidebar.group :heading="__('Akunting')" icon="calculator" expandable
-                                        :expanded="request()->routeIs('akunting.*')">
+                                        :expanded="request()->routeIs('akunting.*') || request()->routeIs('master.coa.*')">
+                        @can('master.kelola')
+                            <flux:sidebar.item icon="calculator" :href="route('master.coa.index')"
+                                               :current="request()->routeIs('master.coa.*')" wire:navigate>
+                                {{ __('COA') }}
+                            </flux:sidebar.item>
+                        @endcan
                         @if (auth()->user()?->can('jurnal.umum.kelola')
                             || auth()->user()?->can('jurnal.bank.kelola')
                             || auth()->user()?->can('jurnal.kaskecil.kelola'))
@@ -208,12 +213,6 @@
                                 {{ __('Buku Besar') }}
                             </flux:sidebar.item>
                         @endcan
-                        @can('bukubank.lihat')
-                            <flux:sidebar.item icon="building-library" :href="route('akunting.buku-bank.index')"
-                                               :current="request()->routeIs('akunting.buku-bank.*')" wire:navigate>
-                                {{ __('Buku Bank') }}
-                            </flux:sidebar.item>
-                        @endcan
                         @can('labarugi.lihat')
                             <flux:sidebar.item icon="chart-bar-square" :href="route('akunting.laba-rugi.index')"
                                                :current="request()->routeIs('akunting.laba-rugi.*')" wire:navigate>
@@ -224,6 +223,24 @@
                             <flux:sidebar.item icon="scale" :href="route('akunting.neraca.index')"
                                                :current="request()->routeIs('akunting.neraca.*')" wire:navigate>
                                 {{ __('Neraca') }}
+                            </flux:sidebar.item>
+                        @endcan
+                        @can('neracasaldo.lihat')
+                            <flux:sidebar.item icon="table-cells" :href="route('akunting.neraca-saldo.index')"
+                                               :current="request()->routeIs('akunting.neraca-saldo.*')" wire:navigate>
+                                {{ __('Neraca Saldo') }}
+                            </flux:sidebar.item>
+                        @endcan
+                        @can('aruskas.lihat')
+                            <flux:sidebar.item icon="banknotes" :href="route('akunting.arus-kas.index')"
+                                               :current="request()->routeIs('akunting.arus-kas.*')" wire:navigate>
+                                {{ __('Arus Kas') }}
+                            </flux:sidebar.item>
+                        @endcan
+                        @can('aktivatetap.lihat')
+                            <flux:sidebar.item icon="building-office" :href="route('akunting.aktiva-tetap.index')"
+                                               :current="request()->routeIs('akunting.aktiva-tetap.*')" wire:navigate>
+                                {{ __('Aktiva Tetap') }}
                             </flux:sidebar.item>
                         @endcan
                     </flux:sidebar.group>

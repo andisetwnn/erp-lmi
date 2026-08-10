@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Akunting\Jurnal;
 use App\Models\Akunting\JurnalDetail;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -35,6 +36,7 @@ class JurnalService
                 'tanggal' => $data['tanggal'],
                 'no_bukti' => $data['no_bukti'],
                 'tipe' => $data['tipe'] ?? 'umum',
+                'kategori_bukti' => $data['kategori_bukti'] ?? null,
                 'keterangan' => $data['keterangan'] ?? null,
                 'sumber_type' => $data['sumber_type'] ?? null,
                 'sumber_id' => $data['sumber_id'] ?? null,
@@ -166,6 +168,24 @@ class JurnalService
 
             return $reversal->fresh('detail');
         });
+    }
+
+    /**
+     * Auto-generate no bukti pattern {KATEGORI}/mm/yy/xxxx.
+     * Sequence increment per perusahaan + kategori + bulan.
+     */
+    public function generateNoBukti(int $perusahaanId, string $kategori, string $tanggal): string
+    {
+        $tgl = Carbon::parse($tanggal);
+        $prefix = strtoupper($kategori).'/'.$tgl->format('m').'/'.$tgl->format('y').'/';
+
+        $lastSeq = Jurnal::where('perusahaan_id', $perusahaanId)
+            ->where('no_bukti', 'like', $prefix.'%')
+            ->pluck('no_bukti')
+            ->map(fn ($n) => (int) preg_replace('/^.*\//', '', $n))
+            ->max() ?? 0;
+
+        return $prefix.str_pad((string) ($lastSeq + 1), 4, '0', STR_PAD_LEFT);
     }
 
     /** Delete jurnal draft (posted tidak bisa di-hapus, cuma reverse). */

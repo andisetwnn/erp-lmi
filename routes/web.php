@@ -122,6 +122,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::livewire('laba-rugi', 'pages::akunting.laba-rugi')->name('laba-rugi.index');
             Route::get('laba-rugi/print', [LaporanAkuntingPdfController::class, 'labaRugi'])
                 ->name('laba-rugi.print');
+            Route::get('laba-rugi/excel', [LaporanAkuntingPdfController::class, 'labaRugiExcel'])
+                ->name('laba-rugi.excel');
         });
 
         // Neraca
@@ -129,12 +131,37 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::livewire('neraca', 'pages::akunting.neraca')->name('neraca.index');
             Route::get('neraca/print', [LaporanAkuntingPdfController::class, 'neraca'])
                 ->name('neraca.print');
+            Route::get('neraca/excel', [LaporanAkuntingPdfController::class, 'neracaExcel'])
+                ->name('neraca.excel');
         });
 
-        // Buku Bank Dashboard
-        Route::middleware('permission:bukubank.lihat')->group(function () {
-            Route::livewire('buku-bank', 'pages::akunting.buku-bank')->name('buku-bank.index');
+        // Neraca Saldo (Trial Balance)
+        Route::middleware('permission:neracasaldo.lihat')->group(function () {
+            Route::livewire('neraca-saldo', 'pages::akunting.neraca-saldo')->name('neraca-saldo.index');
+            Route::get('neraca-saldo/print', [LaporanAkuntingPdfController::class, 'neracaSaldo'])
+                ->name('neraca-saldo.print');
+            Route::get('neraca-saldo/excel', [LaporanAkuntingPdfController::class, 'neracaSaldoExcel'])
+                ->name('neraca-saldo.excel');
         });
+
+        // Arus Kas (Cash Flow Statement)
+        Route::middleware('permission:aruskas.lihat')->group(function () {
+            Route::livewire('arus-kas', 'pages::akunting.arus-kas')->name('arus-kas.index');
+            Route::get('arus-kas/print', [LaporanAkuntingPdfController::class, 'arusKas'])
+                ->name('arus-kas.print');
+            Route::get('arus-kas/excel', [LaporanAkuntingPdfController::class, 'arusKasExcel'])
+                ->name('arus-kas.excel');
+        });
+
+        // Aktiva Tetap
+        Route::middleware('permission:aktivatetap.lihat')->group(function () {
+            Route::livewire('aktiva-tetap', 'pages::akunting.aktiva-tetap')->name('aktiva-tetap.index');
+            Route::get('aktiva-tetap/print', [LaporanAkuntingPdfController::class, 'aktivaTetap'])
+                ->name('aktiva-tetap.print');
+            Route::get('aktiva-tetap/excel', [LaporanAkuntingPdfController::class, 'aktivaTetapExcel'])
+                ->name('aktiva-tetap.excel');
+        });
+
     });
 
     // LAPORAN — laporan penjualan, stock, realisasi, outstanding, pembatalan, sales performance

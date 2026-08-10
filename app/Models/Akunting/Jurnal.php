@@ -18,6 +18,7 @@ class Jurnal extends Model
         'tanggal',
         'no_bukti',
         'tipe',
+        'kategori_bukti',
         'keterangan',
         'sumber_type',
         'sumber_id',
@@ -26,6 +27,16 @@ class Jurnal extends Model
         'posted_at',
         'reversed_from_jurnal_id',
         'created_by_user_id',
+    ];
+
+    /** 6 kategori bukti — untuk auto-generate prefix no bukti. */
+    public const KATEGORI_BUKTI = [
+        'BANK' => 'Bank',
+        'KAS' => 'Kas',
+        'PENJ' => 'Penjualan',
+        'AKM' => 'Akuntansi Memorial',
+        'RJE' => 'Reversing Journal Entry',
+        'HPP' => 'HPP (Harga Pokok Penjualan)',
     ];
 
     protected $casts = [

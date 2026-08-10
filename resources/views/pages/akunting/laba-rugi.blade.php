@@ -53,11 +53,17 @@ new #[Title('Laporan Laba Rugi')] class extends Component
                     <flux:subheading>{{ __('Pendapatan dikurangi Beban per periode.') }}</flux:subheading>
                 </div>
             </div>
-            <flux:button variant="ghost" icon="printer"
-                         href="{{ route('akunting.laba-rugi.print', ['from' => $from, 'to' => $to]) }}"
-                         target="_blank">
-                {{ __('Print / Export PDF') }}
-            </flux:button>
+            <div class="flex gap-2">
+                <flux:button variant="ghost" icon="document-arrow-down"
+                             href="{{ route('akunting.laba-rugi.excel', ['from' => $from, 'to' => $to]) }}">
+                    {{ __('Excel') }}
+                </flux:button>
+                <flux:button variant="ghost" icon="printer"
+                             href="{{ route('akunting.laba-rugi.print', ['from' => $from, 'to' => $to]) }}"
+                             target="_blank">
+                    {{ __('Cetak PDF') }}
+                </flux:button>
+            </div>
         </div>
 
         {{-- FILTER --}}
