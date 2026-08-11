@@ -224,21 +224,16 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
         }
 
         $jumlah = max($this->minTermin, min($this->maxTermin, (int) $this->jumlahTerminUm));
-        // Anchor jadwal termin pakai tanggal SPR (bukan tanggal bayar UTJ — belum diketahui saat sales bikin SPR).
-        // Finance yang akan geser tanggal setelah konfirmasi UTJ aktual kalau perlu.
-        $anchor = $this->tanggalSpr ? Carbon::parse($this->tanggalSpr) : null;
+        // Anchor jadwal termin pakai tanggal SPR (sementara — akan di-regenerate saat Finance
+        // konfirmasi UTJ, anchor final = utj_tanggal_transaksi). Aturan: termin 1 = anchor+15 hari,
+        // sisanya +1 bulan dari termin sebelumnya.
+        $anchor = \App\Support\SprJadwalTermin::toAnchor($this->tanggalSpr);
         $sisa = $this->sisaCicil;
         $perTermin = $jumlah > 0 ? round($sisa / $jumlah, 0) : 0;
 
-        $rows = [];
-        for ($n = 1; $n <= $jumlah; $n++) {
-            $rows[] = [
-                'urutan' => $n,
-                'tanggal' => $anchor ? $anchor->copy()->addMonthsNoOverflow($n) : null,
-                'jumlah' => $perTermin,
-            ];
-        }
-        return $rows;
+        return $anchor
+            ? \App\Support\SprJadwalTermin::generate($anchor, $jumlah, $perTermin)
+            : array_map(fn ($n) => ['urutan' => $n, 'tanggal' => null, 'jumlah' => $perTermin], range(1, $jumlah));
     }
 
     // Auto-adjust jumlah termin & SBUM saat jenis pembayaran berubah

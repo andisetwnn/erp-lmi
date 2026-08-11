@@ -350,6 +350,9 @@
                             <span class="w-16 shrink-0 text-zinc-500">- Pajak</span>
                             <span class="text-zinc-700 dark:text-zinc-300">: BPHTB, PBB, IMB, PPN dan Biaya-biaya resmi sesuai ketentuan pemerintah</span>
                         </div>
+                        <div class="mt-1.5 text-[11px] italic text-zinc-600 dark:text-zinc-400">
+                            <span class="font-semibold not-italic">Catatan:</span> Biaya administrasi adalah dana titipan dari konsumen untuk pembayaran/pengurusan legalitas kepada pihak ketiga, bukan bagian dari nilai penjualan rumah.
+                        </div>
                     </div>
                 </div>
 

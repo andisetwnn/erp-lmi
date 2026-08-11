@@ -9,6 +9,7 @@ use App\Models\Master\Spr;
 use App\Models\Master\SprRealisasiPembayaran;
 use App\Models\Master\SprSwitching;
 use App\Support\BusinessActivityLogger;
+use App\Support\SprJadwalTermin;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -326,14 +327,17 @@ class SprSwitchingService
         // Split UM ke 4 termin (default subsidi KPR)
         $jumlahTermin = 4;
         $perTermin = round((float) $sprBaru->um_net / $jumlahTermin, 0);
-        $anchor = $sprBaru->tanggal_spr ? Carbon::parse($sprBaru->tanggal_spr) : Carbon::now();
+        // Anchor prioritas: tanggal transfer UTJ → tanggal SPR → now (fallback).
+        $anchor = SprJadwalTermin::toAnchor($sprBaru->utj_tanggal_transaksi)
+            ?? SprJadwalTermin::toAnchor($sprBaru->tanggal_spr)
+            ?? Carbon::now();
 
-        for ($n = 1; $n <= $jumlahTermin; $n++) {
+        foreach (SprJadwalTermin::generate($anchor, $jumlahTermin, $perTermin) as $row) {
             $sprBaru->terminPembayaran()->create([
                 'jenis' => 'um',
-                'urutan' => $n,
-                'tanggal_jadwal' => $anchor->copy()->addMonthsNoOverflow($n),
-                'jumlah_jadwal' => $perTermin,
+                'urutan' => $row['urutan'],
+                'tanggal_jadwal' => $row['tanggal'],
+                'jumlah_jadwal' => $row['jumlah'],
                 'input_by_user_id' => null,
             ]);
         }

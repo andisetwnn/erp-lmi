@@ -92,6 +92,9 @@ new #[Title('Penerimaan Konsumen')] class extends Component
                 'status' => 'approved',
                 'approved_by_user_id' => Auth::id(),
                 'approved_at' => now(),
+                // tanggal_spr disamakan dengan tanggal transfer UTJ aktual dari Finance.
+                // Semua jadwal termin UM diregenerasi dari anchor ini.
+                'tanggal_spr' => $validated['confirmTanggalTransaksi'],
                 // Snapshot TTD Finance (user yang konfirmasi UTJ) — supaya print SPR stabil.
                 'ttd_finance_path' => Auth::user()->tanda_tangan_path,
             ]);
@@ -109,6 +112,20 @@ new #[Title('Penerimaan Konsumen')] class extends Component
                     'keterangan' => trim('UTJ dikonfirmasi Finance'.($validated['confirmCatatan'] ? ' · '.$validated['confirmCatatan'] : '')),
                     'input_by_user_id' => Auth::id(),
                 ]);
+            }
+
+            // Regenerate jadwal termin UM berdasarkan tanggal transfer UTJ.
+            // Termin ke-1 = UTJ + 15 hari, sisanya +1 bulan dari termin sebelumnya.
+            // Aman diregenerasi: pada tahap konfirmasi UTJ, realisasi UM belum ada (UM dibayar
+            // setelah TTD konsumen + akad).
+            $terminUm = $spr->terminPembayaran()->where('jenis', 'um')->orderBy('urutan')->get();
+            if ($terminUm->isNotEmpty()) {
+                $anchor = \App\Support\SprJadwalTermin::toAnchor($validated['confirmTanggalTransaksi']);
+                foreach ($terminUm as $t) {
+                    $t->update([
+                        'tanggal_jadwal' => \App\Support\SprJadwalTermin::tanggalTermin($anchor, (int) $t->urutan),
+                    ]);
+                }
             }
         });
 
