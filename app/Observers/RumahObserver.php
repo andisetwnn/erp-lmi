@@ -9,10 +9,13 @@ class RumahObserver
 {
     /** Field master yg kalau berubah dianggap penting untuk di-log. */
     private const TRACKED_FIELDS = [
+        'proyek_id',
+        'tipe_rumah_id',
+        'blok',
+        'nomor_unit',
         'biaya_tambahan',
         'discount',
         'ppn',
-        'tipe_rumah_id',
         'tanggal_launching',
     ];
 

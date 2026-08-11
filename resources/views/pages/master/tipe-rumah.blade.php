@@ -67,6 +67,43 @@ new #[Title('Master Tipe Rumah')] class extends Component {
 
     public ?string $deleteNama = null;
 
+    // Riwayat modal state
+    public string $riwayatTitle = '';
+
+    public array $riwayatData = [];
+
+    public function openRiwayat(int $id): void
+    {
+        $tipe = TipeRumah::with('proyek')->findOrFail($id);
+        $label = trim(($tipe->tipe ?? '').' '.($tipe->nama_tipe ?? ''));
+        $this->riwayatTitle = "Riwayat Tipe {$label}"
+            .($tipe->proyek?->nama_proyek ? ' · '.$tipe->proyek->nama_proyek : '');
+
+        $logs = \Spatie\Activitylog\Models\Activity::query()
+            ->where('subject_type', TipeRumah::class)
+            ->where('subject_id', $id)
+            ->with('causer')
+            ->orderByDesc('created_at')
+            ->limit(100)
+            ->get();
+
+        $this->riwayatData = $logs->map(function ($log) {
+            $props = $log->properties ?? collect();
+            $changes = $props->get('changes', []);
+
+            return [
+                'waktu' => $log->created_at?->translatedFormat('d M Y, H:i'),
+                'waktu_relative' => $log->created_at?->diffForHumans(),
+                'user' => $log->causer?->name ?? '—',
+                'event' => \App\Support\BusinessActivityLogger::labelFor($log->event),
+                'description' => \App\Support\BusinessActivityLogger::shortenDesc($log->description),
+                'changes' => is_array($changes) ? \App\Support\ActivityLogFormatter::formatChanges($changes) : [],
+            ];
+        })->toArray();
+
+        Flux::modal('riwayat-tipe')->show();
+    }
+
     public function mount(): void
     {
         // Hydrate dari session global kalau URL belum punya value
@@ -417,6 +454,11 @@ new #[Title('Master Tipe Rumah')] class extends Component {
                                                 <flux:menu.item icon="pencil-square" wire:click="edit({{ $row->id }})">
                                                     {{ __('Edit') }}
                                                 </flux:menu.item>
+                                                @can('log.lihat')
+                                                    <flux:menu.item icon="clock" wire:click="openRiwayat({{ $row->id }})">
+                                                        {{ __('Riwayat') }}
+                                                    </flux:menu.item>
+                                                @endcan
                                                 <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete({{ $row->id }})">
                                                     {{ __('Hapus') }}
                                                 </flux:menu.item>
@@ -623,6 +665,66 @@ new #[Title('Master Tipe Rumah')] class extends Component {
                     </flux:button>
                 </div>
             </form>
+        </flux:modal>
+
+        {{-- ═══════════════ MODAL RIWAYAT TIPE RUMAH ═══════════════ --}}
+        <flux:modal name="riwayat-tipe" class="md:w-3xl">
+            <div class="space-y-4">
+                <div class="flex items-start gap-3 border-b border-zinc-200 pb-3 dark:border-zinc-700">
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400">
+                        <flux:icon.clock class="size-5" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <flux:heading size="lg">{{ $riwayatTitle ?: __('Riwayat Perubahan') }}</flux:heading>
+                        <flux:subheading>{{ __('Timeline perubahan data tipe rumah (maksimal 100 entri terbaru).') }}</flux:subheading>
+                    </div>
+                </div>
+
+                <div class="max-h-[60vh] overflow-y-auto">
+                    @forelse ($riwayatData as $log)
+                        <div class="border-b border-zinc-100 py-3 dark:border-zinc-800 last:border-b-0">
+                            <div class="flex flex-wrap items-baseline gap-2 text-xs">
+                                <span class="font-semibold text-zinc-900 dark:text-white">{{ $log['user'] }}</span>
+                                <flux:badge color="blue" size="sm">{{ $log['event'] }}</flux:badge>
+                                <span class="text-zinc-500" title="{{ $log['waktu'] }}">{{ $log['waktu_relative'] }}</span>
+                                <span class="ml-auto font-mono text-[10px] text-zinc-400">{{ $log['waktu'] }}</span>
+                            </div>
+                            <div class="mt-1 text-xs text-zinc-600 dark:text-zinc-400">{{ $log['description'] }}</div>
+
+                            @if (! empty($log['changes']))
+                                <div class="mt-2 overflow-x-auto rounded border border-zinc-200 dark:border-zinc-700">
+                                    <table class="w-full text-[11px]">
+                                        <thead class="bg-zinc-50 dark:bg-zinc-800/50">
+                                            <tr class="text-left text-zinc-500">
+                                                <th class="px-2 py-1 font-semibold">Field</th>
+                                                <th class="px-2 py-1 font-semibold">Dari</th>
+                                                <th class="px-2 py-1 font-semibold">Ke</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
+                                            @foreach ($log['changes'] as $ch)
+                                                <tr>
+                                                    <td class="px-2 py-1 font-medium text-zinc-700 dark:text-zinc-300">{{ $ch['field'] }}</td>
+                                                    <td class="px-2 py-1 font-mono text-rose-700 dark:text-rose-400 line-through opacity-70">{{ $ch['from'] }}</td>
+                                                    <td class="px-2 py-1 font-mono font-semibold text-emerald-700 dark:text-emerald-400">{{ $ch['to'] }}</td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
+                        </div>
+                    @empty
+                        <div class="py-12 text-center text-sm text-zinc-400">
+                            {{ __('Belum ada riwayat perubahan untuk tipe rumah ini.') }}
+                        </div>
+                    @endforelse
+                </div>
+
+                <div class="flex justify-end border-t border-zinc-200 pt-3 dark:border-zinc-700">
+                    <flux:modal.close><flux:button variant="ghost">Tutup</flux:button></flux:modal.close>
+                </div>
+            </div>
         </flux:modal>
 
     </div>

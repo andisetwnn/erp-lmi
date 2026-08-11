@@ -4,8 +4,10 @@ namespace App\Providers;
 
 use App\Models\Master\ProspectCustomer;
 use App\Models\Master\Rumah;
+use App\Models\Master\TipeRumah;
 use App\Observers\ProspectCustomerObserver;
 use App\Observers\RumahObserver;
+use App\Observers\TipeRumahObserver;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
@@ -31,6 +33,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
 
         Rumah::observe(RumahObserver::class);
+        TipeRumah::observe(TipeRumahObserver::class);
         ProspectCustomer::observe(ProspectCustomerObserver::class);
     }
 
@@ -79,6 +82,7 @@ class AppServiceProvider extends ServiceProvider
                     $days--;
                 }
             }
+
             return $date;
         };
 
@@ -89,6 +93,7 @@ class AppServiceProvider extends ServiceProvider
             while ($date->isWeekend()) {
                 $date = $date->addDay();
             }
+
             return $date;
         };
 

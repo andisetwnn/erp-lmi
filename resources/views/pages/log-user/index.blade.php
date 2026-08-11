@@ -45,6 +45,10 @@ new #[Title('Log User')] class extends Component
     #[Url(as: 'q')]
     public string $search = '';
 
+    /** Filter subject (format "Type|id" — mis. "Rumah|5" atau "TipeRumah|3"). */
+    #[Url(as: 'subject')]
+    public string $subjectFilter = '';
+
     #[Url(as: 'per')]
     public int $perPage = 30;
 
@@ -56,6 +60,7 @@ new #[Title('Log User')] class extends Component
         $this->dateFrom = null;
         $this->dateTo = null;
         $this->search = '';
+        $this->subjectFilter = '';
         $this->resetPage();
     }
 
@@ -110,6 +115,16 @@ new #[Title('Log User')] class extends Component
             $s = $this->search;
             $query->where('description', 'like', "%{$s}%");
         }
+        if ($this->subjectFilter !== '') {
+            [$type, $id] = explode('|', $this->subjectFilter) + [null, null];
+            $classMap = [
+                'Rumah' => \App\Models\Master\Rumah::class,
+                'TipeRumah' => \App\Models\Master\TipeRumah::class,
+            ];
+            if (isset($classMap[$type]) && $id !== null) {
+                $query->where('subject_type', $classMap[$type])->where('subject_id', (int) $id);
+            }
+        }
 
         $this->applySort($query, [
             'created_at',
@@ -154,11 +169,32 @@ new #[Title('Log User')] class extends Component
                            class="block h-9 w-full rounded-lg border border-zinc-200 bg-white pl-9 pr-3 text-xs shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white" />
                 </div>
 
-                @if ($search || $logNameFilter || $eventFilter || $causerFilter || $dateFrom || $dateTo)
+                @if ($search || $logNameFilter || $eventFilter || $causerFilter || $dateFrom || $dateTo || $subjectFilter)
                     <button type="button" wire:click="resetFilters"
                             class="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
                         <flux:icon.x-mark class="size-3" /> Reset
                     </button>
+                @endif
+
+                @if ($subjectFilter)
+                    @php
+                        [$subjType, $subjId] = explode('|', $subjectFilter) + [null, null];
+                        $subjectLabel = match ($subjType) {
+                            'Rumah' => (function () use ($subjId) {
+                                $r = \App\Models\Master\Rumah::with('proyek', 'tipeRumah')->find($subjId);
+                                return $r ? "Unit {$r->blok}-{$r->nomor_unit} · {$r->tipeRumah?->tipe} · {$r->proyek?->nama_proyek}" : "Unit #{$subjId}";
+                            })(),
+                            'TipeRumah' => (function () use ($subjId) {
+                                $t = \App\Models\Master\TipeRumah::with('proyek')->find($subjId);
+                                return $t ? "Tipe {$t->tipe} · {$t->proyek?->nama_proyek}" : "Tipe #{$subjId}";
+                            })(),
+                            default => "$subjType #{$subjId}",
+                        };
+                    @endphp
+                    <div class="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-800 dark:border-blue-800/60 dark:bg-blue-950/40 dark:text-blue-300">
+                        <flux:icon.funnel class="size-3.5" />
+                        Riwayat: {{ $subjectLabel }}
+                    </div>
                 @endif
 
                 <button type="button" wire:click="exportExcel"
@@ -175,10 +211,11 @@ new #[Title('Log User')] class extends Component
                 {{-- Log name (kategori) --}}
                 @php
                     $kategoriLabel = fn ($ln) => match ($ln) {
-                        'penjualan' => 'Penjualan',
-                        'keuangan'  => 'Keuangan',
-                        'unit'      => 'Unit',
-                        default     => ucfirst((string) $ln),
+                        'penjualan'  => 'Penjualan',
+                        'keuangan'   => 'Keuangan',
+                        'unit'       => 'Unit',
+                        'tipe_rumah' => 'Tipe Rumah',
+                        default      => ucfirst((string) $ln),
                     };
                 @endphp
                 <select wire:model.live="logNameFilter" class="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-white">

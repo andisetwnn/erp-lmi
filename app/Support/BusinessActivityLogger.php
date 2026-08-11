@@ -6,6 +6,7 @@ use App\Models\Master\Booking;
 use App\Models\Master\Rumah;
 use App\Models\Master\Spr;
 use App\Models\Master\SprRealisasiPembayaran;
+use App\Models\Master\TipeRumah;
 use Illuminate\Support\Facades\Auth;
 
 /**
@@ -38,6 +39,10 @@ class BusinessActivityLogger
         'unit.created' => 'Unit Baru',
         'unit.updated' => 'Unit Diubah',
         'unit.status_changed' => 'Status Unit Berubah',
+        // Tipe Rumah
+        'tipe.created' => 'Tipe Rumah Baru',
+        'tipe.updated' => 'Tipe Rumah Diubah',
+        'tipe.deleted' => 'Tipe Rumah Dihapus',
     ];
 
     /** Konversi event code → label formal Indonesia. */
@@ -368,7 +373,6 @@ class BusinessActivityLogger
     {
         $rumah->loadMissing('proyek');
         $unit = $rumah->blok.'-'.$rumah->nomor_unit;
-        $fields = implode(', ', array_keys($changes));
 
         activity('unit')
             ->causedBy(self::causer())
@@ -379,7 +383,7 @@ class BusinessActivityLogger
                 'proyek' => $rumah->proyek?->nama_proyek,
                 'changes' => $changes,
             ])
-            ->log("Unit {$unit} diubah · field: {$fields}");
+            ->log("Unit {$unit} diubah");
     }
 
     public static function unitStatusChanged(Rumah $rumah, string $from, string $to): void
@@ -398,6 +402,58 @@ class BusinessActivityLogger
                 'to' => $to,
             ])
             ->log("Unit {$unit} · {$from} → {$to}");
+    }
+
+    public static function tipeRumahCreated(TipeRumah $tipe): void
+    {
+        $tipe->loadMissing('proyek');
+        $label = trim(($tipe->tipe ?? '').' '.($tipe->nama_tipe ?? ''));
+
+        activity('tipe_rumah')
+            ->causedBy(self::causer())
+            ->performedOn($tipe)
+            ->event('tipe.created')
+            ->withProperties([
+                'tipe' => $tipe->tipe,
+                'nama_tipe' => $tipe->nama_tipe,
+                'proyek' => $tipe->proyek?->nama_proyek,
+                'harga_jual' => (float) $tipe->harga_jual,
+                'harga_all_in' => (float) $tipe->harga_all_in,
+            ])
+            ->log("Tipe rumah baru {$label} ditambahkan · {$tipe->proyek?->nama_proyek}");
+    }
+
+    public static function tipeRumahUpdated(TipeRumah $tipe, array $changes): void
+    {
+        $tipe->loadMissing('proyek');
+        $label = trim(($tipe->tipe ?? '').' '.($tipe->nama_tipe ?? ''));
+
+        activity('tipe_rumah')
+            ->causedBy(self::causer())
+            ->performedOn($tipe)
+            ->event('tipe.updated')
+            ->withProperties([
+                'tipe' => $tipe->tipe,
+                'nama_tipe' => $tipe->nama_tipe,
+                'proyek' => $tipe->proyek?->nama_proyek,
+                'changes' => $changes,
+            ])
+            ->log("Tipe rumah {$label} diubah");
+    }
+
+    public static function tipeRumahDeleted(TipeRumah $tipe): void
+    {
+        $label = trim(($tipe->tipe ?? '').' '.($tipe->nama_tipe ?? ''));
+
+        activity('tipe_rumah')
+            ->causedBy(self::causer())
+            ->performedOn($tipe)
+            ->event('tipe.deleted')
+            ->withProperties([
+                'tipe' => $tipe->tipe,
+                'nama_tipe' => $tipe->nama_tipe,
+            ])
+            ->log("Tipe rumah {$label} dihapus");
     }
 
     /**
