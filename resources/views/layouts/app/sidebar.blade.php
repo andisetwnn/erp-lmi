@@ -54,12 +54,9 @@
             </flux:sidebar.header>
 
             @auth
-                @if (auth()->user()->can('master.kelola')
-                    || auth()->user()->can('spr.lihat')
-                    || auth()->user()->can('pembayaran.kelola')
-                    || auth()->user()->can('spr.approve'))
+                @canany(['master.kelola', 'master.proyek.kelola', 'spr.lihat', 'pembayaran.kelola', 'spr.approve'])
                     <livewire:active-proyek />
-                @endif
+                @endcanany
             @endauth
 
             <flux:sidebar.nav>
@@ -69,57 +66,77 @@
                     </flux:sidebar.item>
                 </flux:sidebar.group>
 
-                @can('master.kelola')
+                @canany([
+                    'master.kelola', 'master.perusahaan.kelola', 'master.proyek.kelola',
+                    'master.tipe.kelola', 'master.rumah.kelola', 'master.va.kelola',
+                    'master.sales.kelola', 'master.notaris.kelola', 'master.customer.kelola',
+                ])
                     <flux:sidebar.group :heading="__('Master Data')" icon="folder" expandable
                                         :expanded="request()->routeIs('master.*')">
-                        <flux:sidebar.item icon="building-office-2" :href="route('master.perusahaan.index')"
-                                           :current="request()->routeIs('master.perusahaan.*')" wire:navigate>
-                            {{ __('Perusahaan') }}
-                        </flux:sidebar.item>
-                        <flux:sidebar.item icon="banknotes" :href="route('master.bank.index')"
-                                           :current="request()->routeIs('master.bank.*')" wire:navigate>
-                            {{ __('Bank') }}
-                        </flux:sidebar.item>
-                        <flux:sidebar.item icon="home-modern" :href="route('master.proyek.index')"
-                                           :current="request()->routeIs('master.proyek.*')" wire:navigate>
-                            {{ __('Proyek') }}
-                        </flux:sidebar.item>
-                        <flux:sidebar.item icon="cube" :href="route('master.tipe-rumah.index')"
-                                           :current="request()->routeIs('master.tipe-rumah.*')" wire:navigate>
-                            {{ __('Tipe Rumah') }}
-                        </flux:sidebar.item>
-                        <flux:sidebar.item icon="key" :href="route('master.rumah.index')"
-                                           :current="request()->routeIs('master.rumah.*')" wire:navigate>
-                            {{ __('Rumah') }}
-                        </flux:sidebar.item>
-                        <flux:sidebar.item icon="credit-card" :href="route('master.virtual-account.index')"
-                                           :current="request()->routeIs('master.virtual-account.*')" wire:navigate>
-                            {{ __('Virtual Account') }}
-                        </flux:sidebar.item>
-                        <flux:sidebar.item icon="user-group" :href="route('master.sales.index')"
-                                           :current="request()->routeIs('master.sales.*')" wire:navigate>
-                            {{ __('Sales') }}
-                        </flux:sidebar.item>
-                        <flux:sidebar.item icon="identification" :href="route('master.notaris.index')"
-                                           :current="request()->routeIs('master.notaris.*')" wire:navigate>
-                            {{ __('Notaris') }}
-                        </flux:sidebar.item>
-                        <flux:sidebar.item icon="users" :href="route('master.customer.index')"
-                                           :current="request()->routeIs('master.customer.*')" wire:navigate>
-                            {{ __('Customer') }}
-                        </flux:sidebar.item>
+                        @canany(['master.kelola', 'master.perusahaan.kelola'])
+                            <flux:sidebar.item icon="building-office-2" :href="route('master.perusahaan.index')"
+                                               :current="request()->routeIs('master.perusahaan.*')" wire:navigate>
+                                {{ __('Perusahaan') }}
+                            </flux:sidebar.item>
+                            <flux:sidebar.item icon="banknotes" :href="route('master.bank.index')"
+                                               :current="request()->routeIs('master.bank.*')" wire:navigate>
+                                {{ __('Bank') }}
+                            </flux:sidebar.item>
+                        @endcanany
+                        @canany(['master.kelola', 'master.proyek.kelola'])
+                            <flux:sidebar.item icon="home-modern" :href="route('master.proyek.index')"
+                                               :current="request()->routeIs('master.proyek.*')" wire:navigate>
+                                {{ __('Proyek') }}
+                            </flux:sidebar.item>
+                        @endcanany
+                        @canany(['master.kelola', 'master.tipe.kelola'])
+                            <flux:sidebar.item icon="cube" :href="route('master.tipe-rumah.index')"
+                                               :current="request()->routeIs('master.tipe-rumah.*')" wire:navigate>
+                                {{ __('Tipe Rumah') }}
+                            </flux:sidebar.item>
+                        @endcanany
+                        @canany(['master.kelola', 'master.rumah.kelola'])
+                            <flux:sidebar.item icon="key" :href="route('master.rumah.index')"
+                                               :current="request()->routeIs('master.rumah.*')" wire:navigate>
+                                {{ __('Rumah') }}
+                            </flux:sidebar.item>
+                        @endcanany
+                        @canany(['master.kelola', 'master.va.kelola'])
+                            <flux:sidebar.item icon="credit-card" :href="route('master.virtual-account.index')"
+                                               :current="request()->routeIs('master.virtual-account.*')" wire:navigate>
+                                {{ __('Virtual Account') }}
+                            </flux:sidebar.item>
+                        @endcanany
+                        @canany(['master.kelola', 'master.sales.kelola'])
+                            <flux:sidebar.item icon="user-group" :href="route('master.sales.index')"
+                                               :current="request()->routeIs('master.sales.*')" wire:navigate>
+                                {{ __('Sales') }}
+                            </flux:sidebar.item>
+                        @endcanany
+                        @canany(['master.kelola', 'master.notaris.kelola'])
+                            <flux:sidebar.item icon="identification" :href="route('master.notaris.index')"
+                                               :current="request()->routeIs('master.notaris.*')" wire:navigate>
+                                {{ __('Notaris') }}
+                            </flux:sidebar.item>
+                        @endcanany
+                        @canany(['master.kelola', 'master.customer.kelola'])
+                            <flux:sidebar.item icon="users" :href="route('master.customer.index')"
+                                               :current="request()->routeIs('master.customer.*')" wire:navigate>
+                                {{ __('Customer') }}
+                            </flux:sidebar.item>
+                        @endcanany
                     </flux:sidebar.group>
-                @endcan
+                @endcanany
 
-                @if (auth()->user()?->can('spr.lihat') || auth()->user()?->can('master.kelola'))
+                @canany(['spr.lihat', 'master.kelola', 'master.customer.kelola', 'pembayaran.kelola'])
                     <flux:sidebar.group :heading="__('Marketing')" icon="megaphone" expandable
                                         :expanded="request()->routeIs('marketing.*') || request()->routeIs('master.prospect-customer.*') || request()->routeIs('finance.tempel-materai.*')">
-                        @can('master.kelola')
+                        @canany(['master.kelola', 'master.customer.kelola'])
                             <flux:sidebar.item icon="funnel" :href="route('master.prospect-customer.index')"
                                                :current="request()->routeIs('master.prospect-customer.*')" wire:navigate>
                                 {{ __('Prospect Customer') }}
                             </flux:sidebar.item>
-                        @endcan
+                        @endcanany
                         @can('spr.lihat')
                             <flux:sidebar.item icon="document-text" :href="route('marketing.spr.index')"
                                                :current="request()->routeIs('marketing.spr.*')" wire:navigate>
@@ -189,15 +206,16 @@
                     || auth()->user()?->can('neracasaldo.lihat')
                     || auth()->user()?->can('aruskas.lihat')
                     || auth()->user()?->can('aktivatetap.lihat')
-                    || auth()->user()?->can('master.kelola'))
+                    || auth()->user()?->can('master.kelola')
+                    || auth()->user()?->can('master.coa.kelola'))
                     <flux:sidebar.group :heading="__('Akunting')" icon="calculator" expandable
                                         :expanded="request()->routeIs('akunting.*') || request()->routeIs('master.coa.*')">
-                        @can('master.kelola')
+                        @canany(['master.kelola', 'master.coa.kelola'])
                             <flux:sidebar.item icon="calculator" :href="route('master.coa.index')"
                                                :current="request()->routeIs('master.coa.*')" wire:navigate>
                                 {{ __('COA') }}
                             </flux:sidebar.item>
-                        @endcan
+                        @endcanany
                         @if (auth()->user()?->can('jurnal.umum.kelola')
                             || auth()->user()?->can('jurnal.bank.kelola')
                             || auth()->user()?->can('jurnal.kaskecil.kelola'))

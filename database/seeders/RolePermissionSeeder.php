@@ -18,23 +18,39 @@ class RolePermissionSeeder extends Seeder
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         $permissions = [
-            // Sistem
-            'master.kelola',      // CRUD semua master data
+            // ─── SISTEM ───
             'user.kelola',        // Kelola user & role
             'ttd.kelola',         // Register / update tanda tangan sendiri
 
-            // SPR (cetak/batal ter-cover spr.lihat, tidak perlu permission terpisah)
-            'spr.lihat',          // Lihat list & detail SPR + cetak PDF + halaman pembatalan
+            // ─── MASTER (breakdown per entitas) ───
+            'master.kelola',          // Umbrella: kelola SEMUA master (backward compat + super-admin)
+            'master.perusahaan.kelola',
+            'master.proyek.kelola',
+            'master.tipe.kelola',     // PM: buka blok baru, atur harga tipe
+            'master.rumah.kelola',    // PM: kelola unit rumah (blok+nomor)
+            'master.customer.kelola',
+            'master.sales.kelola',
+            'master.notaris.kelola',
+            'master.va.kelola',       // Virtual account
+            'master.coa.kelola',      // Chart of Accounts
+
+            // ─── SPR (breakdown per aksi) ───
+            'spr.lihat',          // Lihat list & detail SPR + halaman pembatalan
             'spr.approve',        // Approve SPR sebagai Project Manager
+            'spr.batal',          // Proses pembatalan SPR + refund
             'spr.pindah-unit',    // Pindah kavling / swap SPR
+            'spr.cetak',          // Cetak PDF SPR final
 
-            // Finance (utj.konfirmasi ter-cover pembayaran.kelola)
-            'pembayaran.kelola',  // Konfirmasi UTJ + realisasi cicilan + tempel materai + refund
+            // ─── FINANCE ───
+            'pembayaran.kelola',  // Konfirmasi UTJ + realisasi cicilan + tempel materai
+            'pembayaran.approve', // Approve refund / reversal (biasanya finance-manager)
 
-            // Akunting
-            'jurnal.umum.kelola',      // Input/edit/post jurnal umum
-            'jurnal.bank.kelola',      // Input/edit/post jurnal bank
-            'jurnal.kaskecil.kelola',  // Input/edit/post jurnal kas kecil
+            // ─── AKUNTING ───
+            'jurnal.umum.kelola',      // Input/edit jurnal umum (draft)
+            'jurnal.bank.kelola',      // Input/edit jurnal bank
+            'jurnal.kaskecil.kelola',  // Input/edit jurnal kas kecil
+            'jurnal.post',             // Posting jurnal (draft → posted), biasanya manager
+            'jurnal.delete',           // Hapus jurnal, biasanya manager
             'bukubesar.lihat',         // Lihat buku besar
             'labarugi.lihat',          // Lihat laporan laba rugi
             'neraca.lihat',            // Lihat neraca
@@ -43,14 +59,12 @@ class RolePermissionSeeder extends Seeder
             'aktivatetap.kelola',      // CRUD aktiva tetap
             'aktivatetap.lihat',       // Lihat aktiva tetap
 
-            // Laporan
+            // ─── LAPORAN ───
             'laporan.lihat',
 
-            // Log & Audit
+            // ─── LOG & MONITORING ───
             'log.lihat',
-
-            // Monitoring
-            'monitoring.lihat',   // Feed monitoring realtime + notifikasi (PM, Direktur)
+            'monitoring.lihat',    // Feed monitoring realtime + notifikasi (PM, Direktur)
             'notifikasi.keuangan', // Bell notif khusus event Keuangan
         ];
 
@@ -59,10 +73,13 @@ class RolePermissionSeeder extends Seeder
         }
 
         $roleMatrix = [
+            // Super admin: SEMUA permission
             'super-admin' => $permissions,
 
+            // Direktur: view-only (SPR, akunting, laporan, log, monitor)
             'direktur' => [
                 'spr.lihat',
+                'spr.cetak',
                 'bukubesar.lihat',
                 'labarugi.lihat',
                 'neraca.lihat',
@@ -75,19 +92,35 @@ class RolePermissionSeeder extends Seeder
                 'ttd.kelola',
             ],
 
+            // Project Manager: approve SPR + kelola master proyek/tipe/rumah (untuk buka blok)
             'project-manager' => [
+                'master.proyek.kelola',
+                'master.tipe.kelola',
+                'master.rumah.kelola',
                 'spr.lihat',
                 'spr.approve',
+                'spr.pindah-unit',
+                'spr.cetak',
                 'laporan.lihat',
                 'log.lihat',
                 'monitoring.lihat',
                 'ttd.kelola',
             ],
 
+            // Finance: full akunting + pembayaran + master keuangan (notaris/VA/COA)
             'finance' => [
+                'master.notaris.kelola',
+                'master.va.kelola',
+                'master.coa.kelola',
                 'spr.lihat',
+                'spr.cetak',
                 'pembayaran.kelola',
+                'pembayaran.approve',
                 'jurnal.umum.kelola',
+                'jurnal.bank.kelola',
+                'jurnal.kaskecil.kelola',
+                'jurnal.post',
+                'jurnal.delete',
                 'bukubesar.lihat',
                 'labarugi.lihat',
                 'neraca.lihat',
@@ -100,8 +133,12 @@ class RolePermissionSeeder extends Seeder
                 'ttd.kelola',
             ],
 
+            // Admin KPR: kelola customer + proses pembatalan SPR + laporan
             'admin-kpr' => [
+                'master.customer.kelola',
                 'spr.lihat',
+                'spr.batal',
+                'spr.cetak',
                 'laporan.lihat',
                 'ttd.kelola',
             ],
@@ -112,14 +149,12 @@ class RolePermissionSeeder extends Seeder
             ->where('guard_name', 'web')
             ->delete();
 
-        // Hapus permission yang tidak dipakai lagi:
-        // - Modul mendatang (jurnal/kpr/sp3k/akad) → belum ada
-        // - Permission redundan (spr.cetak/spr.batal/utj.konfirmasi) → sudah ter-cover spr.lihat & pembayaran.kelola
-        // - Legacy dari seeder awal
+        // Hapus permission yang tidak dipakai lagi (legacy dari seeder awal).
         Permission::whereIn('name', [
             'customer.kelola', 'dbos.kelola', 'spr.kelola', 'approval.proses',
             'jurnal.kelola', 'kpr.kelola', 'sp3k.kelola', 'akad.kelola',
-            'spr.cetak', 'spr.batal', 'utj.konfirmasi',
+            'utj.konfirmasi',
+            'bukubank.lihat', // halaman Buku Bank sudah dihapus (dilebur ke Buku Besar)
         ])
             ->where('guard_name', 'web')
             ->delete();

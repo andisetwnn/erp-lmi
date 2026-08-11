@@ -77,32 +77,103 @@ new #[Title('Pengguna Sistem')] class extends Component
 
     // Label ramah pengguna untuk tiap permission (menggantikan tampilan kode teknis di UI)
     public const PERMISSION_LABEL = [
-        'master.kelola'       => 'Kelola Data Master',
-        'user.kelola'         => 'Kelola Pengguna & Role',
-        'ttd.kelola'          => 'Kelola Tanda Tangan Sendiri',
-        'spr.lihat'           => 'Akses Menu SPR',
-        'spr.approve'         => 'Persetujuan SPR',
-        'spr.pindah-unit'     => 'Pindah Kavling',
-        'pembayaran.kelola'   => 'Kelola Penerimaan Konsumen',
-        'laporan.lihat'       => 'Lihat Laporan',
-        'log.lihat'           => 'Lihat Log Aktivitas',
-        'monitoring.lihat'    => 'Monitoring & Notifikasi Umum',
-        'notifikasi.keuangan' => 'Notifikasi Khusus Keuangan',
+        // Sistem
+        'user.kelola'               => 'Kelola Pengguna & Role',
+        'ttd.kelola'                => 'Kelola Tanda Tangan Sendiri',
+        // Master
+        'master.kelola'             => 'Kelola Semua Master (Umbrella)',
+        'master.perusahaan.kelola'  => 'Kelola Master Perusahaan',
+        'master.proyek.kelola'      => 'Kelola Master Proyek',
+        'master.tipe.kelola'        => 'Kelola Master Tipe Rumah',
+        'master.rumah.kelola'       => 'Kelola Master Unit Rumah',
+        'master.customer.kelola'    => 'Kelola Master Customer',
+        'master.sales.kelola'       => 'Kelola Master Sales',
+        'master.notaris.kelola'     => 'Kelola Master Notaris',
+        'master.va.kelola'          => 'Kelola Master Virtual Account',
+        'master.coa.kelola'         => 'Kelola Master COA',
+        // SPR
+        'spr.lihat'                 => 'Akses Menu SPR',
+        'spr.approve'               => 'Persetujuan SPR',
+        'spr.batal'                 => 'Pembatalan SPR',
+        'spr.pindah-unit'           => 'Pindah Kavling',
+        'spr.cetak'                 => 'Cetak PDF SPR',
+        // Finance
+        'pembayaran.kelola'         => 'Kelola Penerimaan Konsumen',
+        'pembayaran.approve'        => 'Approve Pembayaran',
+        // Akunting
+        'jurnal.umum.kelola'        => 'Kelola Jurnal Umum',
+        'jurnal.bank.kelola'        => 'Kelola Jurnal Bank',
+        'jurnal.kaskecil.kelola'    => 'Kelola Jurnal Kas Kecil',
+        'jurnal.post'               => 'Posting Jurnal',
+        'jurnal.delete'             => 'Hapus Jurnal',
+        'bukubesar.lihat'           => 'Lihat Buku Besar',
+        'labarugi.lihat'            => 'Lihat Laba Rugi',
+        'neraca.lihat'              => 'Lihat Neraca',
+        'neracasaldo.lihat'         => 'Lihat Neraca Saldo',
+        'aruskas.lihat'             => 'Lihat Arus Kas',
+        'aktivatetap.lihat'         => 'Lihat Aktiva Tetap',
+        'aktivatetap.kelola'        => 'Kelola Aktiva Tetap',
+        // Laporan & Monitoring
+        'laporan.lihat'             => 'Lihat Laporan',
+        'log.lihat'                 => 'Lihat Log Aktivitas',
+        'monitoring.lihat'          => 'Monitoring & Notifikasi Umum',
+        'notifikasi.keuangan'       => 'Notifikasi Khusus Keuangan',
     ];
 
     // Deskripsi tiap permission (untuk info di UI matrix)
     public const PERMISSION_DESC = [
-        'master.kelola'       => 'Menambah, mengubah, dan menghapus data master: perusahaan, proyek, tipe rumah, unit, customer, sales, bank, virtual account, COA, alasan pembatalan, dan notaris.',
-        'user.kelola'         => 'Menambah, mengubah, menonaktifkan pengguna sistem, mengatur role, dan mengelola permission per role.',
-        'ttd.kelola'          => 'Mendaftarkan atau memperbarui gambar tanda tangan digital pribadi yang digunakan untuk keperluan persetujuan.',
-        'spr.lihat'           => 'Mengakses seluruh menu SPR: melihat daftar & detail, mencetak PDF (draft maupun final), serta memproses pembatalan SPR beserta pengembalian dana.',
-        'spr.approve'         => 'Menyetujui atau menolak SPR pada tahap persetujuan Project Manager.',
-        'spr.pindah-unit'     => 'Memindahkan customer dari satu kavling ke kavling lain, termasuk menukar unit antar dua SPR. Selisih harga dan realisasi otomatis diproses.',
-        'pembayaran.kelola'   => 'Mengakses menu Penerimaan Konsumen: konfirmasi UTJ, mencatat cicilan Uang Muka, menempelkan e-Materai, dan memproses realisasi pembayaran.',
-        'laporan.lihat'       => 'Mengakses menu Laporan (Penjualan, Stok Unit, Kwitansi Masuk, Tunggakan UM, Pembatalan, Peringkat Sales).',
-        'log.lihat'           => 'Melihat Log Aktivitas (audit trail seluruh tindakan pengguna di dalam sistem).',
-        'monitoring.lihat'    => 'Melihat feed monitoring realtime beserta notifikasi lonceng untuk seluruh aktivitas sistem.',
-        'notifikasi.keuangan' => 'Menerima notifikasi lonceng khusus untuk aktivitas yang berkaitan dengan tim Keuangan (SPR baru menunggu verifikasi UTJ, konsumen selesai tanda tangan, dan sebagainya).',
+        // Sistem
+        'user.kelola'               => 'Menambah, mengubah, menonaktifkan pengguna sistem, mengatur role, dan mengelola permission per role.',
+        'ttd.kelola'                => 'Mendaftarkan atau memperbarui gambar tanda tangan digital pribadi yang digunakan untuk keperluan persetujuan.',
+        // Master
+        'master.kelola'             => 'Umbrella: akses SEMUA menu master (perusahaan, proyek, tipe rumah, unit, customer, sales, notaris, VA, COA). Boleh dipakai bareng permission spesifik di bawah — sistem pakai OR.',
+        'master.perusahaan.kelola'  => 'Mengubah data perusahaan (nama, alamat, logo, direksi) — biasanya super-admin only.',
+        'master.proyek.kelola'      => 'Menambah / mengubah data proyek (cluster, alamat, siteplan). PM biasanya butuh ini.',
+        'master.tipe.kelola'        => 'Menambah / mengubah data tipe rumah (harga jual, harga all-in, luas, spesifikasi). PM biasanya butuh ini untuk atur harga per tipe.',
+        'master.rumah.kelola'       => 'Menambah / mengubah unit rumah (blok, nomor, biaya tambahan). PM butuh untuk buka blok baru.',
+        'master.customer.kelola'    => 'Menambah / mengubah data customer (KTP, NPWP, alamat). Admin KPR biasanya butuh ini.',
+        'master.sales.kelola'       => 'Menambah / mengubah data sales lapangan beserta akun DBOS-nya.',
+        'master.notaris.kelola'     => 'Menambah / mengubah data notaris beserta biaya jasa. Finance biasanya butuh ini.',
+        'master.va.kelola'          => 'Menambah / mengubah virtual account bank untuk penerimaan konsumen.',
+        'master.coa.kelola'         => 'Menambah / mengubah Chart of Accounts (COA) beserta struktur hierarkinya. Finance biasanya butuh ini.',
+        // SPR
+        'spr.lihat'                 => 'Mengakses seluruh menu SPR: melihat daftar & detail SPR.',
+        'spr.approve'               => 'Menyetujui atau menolak SPR pada tahap persetujuan Project Manager.',
+        'spr.batal'                 => 'Memproses pembatalan SPR beserta pengembalian dana ke customer.',
+        'spr.pindah-unit'           => 'Memindahkan customer dari satu kavling ke kavling lain, termasuk menukar unit antar dua SPR. Selisih harga dan realisasi otomatis diproses.',
+        'spr.cetak'                 => 'Mencetak PDF SPR (baik draft maupun versi final bermaterai).',
+        // Finance
+        'pembayaran.kelola'         => 'Mengakses menu Penerimaan Konsumen: konfirmasi UTJ, mencatat cicilan Uang Muka, menempelkan e-Materai, dan memproses realisasi pembayaran.',
+        'pembayaran.approve'        => 'Menyetujui pengembalian dana (refund) & reversal realisasi pembayaran — biasanya finance-manager.',
+        // Akunting
+        'jurnal.umum.kelola'        => 'Input, edit jurnal umum (semua kategori bukti: KAS, BANK, PENJ, HPP, AKM, RJE, dsb) di modul Akunting.',
+        'jurnal.bank.kelola'        => 'Input jurnal khusus transaksi bank (transfer masuk/keluar, kliring, biaya administrasi bank).',
+        'jurnal.kaskecil.kelola'    => 'Input jurnal khusus kas kecil (petty cash) untuk operasional harian.',
+        'jurnal.post'               => 'Memposting jurnal dari status draft menjadi posted (masuk ke buku besar). Biasanya level finance-manager / kepala akunting.',
+        'jurnal.delete'             => 'Menghapus jurnal yang sudah tercatat (baik draft maupun posted). Biasanya finance-manager only.',
+        'bukubesar.lihat'           => 'Melihat Buku Besar per akun COA: mutasi debet/kredit + running balance per periode.',
+        'labarugi.lihat'            => 'Melihat Laporan Laba Rugi (pendapatan − beban), export PDF & Excel.',
+        'neraca.lihat'              => 'Melihat Neraca (Aset, Kewajiban, Modal) per tanggal cutoff dan cek balance otomatis.',
+        'neracasaldo.lihat'         => 'Melihat Neraca Saldo (Trial Balance): daftar semua akun + mutasi debet/kredit + saldo akhir, tools cross-check jurnal.',
+        'aruskas.lihat'             => 'Melihat Laporan Arus Kas (Cash Flow) direct method: aktivitas Operasi, Investasi, dan Pendanaan.',
+        'aktivatetap.lihat'         => 'Melihat daftar Aktiva Tetap (kendaraan, inventaris kantor, bangunan) beserta nilai buku dan akumulasi penyusutan.',
+        'aktivatetap.kelola'        => 'Menambah, mengubah, menghapus data Aktiva Tetap serta mengelola perhitungan penyusutan.',
+        // Laporan & Monitoring
+        'laporan.lihat'             => 'Mengakses menu Laporan (Penjualan, Stok Unit, Kwitansi Masuk, Tunggakan UM, Pembatalan, Peringkat Sales).',
+        'log.lihat'                 => 'Melihat Log Aktivitas (audit trail seluruh tindakan pengguna di dalam sistem).',
+        'monitoring.lihat'          => 'Melihat feed monitoring realtime beserta notifikasi lonceng untuk seluruh aktivitas sistem.',
+        'notifikasi.keuangan'       => 'Menerima notifikasi lonceng khusus untuk aktivitas yang berkaitan dengan tim Keuangan (SPR baru menunggu verifikasi UTJ, konsumen selesai tanda tangan, dan sebagainya).',
+    ];
+
+    // Remap prefix permission ke nama group yang lebih ringkas (biar akunting jadi 1 section, bukan 7)
+    public const PERMISSION_GROUP_MAP = [
+        'jurnal'      => 'akunting',
+        'bukubesar'   => 'akunting',
+        'labarugi'    => 'akunting',
+        'neraca'      => 'akunting',
+        'neracasaldo' => 'akunting',
+        'aruskas'     => 'akunting',
+        'aktivatetap' => 'akunting',
     ];
 
     protected function defaultSortBy(): ?string
@@ -441,9 +512,15 @@ new #[Title('Pengguna Sistem')] class extends Component
 
         $roles = Role::where('guard_name', 'web')->orderBy('name')->get();
 
-        // Grouping permission by prefix (mis. spr.*, master.*) untuk UI
+        // Grouping permission by prefix (mis. spr.*, master.*) untuk UI.
+        // PERMISSION_GROUP_MAP di-apply supaya beberapa prefix (jurnal/labarugi/neraca/dll)
+        // dilebur ke satu section "akunting" biar tidak jadi 7 group kecil.
         $allPermissions = Permission::where('guard_name', 'web')->orderBy('name')->get();
-        $permissionGroups = $allPermissions->groupBy(fn ($p) => explode('.', $p->name)[0]);
+        $permissionGroups = $allPermissions->groupBy(function ($p) {
+            $prefix = explode('.', $p->name)[0];
+
+            return self::PERMISSION_GROUP_MAP[$prefix] ?? $prefix;
+        })->sortKeys();
 
         // Matrix: [roleName => [permName => hasIt]]
         $matrix = [];

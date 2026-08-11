@@ -69,20 +69,41 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::livewire('user-akses', 'pages::master.user')->name('user-akses.index');
     });
 
-    Route::middleware('permission:master.kelola')->prefix('master')->name('master.')->group(function () {
-        Route::livewire('perusahaan', 'pages::master.perusahaan')->name('perusahaan.index');
-        Route::livewire('bank', 'pages::master.bank')->name('bank.index');
-        Route::livewire('proyek', 'pages::master.proyek')->name('proyek.index');
-        Route::livewire('proyek/{id}/siteplan-mapping', 'pages::master.proyek-siteplan-mapping')->name('proyek.siteplan-mapping');
-        Route::livewire('tipe-rumah', 'pages::master.tipe-rumah')->name('tipe-rumah.index');
-        Route::livewire('rumah', 'pages::master.rumah')->name('rumah.index');
-        Route::livewire('virtual-account', 'pages::master.virtual-account')->name('virtual-account.index');
-        Route::livewire('alasan-pembatalan', 'pages::master.alasan-pembatalan')->name('alasan-pembatalan.index');
-        Route::livewire('sales', 'pages::master.sales')->name('sales.index');
-        Route::livewire('notaris', 'pages::master.notaris')->name('notaris.index');
-        Route::livewire('coa', 'pages::master.coa')->name('coa.index');
-        Route::livewire('customer', 'pages::master.customer')->name('customer.index');
-        Route::livewire('prospect-customer', 'pages::master.prospect-customer')->name('prospect-customer.index');
+    // MASTER — permission granular per entitas (spatie OR syntax: "master.kelola|master.<x>.kelola")
+    Route::prefix('master')->name('master.')->group(function () {
+        Route::middleware('permission:master.kelola|master.perusahaan.kelola')->group(function () {
+            Route::livewire('perusahaan', 'pages::master.perusahaan')->name('perusahaan.index');
+            Route::livewire('bank', 'pages::master.bank')->name('bank.index');
+        });
+        Route::middleware('permission:master.kelola|master.proyek.kelola')->group(function () {
+            Route::livewire('proyek', 'pages::master.proyek')->name('proyek.index');
+            Route::livewire('proyek/{id}/siteplan-mapping', 'pages::master.proyek-siteplan-mapping')->name('proyek.siteplan-mapping');
+        });
+        Route::middleware('permission:master.kelola|master.tipe.kelola')->group(function () {
+            Route::livewire('tipe-rumah', 'pages::master.tipe-rumah')->name('tipe-rumah.index');
+        });
+        Route::middleware('permission:master.kelola|master.rumah.kelola')->group(function () {
+            Route::livewire('rumah', 'pages::master.rumah')->name('rumah.index');
+        });
+        Route::middleware('permission:master.kelola|master.va.kelola')->group(function () {
+            Route::livewire('virtual-account', 'pages::master.virtual-account')->name('virtual-account.index');
+        });
+        Route::middleware('permission:master.kelola|master.customer.kelola')->group(function () {
+            Route::livewire('customer', 'pages::master.customer')->name('customer.index');
+            Route::livewire('prospect-customer', 'pages::master.prospect-customer')->name('prospect-customer.index');
+        });
+        Route::middleware('permission:master.kelola|master.sales.kelola')->group(function () {
+            Route::livewire('sales', 'pages::master.sales')->name('sales.index');
+        });
+        Route::middleware('permission:master.kelola|master.notaris.kelola')->group(function () {
+            Route::livewire('notaris', 'pages::master.notaris')->name('notaris.index');
+        });
+        Route::middleware('permission:master.kelola|master.coa.kelola')->group(function () {
+            Route::livewire('coa', 'pages::master.coa')->name('coa.index');
+        });
+        Route::middleware('permission:master.kelola')->group(function () {
+            Route::livewire('alasan-pembatalan', 'pages::master.alasan-pembatalan')->name('alasan-pembatalan.index');
+        });
     });
 
     // APPROVAL — Project Manager approve SPR
