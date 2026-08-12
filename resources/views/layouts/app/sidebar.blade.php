@@ -230,6 +230,10 @@
                                                :current="request()->routeIs('akunting.buku-besar.*')" wire:navigate>
                                 {{ __('Buku Besar') }}
                             </flux:sidebar.item>
+                            <flux:sidebar.item icon="banknotes" :href="route('akunting.kas-bank.index')"
+                                               :current="request()->routeIs('akunting.kas-bank.*')" wire:navigate>
+                                {{ __('Kas & Bank') }}
+                            </flux:sidebar.item>
                         @endcan
                         @can('labarugi.lihat')
                             <flux:sidebar.item icon="chart-bar-square" :href="route('akunting.laba-rugi.index')"

@@ -174,6 +174,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 ->name('arus-kas.excel');
         });
 
+        // Kas & Bank (dashboard saldo per akun kas/bank)
+        Route::middleware('permission:bukubesar.lihat')->group(function () {
+            Route::livewire('kas-bank', 'pages::akunting.kas-bank')->name('kas-bank.index');
+        });
+
         // Aktiva Tetap
         Route::middleware('permission:aktivatetap.lihat')->group(function () {
             Route::livewire('aktiva-tetap', 'pages::akunting.aktiva-tetap')->name('aktiva-tetap.index');
