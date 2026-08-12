@@ -62,14 +62,19 @@
     </div>
 </div>
 
+@php
+    $isDebit = ($coa->saldo_normal ?? 'debit') === 'debit';
+    $running = (float) $saldoAwal;
+@endphp
 <table class="mutasi">
     <thead>
         <tr>
             <th style="width:70px;">Tanggal</th>
             <th style="width:110px;">No Bukti</th>
             <th>Uraian Transaksi</th>
-            <th style="width:110px; text-align:right;">Debet</th>
-            <th style="width:110px; text-align:right;">Kredit</th>
+            <th style="width:100px; text-align:right;">Debet</th>
+            <th style="width:100px; text-align:right;">Kredit</th>
+            <th style="width:110px; text-align:right;">Saldo</th>
         </tr>
     </thead>
     <tbody>
@@ -79,19 +84,27 @@
             <td>SALDO AWAL …</td>
             <td class="num">-</td>
             <td class="num">-</td>
+            <td class="num" style="font-weight:bold;">{{ number_format($running, 0, ',', '.') }}</td>
         </tr>
 
         @forelse ($mutasi as $m)
+            @php
+                $delta = $isDebit
+                    ? ((float) $m->debet - (float) $m->kredit)
+                    : ((float) $m->kredit - (float) $m->debet);
+                $running += $delta;
+            @endphp
             <tr>
                 <td>{{ \Carbon\Carbon::parse($m->tanggal)->translatedFormat('d M y') }}</td>
                 <td>{{ $m->no_bukti }}</td>
                 <td>{{ $m->keterangan ?: '-' }}</td>
                 <td class="num">{{ $m->debet > 0 ? number_format($m->debet, 0, ',', '.') : '-' }}</td>
                 <td class="num">{{ $m->kredit > 0 ? number_format($m->kredit, 0, ',', '.') : '-' }}</td>
+                <td class="num" style="font-weight:bold; {{ $running < 0 ? 'color:#7d1919;' : '' }}">{{ number_format($running, 0, ',', '.') }}</td>
             </tr>
         @empty
             <tr>
-                <td colspan="5" style="text-align:center; color:#999; padding: 20px;">Tidak ada mutasi di periode ini.</td>
+                <td colspan="6" style="text-align:center; color:#999; padding: 20px;">Tidak ada mutasi di periode ini.</td>
             </tr>
         @endforelse
     </tbody>
@@ -100,6 +113,7 @@
             <td colspan="3" style="text-align:center; text-transform:uppercase;">TOTAL</td>
             <td class="num">{{ number_format($totalDebet, 0, ',', '.') }}</td>
             <td class="num">{{ number_format($totalKredit, 0, ',', '.') }}</td>
+            <td class="num">{{ number_format($saldoAkhir, 0, ',', '.') }}</td>
         </tr>
     </tfoot>
 </table>

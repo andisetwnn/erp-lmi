@@ -212,9 +212,17 @@ new #[Title('Buku Besar')] class extends Component
                                 <th class="border border-zinc-300 px-3 py-2 text-left text-xs font-semibold uppercase dark:border-zinc-600">Uraian Transaksi</th>
                                 <th class="border border-zinc-300 px-3 py-2 text-right text-xs font-semibold uppercase dark:border-zinc-600">Debet</th>
                                 <th class="border border-zinc-300 px-3 py-2 text-right text-xs font-semibold uppercase dark:border-zinc-600">Kredit</th>
+                                <th class="border border-zinc-300 px-3 py-2 text-right text-xs font-semibold uppercase dark:border-zinc-600">Saldo</th>
                             </tr>
                         </thead>
                         <tbody>
+                            @php
+                                // Running balance mulai dari saldo awal.
+                                // Untuk akun saldo_normal debit: saldo += (debet - kredit).
+                                // Untuk akun saldo_normal kredit: saldo += (kredit - debet).
+                                $isDebit = ($coaSelected?->saldo_normal ?? 'debit') === 'debit';
+                                $running = (float) $this->saldoAwal;
+                            @endphp
                             {{-- Row SALDO AWAL --}}
                             <tr class="bg-zinc-50 dark:bg-zinc-800/50">
                                 <td class="border border-zinc-300 px-3 py-1.5 whitespace-nowrap text-xs dark:border-zinc-600">
@@ -224,9 +232,18 @@ new #[Title('Buku Besar')] class extends Component
                                 <td class="border border-zinc-300 px-3 py-1.5 text-xs italic dark:border-zinc-600">SALDO AWAL …</td>
                                 <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">-</td>
                                 <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">-</td>
+                                <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums text-xs font-semibold dark:border-zinc-600">
+                                    {{ number_format($running, 0, ',', '.') }}
+                                </td>
                             </tr>
 
                             @forelse ($this->mutasi as $m)
+                                @php
+                                    $delta = $isDebit
+                                        ? ((float) $m->debet - (float) $m->kredit)
+                                        : ((float) $m->kredit - (float) $m->debet);
+                                    $running += $delta;
+                                @endphp
                                 <tr class="hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
                                     <td class="border border-zinc-300 px-3 py-1.5 whitespace-nowrap text-xs dark:border-zinc-600">
                                         {{ $m->jurnal->tanggal->translatedFormat('d M y') }}
@@ -243,10 +260,13 @@ new #[Title('Buku Besar')] class extends Component
                                     <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums text-xs dark:border-zinc-600">
                                         {{ $m->kredit > 0 ? number_format((float) $m->kredit, 0, ',', '.') : '-' }}
                                     </td>
+                                    <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums text-xs font-semibold dark:border-zinc-600 {{ $running < 0 ? 'text-rose-600' : '' }}">
+                                        {{ number_format($running, 0, ',', '.') }}
+                                    </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="5" class="border border-zinc-300 px-3 py-8 text-center text-zinc-400 dark:border-zinc-600">
+                                    <td colspan="6" class="border border-zinc-300 px-3 py-8 text-center text-zinc-400 dark:border-zinc-600">
                                         Tidak ada mutasi di periode ini.
                                     </td>
                                 </tr>
@@ -260,6 +280,9 @@ new #[Title('Buku Besar')] class extends Component
                                 </td>
                                 <td class="border border-zinc-300 px-3 py-2 text-right font-mono tabular-nums dark:border-zinc-600">
                                     {{ number_format($this->totalKredit, 0, ',', '.') }}
+                                </td>
+                                <td class="border border-zinc-300 px-3 py-2 text-right font-mono tabular-nums dark:border-zinc-600">
+                                    {{ number_format($this->saldoAkhir, 0, ',', '.') }}
                                 </td>
                             </tr>
                         </tfoot>
