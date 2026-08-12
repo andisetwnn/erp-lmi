@@ -26,7 +26,14 @@ new #[Title('Input Jurnal')] class extends Component
                 <flux:icon.pencil-square class="size-6" />
             </div>
             <div>
-                <flux:heading size="xl">{{ __('Input Jurnal') }}</flux:heading>
+                <div class="flex items-center gap-2">
+                    <flux:heading size="xl">{{ __('Input Jurnal') }}</flux:heading>
+                    <x-info-button title="Input Jurnal">
+                        <p>Menu untuk mencatat transaksi keuangan ke sistem — mis. pembayaran manual, penyesuaian akhir bulan, jurnal koreksi.</p>
+                        <p class="mt-2">Sekarang tersedia <strong>Jurnal Umum</strong>. Klik card di bawah untuk mulai input.</p>
+                        <p class="mt-2 text-xs text-zinc-500">Setiap jurnal yg disimpan wajib balance (total debet = total kredit), baru bisa <em>posted</em> ke Buku Besar.</p>
+                    </x-info-button>
+                </div>
                 <flux:subheading>{{ __('Pilih jenis jurnal yang mau di-input.') }}</flux:subheading>
             </div>
         </div>

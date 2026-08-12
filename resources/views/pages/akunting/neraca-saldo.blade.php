@@ -45,8 +45,20 @@ new #[Title('Neraca Saldo')] class extends Component
                     <flux:icon.table-cells class="size-6" />
                 </div>
                 <div>
-                    <flux:heading size="xl">{{ __('Neraca Saldo') }}</flux:heading>
-                    <flux:subheading>{{ __('Daftar SEMUA akun + saldo debet/kredit. Tools cross-check jurnal.') }}</flux:subheading>
+                    <div class="flex items-center gap-2">
+                        <flux:heading size="xl">{{ __('Neraca Saldo') }}</flux:heading>
+                        <x-info-button title="Neraca Saldo">
+                            <p>Rangkuman <strong>SEMUA</strong> akun COA yg punya mutasi di periode — beda dengan Neraca (cuma Aset/Kewajiban/Modal), Neraca Saldo juga masukkan akun Pendapatan &amp; Beban.</p>
+                            <p class="mt-2">Kolom yg ditampilkan:</p>
+                            <ul class="ml-4 mt-1 list-disc space-y-1">
+                                <li><strong>Mutasi Debet/Kredit</strong> — total pergerakan selama periode</li>
+                                <li><strong>Saldo Debet/Kredit</strong> — posisi akhir, muncul di sisi normal akun</li>
+                            </ul>
+                            <p class="mt-2">Dipakai sebagai <em>cross-check</em> sebelum lihat Neraca / Laba Rugi final. Kalau di footer total Debet ≠ total Kredit → ada jurnal salah (mis. lupa pasangan debet/kredit).</p>
+                            <p class="mt-2 text-xs text-zinc-500">Kalau muncul warning merah "TIDAK BALANCE" → buka Jurnal Umum, cari jurnal yg tidak balance, perbaiki.</p>
+                        </x-info-button>
+                    </div>
+                    <flux:subheading>{{ __('Daftar SEMUA akun dengan mutasi debet/kredit + saldo akhir — kontrol keseimbangan sebelum tutup buku.') }}</flux:subheading>
                 </div>
             </div>
             <div class="flex gap-2">

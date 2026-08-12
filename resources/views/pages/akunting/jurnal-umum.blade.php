@@ -210,11 +210,9 @@ new #[Title('Jurnal Umum')] class extends Component
     {
         $this->validate([
             'tanggal' => 'required|date',
-            'no_bukti' => 'required|string|max:50',
             'detail' => 'required|array|min:2',
             'detail.*.coa_id' => 'required|exists:coa,id',
         ], attributes: [
-            'no_bukti' => 'No Bukti',
             'detail.*.coa_id' => 'Kode Akun',
         ]);
 
@@ -224,14 +222,14 @@ new #[Title('Jurnal Umum')] class extends Component
             return;
         }
 
-        // Cek unique no_bukti (per perusahaan)
-        $exists = Jurnal::where('perusahaan_id', $perusahaanId)
-            ->where('no_bukti', $this->no_bukti)
-            ->when($this->editId, fn ($q) => $q->where('id', '!=', $this->editId))
-            ->exists();
-        if ($exists) {
-            $this->addError('no_bukti', 'No Bukti sudah dipakai. Gunakan nomor lain.');
-            return;
+        // Guard: pas CREATE, no_bukti selalu di-regenerate server-side (user tidak bisa manipulasi).
+        // Pas EDIT, no_bukti tetap dari record existing (tidak boleh diubah).
+        if (! $this->editId) {
+            $this->no_bukti = app(JurnalService::class)->generateNoBukti(
+                $perusahaanId,
+                $this->kategori_bukti,
+                $this->tanggal
+            );
         }
 
         // Prep detail
@@ -390,8 +388,21 @@ new #[Title('Jurnal Umum')] class extends Component
                     <flux:icon.calculator class="size-6" />
                 </div>
                 <div>
-                    <flux:heading size="xl">{{ __('Jurnal Umum') }}</flux:heading>
-                    <flux:subheading>{{ __('Input jurnal untuk semua jenis kode rekening.') }}</flux:subheading>
+                    <div class="flex items-center gap-2">
+                        <flux:heading size="xl">{{ __('Jurnal Umum') }}</flux:heading>
+                        <x-info-button title="Jurnal Umum">
+                            <p>Form input jurnal manual. Pilih tanggal, kategori (BANK/KAS/AKM/dll), lalu isi minimal 2 baris detail: 1 debet + 1 kredit dgn nominal sama.</p>
+                            <p class="mt-2">Aturan Debet/Kredit per tipe akun:</p>
+                            <ul class="ml-4 mt-1 list-disc space-y-0.5">
+                                <li>Aset &amp; Beban — bertambah di <strong>Debet</strong></li>
+                                <li>Kewajiban, Modal, Pendapatan — bertambah di <strong>Kredit</strong></li>
+                            </ul>
+                            <p class="mt-2">Contoh: bayar material Rp 5jt via bank →
+                            Debet: <em>Persediaan Material</em> 5jt · Kredit: <em>Bank BTN</em> 5jt.</p>
+                            <p class="mt-2 text-xs text-zinc-500">No bukti auto-generate per kategori (BANK/07/26/0001, KAS/07/26/0001). Setelah disimpan, jurnal masuk daftar di bawah — bisa di-edit/hapus/post dari sana.</p>
+                        </x-info-button>
+                    </div>
+                    <flux:subheading>{{ __('Catatan pertama seluruh transaksi keuangan (double-entry: debet = kredit).') }}</flux:subheading>
                 </div>
             </div>
             <flux:button variant="primary" icon="plus" wire:click="openCreate">
@@ -554,8 +565,7 @@ new #[Title('Jurnal Umum')] class extends Component
                     @endforeach
                 </flux:select>
                 <flux:input type="date" wire:model.live="tanggal" label="Tanggal" required />
-                <flux:input wire:model="no_bukti" label="No Bukti" placeholder="auto-generate" required
-                            description="Auto berdasarkan kategori + tanggal. Bisa di-override manual." />
+                <flux:input wire:model="no_bukti" label="No Bukti" readonly />
                 <div class="sm:col-span-3">
                     <flux:textarea wire:model="keterangan" label="Keterangan" rows="2"
                                    placeholder="Deskripsi transaksi (muncul di buku besar)" />

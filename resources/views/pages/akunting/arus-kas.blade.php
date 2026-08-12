@@ -45,8 +45,21 @@ new #[Title('Arus Kas')] class extends Component
                     <flux:icon.banknotes class="size-6" />
                 </div>
                 <div>
-                    <flux:heading size="xl">{{ __('Arus Kas') }}</flux:heading>
-                    <flux:subheading>{{ __('Cash Flow Statement — mutasi kas & bank periode.') }}</flux:subheading>
+                    <div class="flex items-center gap-2">
+                        <flux:heading size="xl">{{ __('Arus Kas') }}</flux:heading>
+                        <x-info-button title="Arus Kas">
+                            <p>Ringkasan pergerakan kas &amp; bank selama periode. Sistem baca semua mutasi akun kas (1001.*) &amp; bank (1002.*), lalu klasifikasi otomatis ke 3 section berdasarkan lawan-akun:</p>
+                            <ul class="ml-4 mt-1 list-disc space-y-1">
+                                <li><strong>Operasi</strong> — transaksi bisnis harian (terima UM konsumen, bayar SPK, gaji, pajak)</li>
+                                <li><strong>Investasi</strong> — beli/jual aktiva tetap (1500.*): kendaraan, inventaris kantor</li>
+                                <li><strong>Pendanaan</strong> — pinjaman bank (2080.*), leasing (2009.*), setoran modal</li>
+                            </ul>
+                            <p class="mt-2 font-mono text-xs text-center bg-zinc-50 dark:bg-zinc-800 py-2 rounded">Kas Akhir = Kas Awal + (Operasi + Investasi + Pendanaan)</p>
+                            <p class="mt-2">Cara pakai: pilih periode <strong>Dari</strong>–<strong>Sampai Tanggal</strong>. Card di atas nampak Kas Awal, Kenaikan Bersih, Kas Akhir. Detail per lawan-akun di table masing2 section.</p>
+                            <p class="mt-2 text-xs text-zinc-500">Beda dgn Laba Rugi (accrual): Arus Kas cuma catat yg beneran uang bergerak. Perusahaan bisa laba tapi kas negatif (kalau piutang belum tertagih).</p>
+                        </x-info-button>
+                    </div>
+                    <flux:subheading>{{ __('Pergerakan kas periode — Operasi + Investasi + Pendanaan.') }}</flux:subheading>
                 </div>
             </div>
             <div class="flex gap-2">

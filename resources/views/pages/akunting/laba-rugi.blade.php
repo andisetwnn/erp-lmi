@@ -49,8 +49,21 @@ new #[Title('Laporan Laba Rugi')] class extends Component
                     <flux:icon.chart-bar-square class="size-6" />
                 </div>
                 <div>
-                    <flux:heading size="xl">{{ __('Laporan Laba Rugi') }}</flux:heading>
-                    <flux:subheading>{{ __('Pendapatan dikurangi Beban per periode.') }}</flux:subheading>
+                    <div class="flex items-center gap-2">
+                        <flux:heading size="xl">{{ __('Laporan Laba Rugi') }}</flux:heading>
+                        <x-info-button title="Laporan Laba Rugi">
+                            <p>Ringkasan performa keuangan untuk periode yg dipilih. Rumusnya:</p>
+                            <p class="ml-4 mt-1 font-mono text-sm text-center bg-zinc-50 dark:bg-zinc-800 py-2 rounded">LABA/RUGI = PENDAPATAN − BEBAN</p>
+                            <ul class="ml-4 mt-2 list-disc space-y-1">
+                                <li>Positif → <strong>Laba Bersih</strong> (untung)</li>
+                                <li>Negatif → <strong>Rugi Bersih</strong></li>
+                            </ul>
+                            <p class="mt-2">Cara pakai: pilih periode <strong>Dari</strong>–<strong>Sampai Tanggal</strong>, sistem akan aggregate semua akun tipe pendapatan (4xxx) &amp; beban (5xxx-6xxx) yg posted di periode itu.</p>
+                            <p class="mt-2">Angka Laba/Rugi ini otomatis nyambung ke Neraca (bagian Modal). Contoh: Juli 2026 rugi 657jt → di Neraca kolom Modal jadi berkurang 657jt.</p>
+                            <p class="mt-2 text-xs text-zinc-500">Untuk property: pendapatan diakui saat AKAD KREDIT (bukan saat UM masuk). HPP diakui saat rumah terjual (bukan saat beli tanah).</p>
+                        </x-info-button>
+                    </div>
+                    <flux:subheading>{{ __('Performa keuangan periode: Pendapatan − Beban = Laba/Rugi Bersih.') }}</flux:subheading>
                 </div>
             </div>
             <div class="flex gap-2">

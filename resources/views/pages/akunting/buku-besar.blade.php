@@ -126,8 +126,21 @@ new #[Title('Buku Besar')] class extends Component
                     <flux:icon.book-open class="size-6" />
                 </div>
                 <div>
-                    <flux:heading size="xl">{{ __('Buku Besar') }}</flux:heading>
-                    <flux:subheading>{{ __('Mutasi per kode akun berdasarkan jurnal yang sudah diposting.') }}</flux:subheading>
+                    <div class="flex items-center gap-2">
+                        <flux:heading size="xl">{{ __('Buku Besar') }}</flux:heading>
+                        <x-info-button title="Buku Besar">
+                            <p>Menampilkan detail mutasi 1 akun COA — semua transaksi yg menyentuh akun tsb dalam periode, plus saldo berjalan.</p>
+                            <p class="mt-2">Cara pakai:</p>
+                            <ol class="ml-4 mt-1 list-decimal space-y-1">
+                                <li>Pilih <strong>Kode Akun</strong> di filter (dropdown searchable, tinggal ketik nama akun)</li>
+                                <li>Set periode <em>Dari</em> — <em>Sampai Tanggal</em></li>
+                                <li>Tabel muncul: baris pertama = Saldo Awal, tiap transaksi update kolom Saldo, footer = Saldo Akhir</li>
+                            </ol>
+                            <p class="mt-2">Contoh use case: cek semua transaksi <em>Bank BTN</em> Juli 2026 — pilih akun 1002.001 → lihat rincian setoran UM konsumen, bayar SPK kontraktor, dst.</p>
+                            <p class="mt-2 text-xs text-zinc-500">Saldo negatif di-highlight merah = signal anomali (mis. kas overdraft, wajib dicek).</p>
+                        </x-info-button>
+                    </div>
+                    <flux:subheading>{{ __('Detail mutasi per akun dengan saldo berjalan (running balance).') }}</flux:subheading>
                 </div>
             </div>
             @if ($coaId)

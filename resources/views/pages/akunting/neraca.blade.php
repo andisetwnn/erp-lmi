@@ -53,8 +53,21 @@ new #[Title('Neraca')] class extends Component
                     <flux:icon.scale class="size-6" />
                 </div>
                 <div>
-                    <flux:heading size="xl">{{ __('Neraca') }}</flux:heading>
-                    <flux:subheading>{{ __('Posisi Aset, Kewajiban, dan Modal per tanggal cutoff.') }}</flux:subheading>
+                    <div class="flex items-center gap-2">
+                        <flux:heading size="xl">{{ __('Neraca') }}</flux:heading>
+                        <x-info-button title="Neraca">
+                            <p>Foto posisi keuangan per tanggal cutoff. Menampilkan 3 section:</p>
+                            <ul class="ml-4 mt-1 list-disc space-y-1">
+                                <li><strong>Aset</strong> — Kas, Bank, Piutang, Persediaan Rumah, Aktiva Tetap (yg perusahaan punya)</li>
+                                <li><strong>Kewajiban</strong> — Utang Bank, Utang Pajak, Utang SPK (kontraktor)</li>
+                                <li><strong>Modal</strong> — Modal Saham, Laba Ditahan, Laba/Rugi Berjalan</li>
+                            </ul>
+                            <p class="mt-2">Wajib balance: <span class="font-mono">Aset = Kewajiban + Modal</span>. Kalau muncul warning merah "TIDAK BALANCE" → cek Neraca Saldo dulu untuk cari jurnal yg salah.</p>
+                            <p class="mt-2">Cara pakai: pilih <strong>Per Tanggal</strong> cutoff (mis. 31 Juli 2026), sistem akan hitung posisi semua akun sampai tanggal itu.</p>
+                            <p class="mt-2 text-xs text-zinc-500">Ini laporan formal untuk direktur/investor/bank. Bisa export PDF &amp; Excel dgn logo LMI.</p>
+                        </x-info-button>
+                    </div>
+                    <flux:subheading>{{ __('Posisi keuangan per tanggal cutoff — Aset = Kewajiban + Modal.') }}</flux:subheading>
                 </div>
             </div>
             <div class="flex gap-2">

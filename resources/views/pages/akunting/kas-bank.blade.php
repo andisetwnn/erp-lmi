@@ -60,8 +60,21 @@ new #[Title('Kas & Bank')] class extends Component
                     <flux:icon.banknotes class="size-6" />
                 </div>
                 <div>
-                    <flux:heading size="xl">{{ __('Kas & Bank') }}</flux:heading>
-                    <flux:subheading>{{ __('Dashboard saldo per akun kas dan bank per tanggal cutoff.') }}</flux:subheading>
+                    <div class="flex items-center gap-2">
+                        <flux:heading size="xl">{{ __('Kas & Bank') }}</flux:heading>
+                        <x-info-button title="Kas & Bank">
+                            <p>Dashboard posisi kas &amp; bank per tanggal cutoff — nampak saldo semua akun kas (1001.*) &amp; bank (1002.*) dalam sekali lihat, plus total per section &amp; grand total.</p>
+                            <p class="mt-2">Cara pakai:</p>
+                            <ul class="ml-4 mt-1 list-disc space-y-1">
+                                <li>Klik <strong>Lihat</strong> di sebelah akun → langsung ke Buku Besar akun tsb (lihat detail mutasi).</li>
+                                <li>Ubah <strong>Per Tanggal</strong> untuk cek saldo historis (mis. per akhir bulan lalu).</li>
+                                <li>Kalau punya permission COA, tombol <strong>Buat Rekening Kas/Bank</strong> untuk tambah akun baru.</li>
+                            </ul>
+                            <p class="mt-2">Saldo di sini = catatan sistem berdasarkan jurnal yg sudah posted. Kalau beda dgn rekening bank fisik → ada jurnal yg belum diinput atau dobel input.</p>
+                            <p class="mt-2 text-xs text-zinc-500">Berguna sebelum bayar SPK/gaji: cek dulu bank mana saldonya cukup.</p>
+                        </x-info-button>
+                    </div>
+                    <flux:subheading>{{ __('Posisi likuiditas — saldo per akun kas & bank per tanggal cutoff.') }}</flux:subheading>
                 </div>
             </div>
             <div class="flex flex-wrap gap-2">

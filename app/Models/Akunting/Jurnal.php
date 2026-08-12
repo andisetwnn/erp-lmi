@@ -31,12 +31,12 @@ class Jurnal extends Model
 
     /** 6 kategori bukti — untuk auto-generate prefix no bukti. */
     public const KATEGORI_BUKTI = [
-        'BANK' => 'Bank',
-        'KAS' => 'Kas',
-        'PENJ' => 'Penjualan',
-        'AKM' => 'Akuntansi Memorial',
-        'RJE' => 'Reversing Journal Entry',
-        'HPP' => 'HPP (Harga Pokok Penjualan)',
+        'BANK' => 'Bank (transaksi via rekening bank)',
+        'KAS' => 'Kas (transaksi kas fisik)',
+        'PENJ' => 'Penjualan (pengakuan pendapatan akad)',
+        'HPP' => 'HPP (harga pokok penjualan rumah)',
+        'AKM' => 'Akumulasi Penyusutan (AJP bulanan)',
+        'RJE' => 'Reversing Journal Entry (jurnal balik AJP)',
     ];
 
     protected $casts = [

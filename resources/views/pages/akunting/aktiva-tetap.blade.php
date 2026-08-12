@@ -233,8 +233,23 @@ new #[Title('Aktiva Tetap')] class extends Component
                     <flux:icon.building-office class="size-6" />
                 </div>
                 <div>
-                    <flux:heading size="xl">{{ __('Aktiva Tetap') }}</flux:heading>
-                    <flux:subheading>{{ __('Daftar aset perusahaan (kendaraan, inventaris, bangunan, dll).') }}</flux:subheading>
+                    <div class="flex items-center gap-2">
+                        <flux:heading size="xl">{{ __('Aktiva Tetap') }}</flux:heading>
+                        <x-info-button title="Aktiva Tetap">
+                            <p>Master aset umur panjang perusahaan (kendaraan, inventaris kantor, bangunan) — beda dgn persediaan rumah karena BUKAN untuk dijual, tapi dipakai operasional.</p>
+                            <p class="mt-2">Kolom penting di tabel:</p>
+                            <ul class="ml-4 mt-1 list-disc space-y-1">
+                                <li><strong>Harga Perolehan</strong> — harga beli asli</li>
+                                <li><strong>Akumulasi</strong> — total penyusutan sejak beli sampai sekarang</li>
+                                <li><strong>Nilai Buku</strong> = Harga Perolehan − Akumulasi (angka yg muncul di Neraca)</li>
+                            </ul>
+                            <p class="mt-2">Rumus penyusutan per bulan (garis lurus):</p>
+                            <p class="ml-4 mt-1 font-mono text-xs text-center bg-zinc-50 dark:bg-zinc-800 py-2 rounded">(Harga Perolehan − Nilai Residu) ÷ Umur Ekonomis (bulan)</p>
+                            <p class="mt-2">Cara pakai: klik <strong>Tambah Aktiva</strong> untuk input baru, atau <strong>Cetak PDF/Excel</strong> untuk laporan bulanan. Filter kategori/status/periode di atas tabel.</p>
+                            <p class="mt-2 text-xs text-zinc-500">Contoh: mobil Rush 300jt, umur 8 th (96 bln), residu 0 → penyusutan/bulan 3.125.000. Tiap akhir bulan Finance input jurnal AKM: Debet Beban Penyusutan, Kredit Akum Penyusutan.</p>
+                        </x-info-button>
+                    </div>
+                    <flux:subheading>{{ __('Aset berwujud umur > 1 tahun. Nilai menyusut per bulan sesuai umur ekonomis.') }}</flux:subheading>
                 </div>
             </div>
             <div class="flex gap-2">

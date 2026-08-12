@@ -45,8 +45,23 @@ new #[Title('Neraca Lajur')] class extends Component
                     <flux:icon.table-cells class="size-6" />
                 </div>
                 <div>
-                    <flux:heading size="xl">{{ __('Neraca Lajur') }}</flux:heading>
-                    <flux:subheading>{{ __('Worksheet 10 kolom: Neraca Saldo → AJP → Disesuaikan → Rugi/Laba + Neraca. Tools closing periode.') }}</flux:subheading>
+                    <div class="flex items-center gap-2">
+                        <flux:heading size="xl">{{ __('Neraca Lajur') }}</flux:heading>
+                        <x-info-button title="Neraca Lajur">
+                            <p>Kertas kerja closing periode — semua akun ditampilkan 1 tabel dengan 5 pasang kolom (Neraca Saldo → AJP → Disesuaikan → Rugi/Laba → Neraca).</p>
+                            <p class="mt-2">Cara baca kolom:</p>
+                            <ol class="ml-4 mt-1 list-decimal space-y-1">
+                                <li><strong>Neraca Saldo</strong> — mutasi jurnal operasional selama periode</li>
+                                <li><strong>AJP</strong> — jurnal penyesuaian akhir bulan (di sistem: kategori AKM)</li>
+                                <li><strong>Disesuaikan</strong> — NS ± AJP (saldo final tiap akun)</li>
+                                <li><strong>Rugi/Laba</strong> — akun pendapatan &amp; beban dari kolom Disesuaikan</li>
+                                <li><strong>Neraca</strong> — akun aset, kewajiban, modal dari kolom Disesuaikan</li>
+                            </ol>
+                            <p class="mt-2">Baris terakhir <em>Laba/Rugi Bersih</em> = penutup — kalau laba, ditambah ke Modal (kredit Neraca); kalau rugi, kurangi Modal (debet Neraca).</p>
+                            <p class="mt-2 text-xs text-zinc-500">Semua kolom (NS, AJP, Disesuaikan) wajib balance total debet = kredit. Warning merah muncul kalau ada yg tidak balance.</p>
+                        </x-info-button>
+                    </div>
+                    <flux:subheading>{{ __('Kertas kerja closing periode akhir bulan/tahun.') }}</flux:subheading>
                 </div>
             </div>
             <div class="flex gap-2">
@@ -69,10 +84,6 @@ new #[Title('Neraca Lajur')] class extends Component
             </div>
             <div>
                 <flux:input type="date" wire:model.live="to" label="Sampai Tanggal" />
-            </div>
-            <div class="text-xs text-zinc-500">
-                Kolom AJP = jurnal dgn kategori <strong>AKM</strong> (Akumulasi Penyusutan) + <strong>RJE</strong> (Reversing).
-                Kolom Rugi/Laba & Neraca dipecah otomatis dari kolom Disesuaikan sesuai tipe akun.
             </div>
         </div>
 
