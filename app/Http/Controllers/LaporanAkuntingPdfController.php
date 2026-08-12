@@ -6,6 +6,7 @@ use App\Exports\Akunting\AktivaTetapExport;
 use App\Exports\Akunting\ArusKasExport;
 use App\Exports\Akunting\LabaRugiExport;
 use App\Exports\Akunting\NeracaExport;
+use App\Exports\Akunting\NeracaLajurExport;
 use App\Exports\Akunting\NeracaSaldoExport;
 use App\Models\Akunting\AktivaTetap;
 use App\Models\Master\Perusahaan;
@@ -188,5 +189,29 @@ class LaporanAkuntingPdfController extends Controller
         $to = $request->query('to');
 
         return Excel::download(new ArusKasExport($from, $to), "ArusKas-{$from}-{$to}.xlsx");
+    }
+
+    // ═══════════════ NERACA LAJUR (WORKSHEET) ═══════════════
+
+    public function neracaLajur(Request $request)
+    {
+        $request->validate(['from' => 'required|date', 'to' => 'required|date|after_or_equal:from']);
+        $from = $request->query('from');
+        $to = $request->query('to');
+        $perusahaan = Perusahaan::first();
+        $data = app(LaporanAkuntingService::class)->neracaLajur($perusahaan->id, $from, $to);
+
+        return Pdf::loadView('exports.neraca-lajur-pdf', compact('perusahaan', 'data', 'from', 'to'))
+            ->setPaper('a4', 'landscape')
+            ->stream("NeracaLajur-{$from}-{$to}.pdf");
+    }
+
+    public function neracaLajurExcel(Request $request)
+    {
+        $request->validate(['from' => 'required|date', 'to' => 'required|date|after_or_equal:from']);
+        $from = $request->query('from');
+        $to = $request->query('to');
+
+        return Excel::download(new NeracaLajurExport($from, $to), "NeracaLajur-{$from}-{$to}.xlsx");
     }
 }

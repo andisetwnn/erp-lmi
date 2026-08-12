@@ -474,4 +474,151 @@ class LaporanAkuntingService
             'kas_awal' => 0, 'kas_akhir' => 0, 'kenaikan_bersih' => 0,
         ];
     }
+
+    /**
+     * Kategori jurnal yang dianggap AJP (Ayat Jurnal Penyesuaian).
+     * Sesuai konvensi keuangan LMI: AKM (Akumulasi Penyusutan) + RJE (Reversing Journal Entry).
+     */
+    public const KATEGORI_AJP = ['AKM', 'RJE'];
+
+    /**
+     * Neraca Lajur (Worksheet 10 kolom) — tools closing periode akhir bulan.
+     *
+     * Return per COA (yang punya movement):
+     * [
+     *   'coa'          => Coa,
+     *   'ns_debet'     => float,  // Neraca Saldo (jurnal operasional, non-AJP)
+     *   'ns_kredit'    => float,
+     *   'ajp_debet'    => float,  // Ayat Jurnal Penyesuaian (kategori AKM, RJE)
+     *   'ajp_kredit'   => float,
+     *   'adj_debet'    => float,  // Disesuaikan = (NS ± AJP) — di-net ke sisi normal
+     *   'adj_kredit'   => float,
+     *   'lr_debet'     => float,  // Laba/Rugi (tipe pendapatan/beban) — dari kolom Disesuaikan
+     *   'lr_kredit'    => float,
+     *   'nr_debet'     => float,  // Neraca (tipe aset/kewajiban/modal) — dari kolom Disesuaikan
+     *   'nr_kredit'    => float,
+     * ]
+     */
+    public function neracaLajur(int $perusahaanId, ?string $from, string $to): array
+    {
+        // Aggregate mutasi per COA, split by kategori (AJP vs operasional)
+        $rows = DB::table('jurnal_detail as jd')
+            ->join('jurnal as j', 'j.id', 'jd.jurnal_id')
+            ->join('coa as c', 'c.id', 'jd.coa_id')
+            ->where('c.perusahaan_id', $perusahaanId)
+            ->where('j.status', 'posted')
+            ->when($from, fn ($q) => $q->whereDate('j.tanggal', '>=', $from))
+            ->whereDate('j.tanggal', '<=', $to)
+            ->groupBy('c.id')
+            ->selectRaw('
+                c.id as coa_id,
+                COALESCE(SUM(CASE WHEN j.kategori_bukti NOT IN ("AKM","RJE") THEN jd.debet ELSE 0 END), 0) as ns_debet,
+                COALESCE(SUM(CASE WHEN j.kategori_bukti NOT IN ("AKM","RJE") THEN jd.kredit ELSE 0 END), 0) as ns_kredit,
+                COALESCE(SUM(CASE WHEN j.kategori_bukti IN ("AKM","RJE") THEN jd.debet ELSE 0 END), 0) as ajp_debet,
+                COALESCE(SUM(CASE WHEN j.kategori_bukti IN ("AKM","RJE") THEN jd.kredit ELSE 0 END), 0) as ajp_kredit
+            ')
+            ->get()
+            ->keyBy('coa_id');
+
+        if ($rows->isEmpty()) {
+            return [
+                'from' => $from, 'to' => $to, 'rows' => [],
+                'total_ns_debet' => 0, 'total_ns_kredit' => 0,
+                'total_ajp_debet' => 0, 'total_ajp_kredit' => 0,
+                'total_adj_debet' => 0, 'total_adj_kredit' => 0,
+                'total_lr_debet' => 0, 'total_lr_kredit' => 0,
+                'total_nr_debet' => 0, 'total_nr_kredit' => 0,
+                'laba_rugi' => 0, 'balanced' => true,
+            ];
+        }
+
+        $coaList = Coa::whereIn('id', $rows->keys())->orderBy('kode')->get();
+
+        $out = [];
+        $tot = [
+            'ns_debet' => 0, 'ns_kredit' => 0,
+            'ajp_debet' => 0, 'ajp_kredit' => 0,
+            'adj_debet' => 0, 'adj_kredit' => 0,
+            'lr_debet' => 0, 'lr_kredit' => 0,
+            'nr_debet' => 0, 'nr_kredit' => 0,
+        ];
+
+        foreach ($coaList as $coa) {
+            $r = $rows[$coa->id];
+            $nsD = (float) $r->ns_debet;
+            $nsK = (float) $r->ns_kredit;
+            $ajpD = (float) $r->ajp_debet;
+            $ajpK = (float) $r->ajp_kredit;
+
+            // Disesuaikan: total debet & kredit di-jumlah, lalu net ke sisi normal
+            $totDebet = $nsD + $ajpD;
+            $totKredit = $nsK + $ajpK;
+            $net = $totDebet - $totKredit;
+            $normalDebit = in_array($coa->tipe, ['aset', 'beban']);
+
+            $adjD = 0;
+            $adjK = 0;
+            if ($normalDebit) {
+                if ($net >= 0) {
+                    $adjD = $net;
+                } else {
+                    $adjK = -$net;
+                }
+            } else {
+                if ($net <= 0) {
+                    $adjK = -$net;
+                } else {
+                    $adjD = $net;
+                }
+            }
+
+            // Kolom Rugi/Laba (untuk akun pendapatan+beban)
+            $isLR = in_array($coa->tipe, ['pendapatan', 'beban']);
+            $lrD = $isLR ? $adjD : 0;
+            $lrK = $isLR ? $adjK : 0;
+
+            // Kolom Neraca (untuk akun aset+kewajiban+modal)
+            $isNR = in_array($coa->tipe, ['aset', 'kewajiban', 'modal']);
+            $nrD = $isNR ? $adjD : 0;
+            $nrK = $isNR ? $adjK : 0;
+
+            $out[] = [
+                'coa' => $coa,
+                'ns_debet' => $nsD, 'ns_kredit' => $nsK,
+                'ajp_debet' => $ajpD, 'ajp_kredit' => $ajpK,
+                'adj_debet' => $adjD, 'adj_kredit' => $adjK,
+                'lr_debet' => $lrD, 'lr_kredit' => $lrK,
+                'nr_debet' => $nrD, 'nr_kredit' => $nrK,
+            ];
+
+            $tot['ns_debet'] += $nsD;
+            $tot['ns_kredit'] += $nsK;
+            $tot['ajp_debet'] += $ajpD;
+            $tot['ajp_kredit'] += $ajpK;
+            $tot['adj_debet'] += $adjD;
+            $tot['adj_kredit'] += $adjK;
+            $tot['lr_debet'] += $lrD;
+            $tot['lr_kredit'] += $lrK;
+            $tot['nr_debet'] += $nrD;
+            $tot['nr_kredit'] += $nrK;
+        }
+
+        // Laba/Rugi periode = kredit - debet di kolom LR (pendapatan lebih besar = laba)
+        $labaRugi = $tot['lr_kredit'] - $tot['lr_debet'];
+
+        return [
+            'from' => $from, 'to' => $to,
+            'rows' => $out,
+            'total_ns_debet' => $tot['ns_debet'], 'total_ns_kredit' => $tot['ns_kredit'],
+            'total_ajp_debet' => $tot['ajp_debet'], 'total_ajp_kredit' => $tot['ajp_kredit'],
+            'total_adj_debet' => $tot['adj_debet'], 'total_adj_kredit' => $tot['adj_kredit'],
+            'total_lr_debet' => $tot['lr_debet'], 'total_lr_kredit' => $tot['lr_kredit'],
+            'total_nr_debet' => $tot['nr_debet'], 'total_nr_kredit' => $tot['nr_kredit'],
+            'laba_rugi' => $labaRugi,
+            // Balance check: NS debet=kredit, AJP debet=kredit, Adjusted debet=kredit
+            'balanced' => abs($tot['ns_debet'] - $tot['ns_kredit']) < 0.01
+                && abs($tot['ajp_debet'] - $tot['ajp_kredit']) < 0.01
+                && abs($tot['adj_debet'] - $tot['adj_kredit']) < 0.01,
+        ];
+    }
 }

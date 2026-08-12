@@ -165,6 +165,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 ->name('neraca-saldo.excel');
         });
 
+        // Neraca Lajur (Worksheet 10 kolom)
+        Route::middleware('permission:neracalajur.lihat')->group(function () {
+            Route::livewire('neraca-lajur', 'pages::akunting.neraca-lajur')->name('neraca-lajur.index');
+            Route::get('neraca-lajur/print', [LaporanAkuntingPdfController::class, 'neracaLajur'])
+                ->name('neraca-lajur.print');
+            Route::get('neraca-lajur/excel', [LaporanAkuntingPdfController::class, 'neracaLajurExcel'])
+                ->name('neraca-lajur.excel');
+        });
+
         // Arus Kas (Cash Flow Statement)
         Route::middleware('permission:aruskas.lihat')->group(function () {
             Route::livewire('arus-kas', 'pages::akunting.arus-kas')->name('arus-kas.index');

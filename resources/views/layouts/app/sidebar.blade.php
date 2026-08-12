@@ -204,6 +204,7 @@
                     || auth()->user()?->can('labarugi.lihat')
                     || auth()->user()?->can('neraca.lihat')
                     || auth()->user()?->can('neracasaldo.lihat')
+                    || auth()->user()?->can('neracalajur.lihat')
                     || auth()->user()?->can('aruskas.lihat')
                     || auth()->user()?->can('aktivatetap.lihat')
                     || auth()->user()?->can('master.kelola')
@@ -251,6 +252,12 @@
                             <flux:sidebar.item icon="table-cells" :href="route('akunting.neraca-saldo.index')"
                                                :current="request()->routeIs('akunting.neraca-saldo.*')" wire:navigate>
                                 {{ __('Neraca Saldo') }}
+                            </flux:sidebar.item>
+                        @endcan
+                        @can('neracalajur.lihat')
+                            <flux:sidebar.item icon="squares-2x2" :href="route('akunting.neraca-lajur.index')"
+                                               :current="request()->routeIs('akunting.neraca-lajur.*')" wire:navigate>
+                                {{ __('Neraca Lajur') }}
                             </flux:sidebar.item>
                         @endcan
                         @can('aruskas.lihat')

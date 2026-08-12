@@ -55,6 +55,7 @@ class RolePermissionSeeder extends Seeder
             'labarugi.lihat',          // Lihat laporan laba rugi
             'neraca.lihat',            // Lihat neraca
             'neracasaldo.lihat',       // Lihat neraca saldo (trial balance)
+            'neracalajur.lihat',       // Lihat neraca lajur (worksheet 10 kolom)
             'aruskas.lihat',           // Lihat arus kas (cash flow statement)
             'aktivatetap.kelola',      // CRUD aktiva tetap
             'aktivatetap.lihat',       // Lihat aktiva tetap
@@ -84,6 +85,7 @@ class RolePermissionSeeder extends Seeder
                 'labarugi.lihat',
                 'neraca.lihat',
                 'neracasaldo.lihat',
+                'neracalajur.lihat',
                 'aruskas.lihat',
                 'aktivatetap.lihat',
                 'laporan.lihat',
@@ -125,6 +127,7 @@ class RolePermissionSeeder extends Seeder
                 'labarugi.lihat',
                 'neraca.lihat',
                 'neracasaldo.lihat',
+                'neracalajur.lihat',
                 'aruskas.lihat',
                 'aktivatetap.kelola',
                 'aktivatetap.lihat',
