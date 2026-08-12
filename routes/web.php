@@ -184,7 +184,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         });
 
         // Kas & Bank (dashboard saldo per akun kas/bank)
-        Route::middleware('permission:bukubesar.lihat')->group(function () {
+        Route::middleware('permission:kasbank.lihat')->group(function () {
             Route::livewire('kas-bank', 'pages::akunting.kas-bank')->name('kas-bank.index');
         });
 

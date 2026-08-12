@@ -201,6 +201,7 @@
                     || auth()->user()?->can('jurnal.bank.kelola')
                     || auth()->user()?->can('jurnal.kaskecil.kelola')
                     || auth()->user()?->can('bukubesar.lihat')
+                    || auth()->user()?->can('kasbank.lihat')
                     || auth()->user()?->can('labarugi.lihat')
                     || auth()->user()?->can('neraca.lihat')
                     || auth()->user()?->can('neracasaldo.lihat')
@@ -231,6 +232,8 @@
                                                :current="request()->routeIs('akunting.buku-besar.*')" wire:navigate>
                                 {{ __('Buku Besar') }}
                             </flux:sidebar.item>
+                        @endcan
+                        @can('kasbank.lihat')
                             <flux:sidebar.item icon="banknotes" :href="route('akunting.kas-bank.index')"
                                                :current="request()->routeIs('akunting.kas-bank.*')" wire:navigate>
                                 {{ __('Kas & Bank') }}

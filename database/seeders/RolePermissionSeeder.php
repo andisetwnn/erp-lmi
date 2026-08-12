@@ -52,6 +52,7 @@ class RolePermissionSeeder extends Seeder
             'jurnal.post',             // Posting jurnal (draft → posted), biasanya manager
             'jurnal.delete',           // Hapus jurnal, biasanya manager
             'bukubesar.lihat',         // Lihat buku besar
+            'kasbank.lihat',           // Lihat dashboard Kas & Bank
             'labarugi.lihat',          // Lihat laporan laba rugi
             'neraca.lihat',            // Lihat neraca
             'neracasaldo.lihat',       // Lihat neraca saldo (trial balance)
@@ -82,6 +83,7 @@ class RolePermissionSeeder extends Seeder
                 'spr.lihat',
                 'spr.cetak',
                 'bukubesar.lihat',
+                'kasbank.lihat',
                 'labarugi.lihat',
                 'neraca.lihat',
                 'neracasaldo.lihat',
@@ -124,6 +126,7 @@ class RolePermissionSeeder extends Seeder
                 'jurnal.post',
                 'jurnal.delete',
                 'bukubesar.lihat',
+                'kasbank.lihat',
                 'labarugi.lihat',
                 'neraca.lihat',
                 'neracasaldo.lihat',
