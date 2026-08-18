@@ -91,11 +91,10 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
         $this->utjTanggalBayar = now()->format('Y-m-d');
 
         $this->hargaJual = $tipe?->harga_jual ? (string) $tipe->harga_jual : '0';
-        // Biaya tambahan = biaya admin dari tipe + biaya tambahan dari unit (hook, dll.)
-        $this->biayaTambahan = (string) (
-            (float) ($tipe?->biaya_administrasi ?? 0)
-            + (float) ($rumah?->biaya_tambahan ?? 0)
-        );
+        // Biaya administrasi dari tipe (notaris, umum, pajak — sudah bagian harga all-in).
+        // rumah.biaya_tambahan (hook/view/dll) TIDAK masuk sini — diproses TERPISAH via
+        // tabel biaya_tambahan_realisasi (halaman detail SPR internal).
+        $this->biayaTambahan = (string) ($tipe?->biaya_administrasi ?? 0);
         // Diskon per unit (dari master rumah, negosiasi/promo)
         $this->diskon = $rumah?->discount ? (string) $rumah->discount : '0';
         // PPN per unit (dari master rumah, ada beberapa unit yang kena)
@@ -175,11 +174,13 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
         return max(0, $this->dpNominal - (float) $this->sbum);
     }
 
-    /** UM yang perlu dicicil ke developer.
-     *  UTJ terpisah (booking fee) — tidak mengurangi UM installments. */
+    /** UM yang perlu dicicil ke developer setelah UTJ (booking fee) masuk.
+     *  UTJ dianggap bagian dari UM Sendiri (bukan tambahan), jadi mengurangi
+     *  jumlah yang perlu dicicil. Contoh: UM Sendiri 10jt, UTJ 1jt →
+     *  sisa cicilan = 9jt, dibagi 4 termin = 2.25jt per termin. */
     public function getSisaCicilProperty(): float
     {
-        return $this->umNet;
+        return max(0, $this->umNet - (float) $this->utjNominal);
     }
 
     /** Max termin sesuai jenis pembayaran. Komersial: 0 (tidak dicicil). */
@@ -769,41 +770,27 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                 {{ __('Harga otomatis dari master Tipe Rumah & Unit. Jika perlu penyesuaian, edit di master.') }}
             </div>
 
+            @php
+                $bAdminTipe = (float) ($booking->rumah?->tipeRumah?->biaya_administrasi ?? 0);
+                $bTambahUnit = (float) ($booking->rumah?->biaya_tambahan ?? 0);
+            @endphp
+
             <div class="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-zinc-900">
                 <div class="border-b border-zinc-100 px-4 py-2.5 dark:border-zinc-800">
                     <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{{ __('Detail Harga Unit') }}</span>
                 </div>
                 <dl class="divide-y divide-zinc-100 px-4 py-2 text-sm dark:divide-zinc-800">
                     <div class="flex items-center justify-between py-2">
-                        <dt class="text-zinc-600 dark:text-zinc-400">{{ __('Harga Jual') }}</dt>
+                        <dt class="text-zinc-600 dark:text-zinc-400">{{ __('Harga Jual AJB') }}</dt>
                         <dd class="font-mono font-semibold text-zinc-900 dark:text-white">Rp {{ number_format((float) $hargaJual, 0, ',', '.') }}</dd>
                     </div>
-                    @php
-                        $bAdminTipe = (float) ($booking->rumah?->tipeRumah?->biaya_administrasi ?? 0);
-                        $bTambahUnit = (float) ($booking->rumah?->biaya_tambahan ?? 0);
-                    @endphp
-                    @if ($bAdminTipe > 0)
-                        <div class="flex items-center justify-between py-1.5">
-                            <dt class="text-xs text-zinc-500">
-                                {{ __('· Biaya Administrasi (Tipe)') }}
-                            </dt>
-                            <dd class="font-mono text-xs text-zinc-600 dark:text-zinc-300">Rp {{ number_format($bAdminTipe, 0, ',', '.') }}</dd>
-                        </div>
-                    @endif
-                    @if ($bTambahUnit > 0)
-                        <div class="flex items-center justify-between py-1.5">
-                            <dt class="text-xs text-zinc-500">
-                                {{ __('· Biaya Tambahan Unit (upgrade/hook)') }}
-                            </dt>
-                            <dd class="font-mono text-xs text-zinc-600 dark:text-zinc-300">Rp {{ number_format($bTambahUnit, 0, ',', '.') }}</dd>
-                        </div>
-                    @endif
                     <div class="flex items-center justify-between py-2">
-                        <dt class="text-zinc-600 dark:text-zinc-400">
-                            {{ __('Total Biaya Tambahan') }}
-                            <span class="ms-1 text-[10px] font-normal text-zinc-500">(+)</span>
-                        </dt>
-                        <dd class="font-mono font-semibold text-zinc-900 dark:text-white">Rp {{ number_format((float) $biayaTambahan, 0, ',', '.') }}</dd>
+                        <dt class="text-zinc-600 dark:text-zinc-400">{{ __('Biaya Administrasi') }}</dt>
+                        <dd class="font-mono font-semibold text-zinc-900 dark:text-white">Rp {{ number_format($bAdminTipe, 0, ',', '.') }}</dd>
+                    </div>
+                    <div class="flex items-center justify-between py-2">
+                        <dt class="text-zinc-600 dark:text-zinc-400">{{ __('Biaya Tambahan') }}</dt>
+                        <dd class="font-mono font-semibold text-zinc-900 dark:text-white">Rp {{ number_format($bTambahUnit, 0, ',', '.') }}</dd>
                     </div>
                     @if ((float) $ppn > 0)
                         <div class="flex items-center justify-between py-2">
@@ -828,12 +815,9 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
 
             {{-- Live total --}}
             <div class="rounded-2xl bg-linear-to-br from-emerald-600 to-emerald-500 p-4 text-white shadow-lg">
-                <div class="text-[10px] font-bold uppercase tracking-wider opacity-80">{{ __('Total Harga') }}</div>
+                <div class="text-[10px] font-bold uppercase tracking-wider opacity-80">{{ __('Harga All In') }}</div>
                 <div class="mt-1 text-3xl font-extrabold tabular-nums">
                     Rp {{ number_format($totalHarga, 0, ',', '.') }}
-                </div>
-                <div class="mt-1.5 text-[11px] opacity-80">
-                    {{ __('= Jual + Biaya Tambahan + PPN − Diskon') }}
                 </div>
             </div>
         </div>

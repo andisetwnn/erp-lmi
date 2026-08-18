@@ -176,6 +176,7 @@ new #[Title('Laporan')] class extends Component
         'performance'  => ['Peringkat Sales',  'trophy',           'indigo',  'penjualan'],
         'realisasi'    => ['Kwitansi Masuk',   'banknotes',        'purple',  'keuangan'],
         'outstanding'  => ['Tunggakan UM',     'clock',            'amber',   'keuangan'],
+        'biayatambahan'=> ['Biaya Tambahan',   'currency-dollar',  'amber',   'keuangan'],
         'rekap'        => ['Laporan Lengkap',  'document-text',    'emerald', 'keuangan'],
     ];
 
@@ -241,6 +242,7 @@ public function setPeriod(string $p): void
             'pembatalan' => $this->dataPembatalan($from, $to),
             'pindah' => $this->dataPindah($from, $to),
             'performance' => $this->dataPerformance($from, $to),
+            'biayatambahan' => $this->dataBiayaTambahan($from, $to),
             'rekap' => $this->dataRekap($from, $to),
             default => [],
         };
@@ -550,14 +552,35 @@ public function setPeriod(string $p): void
             ->get()
             ->keyBy('spr_id');
 
+        // Pre-aggregate biaya tambahan per rumah_id (untuk SPR yg ada rumah_id).
+        // Nominal dari rumah.biaya_tambahan, terbayar dari sum realisasi (non-refunded).
+        $rumahIds = collect($sprs->items())->pluck('rumah_id')->filter()->unique()->all();
+        $btNominalMap = \App\Models\Master\Rumah::whereIn('id', $rumahIds)
+            ->pluck('biaya_tambahan', 'id');
+        $btTerbayarMap = \App\Models\Master\BiayaTambahanRealisasi::query()
+            ->whereIn('rumah_id', $rumahIds)
+            ->where('is_refunded', false)
+            ->selectRaw('rumah_id, SUM(jumlah) as total')
+            ->groupBy('rumah_id')
+            ->pluck('total', 'rumah_id');
+
         // Summary total (all data, tidak per page)
         $totalSpr = (clone $query)->count();
         $totalNilai = (float) (clone $query)->sum('total_harga');
         $totalUmNet = (float) (clone $query)->sum('um_net');
         $totalBayarAll = (float) SprRealisasiPembayaran::whereIn('spr_id', (clone $query)->pluck('spr.id'))
             ->whereIn('jenis', ['bf', 'um'])->sum('jumlah');
+        // Total biaya tambahan periode
+        $allRumahIds = (clone $query)->pluck('spr.rumah_id')->filter()->unique();
+        $totalBiayaTambahan = (float) \App\Models\Master\Rumah::whereIn('id', $allRumahIds)->sum('biaya_tambahan');
+        $totalBiayaTambahanBayar = (float) \App\Models\Master\BiayaTambahanRealisasi::query()
+            ->whereIn('rumah_id', $allRumahIds)
+            ->where('is_refunded', false)
+            ->sum('jumlah');
 
-        return compact('sprs', 'kwtAgg', 'totalSpr', 'totalNilai', 'totalUmNet', 'totalBayarAll');
+        return compact('sprs', 'kwtAgg', 'btNominalMap', 'btTerbayarMap',
+            'totalSpr', 'totalNilai', 'totalUmNet', 'totalBayarAll',
+            'totalBiayaTambahan', 'totalBiayaTambahanBayar');
     }
 
     private function dataPindah($from, $to): array
@@ -599,6 +622,77 @@ public function setPeriod(string $p): void
             ->sum('jumlah');
 
         return compact('switchings', 'totalPindah', 'totalSwap', 'totalEvent', 'totalRefundPindah');
+    }
+
+    private function dataBiayaTambahan($from, $to): array
+    {
+        // Semua unit di proyek yg dipilih dengan biaya_tambahan > 0.
+        $rumahQ = \App\Models\Master\Rumah::query()
+            ->with(['proyek:id,nama_proyek', 'tipeRumah:id,tipe,nama_tipe',
+                'biayaTambahanRealisasi' => fn ($q) => $q->with('inputBy'),
+            ])
+            ->where('biaya_tambahan', '>', 0)
+            ->when($this->filterProyek, fn ($q) => $q->where('proyek_id', $this->filterProyek))
+            ->when($this->filterTipe, fn ($q) => $q->where('tipe_rumah_id', $this->filterTipe))
+            ->orderBy('blok')->orderBy('nomor_unit');
+
+        if ($this->search !== '') {
+            $rumahQ->where(function ($q) {
+                $q->where('blok', 'like', "%{$this->search}%")
+                    ->orWhere('nomor_unit', 'like', "%{$this->search}%");
+            });
+        }
+
+        $units = $rumahQ->get();
+
+        // Ambil SPR aktif per rumah (approved / akad — bukan cancelled),
+        // ambil yang terbaru per rumah_id (latest id).
+        $sprMap = \App\Models\Master\Spr::query()
+            ->select('spr.id', 'spr.nomor_spr', 'spr.rumah_id', 'spr.status', 'spr.prospect_customer_id')
+            ->with('prospectCustomer:id,nama_lengkap')
+            ->whereIn('rumah_id', $units->pluck('id'))
+            ->whereNotIn('status', ['cancelled'])
+            ->orderByDesc('id')
+            ->get()
+            ->unique('rumah_id')
+            ->keyBy('rumah_id');
+
+        $rows = $units->map(function ($r) use ($sprMap) {
+            $nominal = (float) $r->biaya_tambahan;
+            $terbayar = (float) $r->biayaTambahanRealisasi->where('is_refunded', false)->sum('jumlah');
+            $refunded = (float) $r->biayaTambahanRealisasi->where('is_refunded', true)->sum('jumlah');
+            $sisa = max(0, $nominal - $terbayar);
+            $status = match (true) {
+                $sisa <= 0.01 && $nominal > 0 => 'Lunas',
+                $terbayar > 0 => 'Cicil',
+                default => 'Belum Bayar',
+            };
+            $spr = $sprMap->get($r->id);
+
+            return [
+                'rumah' => $r,
+                'spr' => $spr,
+                'nominal' => $nominal,
+                'terbayar' => $terbayar,
+                'sisa' => $sisa,
+                'refunded' => $refunded,
+                'status' => $status,
+                'realisasi_count' => $r->biayaTambahanRealisasi->where('is_refunded', false)->count(),
+            ];
+        });
+
+        $totalNominal = $rows->sum('nominal');
+        $totalTerbayar = $rows->sum('terbayar');
+        $totalSisa = $rows->sum('sisa');
+        $totalRefunded = $rows->sum('refunded');
+        $countLunas = $rows->where('status', 'Lunas')->count();
+        $countCicil = $rows->where('status', 'Cicil')->count();
+        $countBelum = $rows->where('status', 'Belum Bayar')->count();
+
+        return compact(
+            'rows', 'totalNominal', 'totalTerbayar', 'totalSisa', 'totalRefunded',
+            'countLunas', 'countCicil', 'countBelum'
+        );
     }
 
     private function dataPembatalan($from, $to): array
@@ -1201,9 +1295,111 @@ public function setPeriod(string $p): void
             </div>
         @endif
 
-        @if ($tab === 'rekap')
+        @if ($tab === 'biayatambahan')
             {{-- KPI Cards --}}
             <div class="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+                    <div class="text-[10px] font-bold uppercase text-amber-700">Total Nominal</div>
+                    <div class="mt-2 text-2xl font-bold tabular-nums text-amber-800 dark:text-amber-300">Rp {{ $fmtJt($totalNominal) }}</div>
+                </div>
+                <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
+                    <div class="text-[10px] font-bold uppercase text-emerald-700">Terbayar</div>
+                    <div class="mt-2 text-2xl font-bold tabular-nums text-emerald-800 dark:text-emerald-300">Rp {{ $fmtJt($totalTerbayar) }}</div>
+                </div>
+                <div class="rounded-xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-800 dark:bg-rose-950/30">
+                    <div class="text-[10px] font-bold uppercase text-rose-700">Sisa</div>
+                    <div class="mt-2 text-2xl font-bold tabular-nums text-rose-800 dark:text-rose-300">Rp {{ $fmtJt($totalSisa) }}</div>
+                </div>
+                @php $totalUnit = $rows->count(); @endphp
+                <div class="rounded-xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-800 dark:bg-indigo-950/30">
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-indigo-700">Total Unit</div>
+                        <span class="rounded bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">{{ $totalUnit }}</span>
+                    </div>
+                    <div class="mt-2 space-y-1 text-[11px]">
+                        <div class="flex items-center justify-between">
+                            <span class="flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><span class="size-1.5 rounded-full bg-emerald-500"></span> Lunas</span>
+                            <span class="font-mono font-bold tabular-nums text-emerald-800 dark:text-emerald-300">{{ $countLunas }}</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="flex items-center gap-1 text-blue-700 dark:text-blue-400"><span class="size-1.5 rounded-full bg-blue-500"></span> Cicil</span>
+                            <span class="font-mono font-bold tabular-nums text-blue-800 dark:text-blue-300">{{ $countCicil }}</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="flex items-center gap-1 text-amber-700 dark:text-amber-400"><span class="size-1.5 rounded-full bg-amber-500"></span> Belum Bayar</span>
+                            <span class="font-mono font-bold tabular-nums text-amber-800 dark:text-amber-300">{{ $countBelum }}</span>
+                        </div>
+                        @if ($totalRefunded > 0)
+                            <div class="mt-1 flex items-center justify-between border-t border-indigo-200 pt-1 dark:border-indigo-800">
+                                <span class="text-rose-700 dark:text-rose-400">Refunded</span>
+                                <span class="font-mono tabular-nums text-rose-800 dark:text-rose-300">Rp {{ $fmtJt($totalRefunded) }}</span>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+
+            {{-- Table --}}
+            <div class="rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                        <thead class="bg-zinc-50 dark:bg-zinc-800/50">
+                            <tr class="text-left font-bold uppercase text-[10px] text-zinc-500">
+                                <th class="px-3 py-2">Unit</th>
+                                <th class="px-3 py-2">Tipe</th>
+                                <th class="px-3 py-2">No SPR</th>
+                                <th class="px-3 py-2">Customer</th>
+                                <th class="px-3 py-2 text-right">Nominal</th>
+                                <th class="px-3 py-2 text-right">Terbayar</th>
+                                <th class="px-3 py-2 text-right">Sisa</th>
+                                <th class="px-3 py-2 text-center">Realisasi</th>
+                                <th class="px-3 py-2 text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($rows as $r)
+                                <tr class="border-t border-zinc-100 dark:border-zinc-800">
+                                    <td class="px-3 py-2 font-mono">{{ $r['rumah']->kode_unit }}</td>
+                                    <td class="px-3 py-2">{{ $r['rumah']->tipeRumah?->tipe }}</td>
+                                    <td class="px-3 py-2 font-mono">
+                                        @if ($r['spr'])
+                                            <a href="{{ route('marketing.spr.show', $r['spr']->id) }}" class="text-blue-600 hover:underline dark:text-blue-400" wire:navigate>
+                                                #{{ $r['spr']->nomor_display ?? $r['spr']->nomor_spr }}
+                                            </a>
+                                        @else
+                                            <span class="text-zinc-400">—</span>
+                                        @endif
+                                    </td>
+                                    <td class="px-3 py-2">{{ $r['spr']?->prospectCustomer?->nama_lengkap ?? '—' }}</td>
+                                    <td class="px-3 py-2 text-right font-mono tabular-nums">{{ $fmt($r['nominal']) }}</td>
+                                    <td class="px-3 py-2 text-right font-mono tabular-nums text-emerald-700">{{ $r['terbayar'] > 0 ? $fmt($r['terbayar']) : '-' }}</td>
+                                    <td class="px-3 py-2 text-right font-mono tabular-nums text-rose-700 font-semibold">{{ $r['sisa'] > 0 ? $fmt($r['sisa']) : '-' }}</td>
+                                    <td class="px-3 py-2 text-center">{{ $r['realisasi_count'] }}×</td>
+                                    <td class="px-3 py-2 text-center">
+                                        @php
+                                            $cls = match ($r['status']) {
+                                                'Lunas' => 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/30',
+                                                'Cicil' => 'text-blue-700 bg-blue-50 dark:text-blue-400 dark:bg-blue-950/30',
+                                                default => 'text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-950/30',
+                                            };
+                                        @endphp
+                                        <span class="rounded px-2 py-0.5 text-[10px] font-bold uppercase {{ $cls }}">{{ $r['status'] }}</span>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="9" class="py-8 text-center text-zinc-400">Tidak ada unit dengan biaya tambahan &gt; 0.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        @endif
+
+        @if ($tab === 'rekap')
+            {{-- KPI Cards --}}
+            <div class="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5">
                 <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
                     <div class="flex items-center justify-between">
                         <div class="text-[10px] font-bold uppercase text-emerald-700">Total SPR</div>
@@ -1232,6 +1428,14 @@ public function setPeriod(string $p): void
                     </div>
                     <div class="mt-2 text-2xl font-bold tabular-nums text-emerald-800">Rp {{ $fmtJt($totalBayarAll) }}</div>
                 </div>
+                <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+                    <div class="flex items-center justify-between">
+                        <div class="text-[10px] font-bold uppercase text-amber-700">Biaya Tambahan</div>
+                        <x-info-button title="Biaya Tambahan Unit">Total biaya tambahan unit (kavling hook, view, dll) yg terpisah dari SPR + total yg sudah terbayar dari konsumen.</x-info-button>
+                    </div>
+                    <div class="mt-2 text-2xl font-bold tabular-nums text-amber-800 dark:text-amber-300">Rp {{ $fmtJt($totalBiayaTambahan) }}</div>
+                    <div class="mt-1 text-[10px] text-amber-700 dark:text-amber-400">Terbayar: Rp {{ $fmtJt($totalBiayaTambahanBayar) }}</div>
+                </div>
             </div>
 
             <div class="rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
@@ -1250,6 +1454,8 @@ public function setPeriod(string $p): void
                                 <th class="px-2 py-2 text-right">Total Bayar</th>
                                 <th class="px-2 py-2 text-right">Sisa UM</th>
                                 <th class="px-2 py-2 text-right">Progress</th>
+                                <th class="px-2 py-2 text-right border-l border-amber-200 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/10">B.Tambahan</th>
+                                <th class="px-2 py-2 text-right bg-amber-50/40 dark:bg-amber-950/10">Terbayar B.T</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1264,6 +1470,8 @@ public function setPeriod(string $p): void
                                     $pct = $umNet > 0
                                         ? ($totalBayar > 0 ? max(1, (int) round($totalBayar / $umNet * 100)) : 0)
                                         : 0;
+                                    $btNominal = (float) ($btNominalMap[$spr->rumah_id] ?? 0);
+                                    $btTerbayar = (float) ($btTerbayarMap[$spr->rumah_id] ?? 0);
                                 @endphp
                                 <tr class="border-t border-zinc-100 dark:border-zinc-800">
                                     <td class="px-2 py-2 font-mono">{{ $spr->nomor_display }}</td>
@@ -1277,9 +1485,11 @@ public function setPeriod(string $p): void
                                     <td class="px-2 py-2 text-right font-mono tabular-nums text-emerald-700">{{ $fmt($totalBayar) }}</td>
                                     <td class="px-2 py-2 text-right font-mono tabular-nums text-amber-700">{{ $fmt($sisaUm) }}</td>
                                     <td class="px-2 py-2 text-right tabular-nums font-semibold">{{ $pct }}%</td>
+                                    <td class="px-2 py-2 text-right font-mono tabular-nums border-l border-amber-200 dark:border-amber-900/40 bg-amber-50/20 dark:bg-amber-950/10">{{ $btNominal > 0 ? $fmt($btNominal) : '-' }}</td>
+                                    <td class="px-2 py-2 text-right font-mono tabular-nums text-emerald-700 bg-amber-50/20 dark:bg-amber-950/10">{{ $btTerbayar > 0 ? $fmt($btTerbayar) : '-' }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="11" class="px-3 py-6 text-center text-zinc-400">Belum ada data SPR.</td></tr>
+                                <tr><td colspan="13" class="px-3 py-6 text-center text-zinc-400">Belum ada data SPR.</td></tr>
                             @endforelse
                         </tbody>
                     </table>

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Master\BiayaTambahanRealisasi;
 use App\Models\Master\Spr;
 use App\Models\Master\SprRealisasiPembayaran;
 use App\Models\Master\SprTerminPembayaran;
@@ -46,6 +47,29 @@ new #[Title('Detail SPR')] class extends Component
     // Upload dokumen SPR ttd + meterai dari customer
     public $dokumenSignedFile = null;
 
+    // ── Modal Biaya Tambahan (form input realisasi) ──
+    public ?int $btEditId = null;
+
+    public ?string $btTanggal = null;
+
+    public string $btNomorKuitansi = '';
+
+    public string $btJumlah = '0';
+
+    public string $btMetode = 'cash';
+
+    public ?string $btKeterangan = null;
+
+    // Modal Refund Semua (SPR cancelled)
+    public ?string $btRefundTanggal = null;
+
+    public ?string $btRefundKeterangan = null;
+
+    // Modal confirm hapus
+    public ?int $btDeleteId = null;
+
+    public string $btDeleteLabel = '';
+
     public function mount(int $id): void
     {
         $this->loadSpr($id);
@@ -59,6 +83,8 @@ new #[Title('Detail SPR')] class extends Component
             'rumah.tipeRumah',
             'rumah.proyek',
             'rumah.virtualAccount.bank',
+            'rumah.biayaTambahanRealisasi.inputBy',
+            'rumah.biayaTambahanRealisasi.refundedBy',
             'sales',
             'bankKpr',
             'utjConfirmedBy',
@@ -284,6 +310,156 @@ new #[Title('Detail SPR')] class extends Component
         $this->reset(['editRealisasiId', 'editRealisasiTanggal', 'editRealisasiJumlah', 'editRealisasiMetode', 'editRealisasiKeterangan']);
 
         Flux::toast(variant: 'success', text: 'Realisasi kwitansi '.$r->nomor_kwitansi.' diperbarui.');
+    }
+
+    // ═══════════════ BIAYA TAMBAHAN UNIT ═══════════════
+
+    public function openInputBiayaTambahan(): void
+    {
+        abort_unless(Auth::user()?->can('biayatambahan.kelola'), 403);
+        $this->reset(['btEditId', 'btNomorKuitansi', 'btJumlah', 'btMetode', 'btKeterangan']);
+        $this->btTanggal = now()->format('Y-m-d');
+        $this->btMetode = 'cash';
+        $sisa = (float) ($this->spr->rumah?->sisa_biaya_tambahan ?? 0);
+        $this->btJumlah = (string) $sisa; // default = sisa yg belum lunas
+        $this->resetErrorBag();
+        Flux::modal('input-biaya-tambahan')->show();
+    }
+
+    public function openEditBiayaTambahan(int $id): void
+    {
+        abort_unless(Auth::user()?->can('biayatambahan.kelola'), 403);
+        $r = BiayaTambahanRealisasi::findOrFail($id);
+        if ($r->rumah_id !== $this->spr->rumah_id) {
+            abort(403);
+        }
+        $this->btEditId = $r->id;
+        $this->btTanggal = $r->tanggal_bayar->toDateString();
+        $this->btNomorKuitansi = (string) $r->nomor_kuitansi;
+        $this->btJumlah = (string) (float) $r->jumlah;
+        $this->btMetode = $r->metode;
+        $this->btKeterangan = $r->keterangan;
+        $this->resetErrorBag();
+        Flux::modal('input-biaya-tambahan')->show();
+    }
+
+    public function saveBiayaTambahan(): void
+    {
+        abort_unless(Auth::user()?->can('biayatambahan.kelola'), 403);
+        $validated = $this->validate([
+            'btTanggal' => ['required', 'date'],
+            'btNomorKuitansi' => ['required', 'string', 'max:50'],
+            'btJumlah' => ['required', 'numeric', 'min:1'],
+            'btMetode' => ['required', 'in:cash,transfer'],
+            'btKeterangan' => ['nullable', 'string', 'max:500'],
+        ], attributes: [
+            'btTanggal' => 'tanggal bayar',
+            'btNomorKuitansi' => 'nomor kuitansi',
+            'btJumlah' => 'jumlah',
+            'btMetode' => 'metode',
+            'btKeterangan' => 'keterangan',
+        ]);
+
+        if (! $this->spr->rumah_id) {
+            Flux::toast(variant: 'danger', text: 'Unit tidak valid.');
+
+            return;
+        }
+
+        $payload = [
+            'rumah_id' => $this->spr->rumah_id,
+            'spr_id' => $this->spr->id,
+            'tanggal_bayar' => $validated['btTanggal'],
+            'nomor_kuitansi' => $validated['btNomorKuitansi'],
+            'jumlah' => (float) $validated['btJumlah'],
+            'metode' => $validated['btMetode'],
+            'keterangan' => $validated['btKeterangan'] ?: null,
+            'input_by_user_id' => Auth::id(),
+        ];
+
+        if ($this->btEditId) {
+            $r = BiayaTambahanRealisasi::findOrFail($this->btEditId);
+            $r->update($payload);
+            $msg = "Realisasi biaya tambahan {$r->nomor_kuitansi} diperbarui.";
+        } else {
+            BiayaTambahanRealisasi::create($payload);
+            $msg = 'Realisasi biaya tambahan tersimpan.';
+        }
+
+        Flux::modal('input-biaya-tambahan')->close();
+        $this->loadSpr($this->spr->id);
+        $this->reset(['btEditId', 'btNomorKuitansi', 'btJumlah', 'btKeterangan']);
+        Flux::toast(variant: 'success', text: $msg);
+    }
+
+    public function openConfirmDeleteBiayaTambahan(int $id): void
+    {
+        abort_unless(Auth::user()?->can('biayatambahan.kelola'), 403);
+        $r = BiayaTambahanRealisasi::findOrFail($id);
+        if ($r->rumah_id !== $this->spr->rumah_id) {
+            abort(403);
+        }
+        $this->btDeleteId = $r->id;
+        $this->btDeleteLabel = "Kwitansi {$r->nomor_kuitansi} · Rp ".number_format((float) $r->jumlah, 0, ',', '.');
+        Flux::modal('confirm-delete-biaya-tambahan')->show();
+    }
+
+    public function deleteBiayaTambahan(): void
+    {
+        abort_unless(Auth::user()?->can('biayatambahan.kelola'), 403);
+        if (! $this->btDeleteId) {
+            return;
+        }
+        $r = BiayaTambahanRealisasi::findOrFail($this->btDeleteId);
+        if ($r->rumah_id !== $this->spr->rumah_id) {
+            abort(403);
+        }
+        $r->delete();
+        $this->reset(['btDeleteId', 'btDeleteLabel']);
+        Flux::modal('confirm-delete-biaya-tambahan')->close();
+        $this->loadSpr($this->spr->id);
+        Flux::toast(variant: 'success', text: 'Realisasi biaya tambahan dihapus.');
+    }
+
+    public function openRefundBiayaTambahan(): void
+    {
+        abort_unless(Auth::user()?->can('biayatambahan.kelola'), 403);
+        if ($this->spr->status !== 'cancelled') {
+            Flux::toast(variant: 'warning', text: 'Refund hanya boleh untuk SPR yang sudah dibatalkan.');
+
+            return;
+        }
+        $this->btRefundTanggal = now()->format('Y-m-d');
+        $this->btRefundKeterangan = null;
+        $this->resetErrorBag();
+        Flux::modal('refund-biaya-tambahan')->show();
+    }
+
+    public function saveRefundBiayaTambahan(): void
+    {
+        abort_unless(Auth::user()?->can('biayatambahan.kelola'), 403);
+        $validated = $this->validate([
+            'btRefundTanggal' => ['required', 'date'],
+            'btRefundKeterangan' => ['nullable', 'string', 'max:500'],
+        ], attributes: [
+            'btRefundTanggal' => 'tanggal refund',
+            'btRefundKeterangan' => 'keterangan refund',
+        ]);
+
+        BiayaTambahanRealisasi::where('rumah_id', $this->spr->rumah_id)
+            ->where('spr_id', $this->spr->id)
+            ->where('is_refunded', false)
+            ->update([
+                'is_refunded' => true,
+                'refunded_at' => $validated['btRefundTanggal'],
+                'refunded_by_user_id' => Auth::id(),
+                'refund_keterangan' => $validated['btRefundKeterangan'] ?: 'SPR dibatalkan',
+            ]);
+
+        Flux::modal('refund-biaya-tambahan')->close();
+        $this->loadSpr($this->spr->id);
+        $this->reset(['btRefundTanggal', 'btRefundKeterangan']);
+        Flux::toast(variant: 'success', text: 'Semua realisasi biaya tambahan telah di-refund.');
     }
 }; ?>
 
@@ -1373,6 +1549,137 @@ new #[Title('Detail SPR')] class extends Component
             </div>
         @endif
 
+        {{-- ═══════════════ SECTION BIAYA TAMBAHAN UNIT (terpisah dari SPR) ═══════════════ --}}
+        @php
+            $btNominal = (float) ($spr->rumah?->biaya_tambahan ?? 0);
+        @endphp
+        @if ($activeTab === 'rincian' && $btNominal > 0)
+            @php
+                $btRealisasi = $spr->rumah->biayaTambahanRealisasi->sortByDesc('tanggal_bayar');
+                $btTerbayar = $btRealisasi->where('is_refunded', false)->sum('jumlah');
+                $btSisa = max(0, $btNominal - $btTerbayar);
+                $btLebih = max(0, $btTerbayar - $btNominal);
+                $btAdaRefund = $btRealisasi->where('is_refunded', true)->count() > 0;
+                $btProgress = $btNominal > 0 ? min(100, ($btTerbayar / $btNominal) * 100) : 0;
+            @endphp
+
+            <div class="mx-auto mt-4 max-w-7xl">
+                <div class="rounded-xl border border-amber-200 bg-white shadow-sm dark:border-amber-900/50 dark:bg-zinc-900">
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-50/50 px-4 py-3 dark:border-amber-900/40 dark:bg-amber-950/20">
+                        <div class="flex items-center gap-2">
+                            <flux:icon.currency-dollar class="size-5 text-amber-700 dark:text-amber-400" />
+                            <div>
+                                <div class="text-sm font-bold text-amber-900 dark:text-amber-200">
+                                    Biaya Tambahan Unit {{ $rumah?->kode_unit }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            @can('biayatambahan.kelola')
+                                @if ($btSisa > 0 && ! ($spr->status === 'cancelled'))
+                                    <flux:button size="xs" variant="primary" icon="plus" wire:click="openInputBiayaTambahan">
+                                        Input Realisasi
+                                    </flux:button>
+                                @endif
+                                @if ($spr->status === 'cancelled' && $btTerbayar > 0 && ! $btAdaRefund)
+                                    <flux:button size="xs" variant="danger" icon="arrow-uturn-left" wire:click="openRefundBiayaTambahan">
+                                        Refund Semua
+                                    </flux:button>
+                                @endif
+                            @endcan
+                        </div>
+                    </div>
+
+                    <div class="px-4 py-3">
+                        {{-- Ringkasan --}}
+                        <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+                            <div>
+                                <div class="text-[10px] font-bold uppercase text-zinc-500">Nominal</div>
+                                <div class="font-mono text-sm font-bold tabular-nums">Rp {{ $fmt($btNominal) }}</div>
+                            </div>
+                            <div>
+                                <div class="text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400">Terbayar</div>
+                                <div class="font-mono text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-400">Rp {{ $fmt($btTerbayar) }}</div>
+                            </div>
+                            <div>
+                                <div class="text-[10px] font-bold uppercase {{ $btSisa > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-zinc-500' }}">Sisa</div>
+                                <div class="font-mono text-sm font-bold tabular-nums {{ $btSisa > 0 ? 'text-rose-700 dark:text-rose-400' : '' }}">Rp {{ $fmt($btSisa) }}</div>
+                            </div>
+                            <div>
+                                <div class="text-[10px] font-bold uppercase text-zinc-500">Progress</div>
+                                <div class="mt-1 h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                                    <div class="h-full rounded-full bg-emerald-500" style="width: {{ $btProgress }}%"></div>
+                                </div>
+                                <div class="mt-0.5 text-[10px] text-zinc-500">{{ number_format($btProgress, 0) }}% dari target</div>
+                            </div>
+                        </div>
+
+                        {{-- Table realisasi --}}
+                        <div class="mt-3 overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-700">
+                            <table class="w-full text-xs">
+                                <thead class="bg-zinc-50 dark:bg-zinc-800/50">
+                                    <tr class="text-left text-[10px] uppercase text-zinc-500">
+                                        <th class="px-3 py-2 font-semibold">Tanggal</th>
+                                        <th class="px-3 py-2 font-semibold">No Kwitansi</th>
+                                        <th class="px-3 py-2 text-right font-semibold">Jumlah</th>
+                                        <th class="px-3 py-2 font-semibold">Metode</th>
+                                        <th class="px-3 py-2 font-semibold">Keterangan</th>
+                                        <th class="px-3 py-2 font-semibold">Input By</th>
+                                        <th class="px-3 py-2 text-right font-semibold">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
+                                    @forelse ($btRealisasi as $r)
+                                        <tr class="{{ $r->is_refunded ? 'opacity-60 line-through' : '' }} hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
+                                            <td class="px-3 py-1.5 whitespace-nowrap">{{ $r->tanggal_bayar->format('d/m/Y') }}</td>
+                                            <td class="px-3 py-1.5 whitespace-nowrap font-mono text-[11px]">{{ $r->nomor_kuitansi }}</td>
+                                            <td class="px-3 py-1.5 whitespace-nowrap text-right font-mono tabular-nums font-semibold">{{ $fmt($r->jumlah) }}</td>
+                                            <td class="px-3 py-1.5 whitespace-nowrap">
+                                                <flux:badge color="{{ $r->metode === 'cash' ? 'zinc' : 'blue' }}" size="sm">
+                                                    {{ \App\Models\Master\BiayaTambahanRealisasi::METODE[$r->metode] ?? $r->metode }}
+                                                </flux:badge>
+                                            </td>
+                                            <td class="px-3 py-1.5 max-w-xs truncate" title="{{ $r->keterangan }}">
+                                                {{ $r->keterangan ?: '—' }}
+                                                @if ($r->is_refunded)
+                                                    <div class="mt-0.5 text-[10px] italic text-rose-600 dark:text-rose-400 no-underline">
+                                                        Refund {{ $r->refunded_at?->format('d/m/Y') }} · {{ $r->refund_keterangan ?: 'SPR dibatalkan' }}
+                                                    </div>
+                                                @endif
+                                            </td>
+                                            <td class="px-3 py-1.5 whitespace-nowrap text-[10px] text-zinc-500">
+                                                {{ $r->inputBy?->name ?? '—' }}
+                                            </td>
+                                            <td class="px-3 py-1.5 whitespace-nowrap text-right">
+                                                @can('biayatambahan.kelola')
+                                                    @if (! $r->is_refunded)
+                                                        <flux:dropdown position="bottom" align="end">
+                                                            <flux:button size="xs" icon="ellipsis-horizontal" variant="ghost" />
+                                                            <flux:menu>
+                                                                <flux:menu.item icon="pencil" wire:click="openEditBiayaTambahan({{ $r->id }})">Edit</flux:menu.item>
+                                                                <flux:menu.separator />
+                                                                <flux:menu.item icon="trash" variant="danger" wire:click="openConfirmDeleteBiayaTambahan({{ $r->id }})">Hapus</flux:menu.item>
+                                                            </flux:menu>
+                                                        </flux:dropdown>
+                                                    @endif
+                                                @endcan
+                                            </td>
+                                        </tr>
+                                    @empty
+                                        <tr>
+                                            <td colspan="7" class="px-4 py-6 text-center italic text-zinc-400">
+                                                Belum ada realisasi biaya tambahan tercatat.
+                                            </td>
+                                        </tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
+
         {{-- ============ MODAL: TAMBAH TRANSAKSI ============ --}}
         <flux:modal name="tambah-transaksi" class="md:w-lg" focusable>
             <form wire:submit="saveTransaksi" class="space-y-5">
@@ -1518,6 +1825,121 @@ new #[Title('Detail SPR')] class extends Component
                     </flux:button>
                 </div>
             </form>
+        </flux:modal>
+
+        {{-- ═══════════════════════ MODAL: INPUT / EDIT BIAYA TAMBAHAN ═══════════════════════ --}}
+        <flux:modal name="input-biaya-tambahan" class="md:w-lg" focusable>
+            <form wire:submit="saveBiayaTambahan" class="space-y-4">
+                <div>
+                    <flux:heading size="lg">{{ $btEditId ? __('Edit Realisasi Biaya Tambahan') : __('Input Realisasi Biaya Tambahan') }}</flux:heading>
+                    <flux:subheading>
+                        Bayar biaya tambahan unit (kavling hook / view / dll). Terpisah dari SPR, tidak memengaruhi cicilan.
+                    </flux:subheading>
+                </div>
+
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <flux:field>
+                        <flux:label>{{ __('Tanggal Bayar') }} <span class="text-rose-500">*</span></flux:label>
+                        <flux:input type="date" wire:model="btTanggal" />
+                        <flux:error name="btTanggal" />
+                    </flux:field>
+                    <flux:field>
+                        <flux:label>{{ __('No Kwitansi') }} <span class="text-rose-500">*</span></flux:label>
+                        <flux:input wire:model="btNomorKuitansi" placeholder="mis. KWT-BT/001" />
+                        <flux:error name="btNomorKuitansi" />
+                    </flux:field>
+                </div>
+
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <flux:field>
+                        <flux:label>{{ __('Jumlah (Rp)') }} <span class="text-rose-500">*</span></flux:label>
+                        <flux:input wire:model="btJumlah" placeholder="0" />
+                        <flux:description>Sisa: Rp {{ number_format((float) ($spr->rumah?->sisa_biaya_tambahan ?? 0), 0, ',', '.') }}</flux:description>
+                        <flux:error name="btJumlah" />
+                    </flux:field>
+                    <flux:field>
+                        <flux:label>{{ __('Metode') }} <span class="text-rose-500">*</span></flux:label>
+                        <flux:select wire:model="btMetode">
+                            @foreach (\App\Models\Master\BiayaTambahanRealisasi::METODE as $k => $l)
+                                <flux:select.option value="{{ $k }}">{{ $l }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
+                        <flux:error name="btMetode" />
+                    </flux:field>
+                </div>
+
+                <flux:field>
+                    <flux:label>{{ __('Keterangan') }}</flux:label>
+                    <flux:textarea wire:model="btKeterangan" rows="2" placeholder="Opsional (mis. bayar bertahap 1 dari 2)" />
+                    <flux:error name="btKeterangan" />
+                </flux:field>
+
+                <div class="flex justify-end gap-2 border-t border-zinc-200 pt-3 dark:border-zinc-700">
+                    <flux:modal.close><flux:button variant="ghost" type="button">Batal</flux:button></flux:modal.close>
+                    <flux:button variant="primary" type="submit" icon="check">
+                        {{ $btEditId ? 'Simpan Perubahan' : 'Simpan' }}
+                    </flux:button>
+                </div>
+            </form>
+        </flux:modal>
+
+        {{-- ═══════════════════════ MODAL: REFUND SEMUA BIAYA TAMBAHAN (SPR cancelled) ═══════════════════════ --}}
+        <flux:modal name="refund-biaya-tambahan" class="md:w-md" focusable>
+            <form wire:submit="saveRefundBiayaTambahan" class="space-y-4">
+                <div class="flex items-start gap-3">
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400">
+                        <flux:icon.arrow-uturn-left class="size-5" />
+                    </div>
+                    <div>
+                        <flux:heading size="lg">{{ __('Refund Semua Biaya Tambahan') }}</flux:heading>
+                        <flux:subheading>SPR sudah dibatalkan — tandai semua realisasi terbayar sebagai refunded.</flux:subheading>
+                    </div>
+                </div>
+
+                <flux:field>
+                    <flux:label>{{ __('Tanggal Refund') }} <span class="text-rose-500">*</span></flux:label>
+                    <flux:input type="date" wire:model="btRefundTanggal" />
+                    <flux:error name="btRefundTanggal" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>{{ __('Keterangan Refund') }}</flux:label>
+                    <flux:textarea wire:model="btRefundKeterangan" rows="2" placeholder="Opsional (mis. via transfer, no ref REF-001)" />
+                    <flux:error name="btRefundKeterangan" />
+                </flux:field>
+
+                <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] italic text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+                    <flux:icon.exclamation-triangle class="-mt-0.5 mr-1 inline size-3" />
+                    Semua realisasi biaya tambahan (yg belum refunded) akan ditandai refunded. Tidak bisa dibatalkan.
+                </div>
+
+                <div class="flex justify-end gap-2 border-t border-zinc-200 pt-3 dark:border-zinc-700">
+                    <flux:modal.close><flux:button variant="ghost" type="button">Batal</flux:button></flux:modal.close>
+                    <flux:button variant="danger" type="submit" icon="arrow-uturn-left">Refund Semua</flux:button>
+                </div>
+            </form>
+        </flux:modal>
+
+        {{-- ═══════════════════════ MODAL: CONFIRM HAPUS ═══════════════════════ --}}
+        <flux:modal name="confirm-delete-biaya-tambahan" class="md:w-md">
+            <div class="space-y-4">
+                <div class="flex items-start gap-3">
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400">
+                        <flux:icon.trash class="size-5" />
+                    </div>
+                    <div>
+                        <flux:heading size="lg">Hapus Realisasi Biaya Tambahan</flux:heading>
+                        <flux:subheading>{{ $btDeleteLabel }}</flux:subheading>
+                    </div>
+                </div>
+                <p class="text-sm text-zinc-600 dark:text-zinc-400">
+                    Record ini akan dihapus permanen. Aksi tidak bisa dibatalkan.
+                </p>
+                <div class="flex justify-end gap-2 border-t border-zinc-200 pt-3 dark:border-zinc-700">
+                    <flux:modal.close><flux:button variant="ghost">Batal</flux:button></flux:modal.close>
+                    <flux:button variant="danger" wire:click="deleteBiayaTambahan">Hapus</flux:button>
+                </div>
+            </div>
         </flux:modal>
 
     </div>

@@ -62,6 +62,11 @@ class Rumah extends Model
         return $this->hasMany(Booking::class);
     }
 
+    public function biayaTambahanRealisasi(): HasMany
+    {
+        return $this->hasMany(BiayaTambahanRealisasi::class);
+    }
+
     public function bookingAktif(): ?Booking
     {
         return $this->booking()->where('status', 'aktif')->latest()->first();
@@ -108,18 +113,35 @@ class Rumah extends Model
     }
 
     /**
-     * Harga jual efektif untuk unit ini:
-     *   = tipe.harga_jual + biaya_tambahan (unit hook/tambahan)
+     * Harga jual efektif untuk unit ini = harga master tipe.
+     * Field `biaya_tambahan` (hook/view/dll) diproses TERPISAH via tabel
+     * `biaya_tambahan_realisasi`, tidak masuk ke SPR / total harga.
      */
     protected function hargaJual(): Attribute
     {
         return Attribute::make(
-            get: function () {
-                $base = (float) ($this->tipeRumah?->harga_jual ?? 0);
-                $tambahan = (float) ($this->biaya_tambahan ?? 0);
+            get: fn () => (float) ($this->tipeRumah?->harga_jual ?? 0),
+        );
+    }
 
-                return $base + $tambahan;
-            },
+    /**
+     * Total nominal realisasi biaya tambahan yg sudah dibayar (tidak refunded).
+     * Butuh eager-load biayaTambahanRealisasi supaya tidak N+1.
+     */
+    protected function totalRealisasiBiayaTambahan(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => (float) $this->biayaTambahanRealisasi
+                ->where('is_refunded', false)
+                ->sum('jumlah'),
+        );
+    }
+
+    /** Sisa biaya tambahan yg belum dibayar = biaya_tambahan − total realisasi. */
+    protected function sisaBiayaTambahan(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => max(0, (float) $this->biaya_tambahan - $this->total_realisasi_biaya_tambahan),
         );
     }
 }

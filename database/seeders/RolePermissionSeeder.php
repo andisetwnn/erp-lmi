@@ -40,6 +40,7 @@ class RolePermissionSeeder extends Seeder
             'spr.batal',          // Proses pembatalan SPR + refund
             'spr.pindah-unit',    // Pindah kavling / swap SPR
             'spr.cetak',          // Cetak PDF SPR final
+            'biayatambahan.kelola', // Input realisasi biaya tambahan unit + refund (Finance & Admin Sales)
 
             // ─── FINANCE ───
             'pembayaran.kelola',  // Konfirmasi UTJ + realisasi cicilan + tempel materai
@@ -120,6 +121,7 @@ class RolePermissionSeeder extends Seeder
                 'spr.cetak',
                 'pembayaran.kelola',
                 'pembayaran.approve',
+                'biayatambahan.kelola',
                 'jurnal.umum.kelola',
                 'jurnal.bank.kelola',
                 'jurnal.kaskecil.kelola',
@@ -145,6 +147,15 @@ class RolePermissionSeeder extends Seeder
                 'spr.lihat',
                 'spr.batal',
                 'spr.cetak',
+                'laporan.lihat',
+                'ttd.kelola',
+            ],
+
+            // Admin Sales: kelola realisasi biaya tambahan unit + lihat SPR
+            'admin-sales' => [
+                'spr.lihat',
+                'spr.cetak',
+                'biayatambahan.kelola',
                 'laporan.lihat',
                 'ttd.kelola',
             ],

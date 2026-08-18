@@ -97,6 +97,7 @@ new #[Title('Pengguna Sistem')] class extends Component
         'spr.batal'                 => 'Pembatalan SPR',
         'spr.pindah-unit'           => 'Pindah Kavling',
         'spr.cetak'                 => 'Cetak PDF SPR',
+        'biayatambahan.kelola'      => 'Kelola Biaya Tambahan Unit',
         // Finance
         'pembayaran.kelola'         => 'Kelola Penerimaan Konsumen',
         'pembayaran.approve'        => 'Approve Pembayaran',
@@ -144,6 +145,7 @@ new #[Title('Pengguna Sistem')] class extends Component
         'spr.batal'                 => 'Memproses pembatalan SPR beserta pengembalian dana ke customer.',
         'spr.pindah-unit'           => 'Memindahkan customer dari satu kavling ke kavling lain, termasuk menukar unit antar dua SPR. Selisih harga dan realisasi otomatis diproses.',
         'spr.cetak'                 => 'Mencetak PDF SPR (baik draft maupun versi final bermaterai).',
+        'biayatambahan.kelola'      => 'Input realisasi pembayaran biaya tambahan unit (kavling hook, view, dll) beserta refund saat SPR dibatalkan. Diproses terpisah dari SPR — tidak memengaruhi total harga SPR / cicilan.',
         // Finance
         'pembayaran.kelola'         => 'Mengakses menu Penerimaan Konsumen: konfirmasi UTJ, mencatat cicilan Uang Muka, menempelkan e-Materai, dan memproses realisasi pembayaran.',
         'pembayaran.approve'        => 'Menyetujui pengembalian dana (refund) & reversal realisasi pembayaran — biasanya finance-manager.',

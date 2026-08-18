@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Master\AlasanPembatalan;
+use App\Models\Master\BiayaTambahanRealisasi;
 use App\Models\Master\Booking;
 use App\Models\Master\Rumah;
 use App\Models\Master\Spr;
@@ -62,6 +63,7 @@ class SprSwitchingService
             ]);
 
             $this->pindahRealisasi($sprLama, $sprBaru, $switching->id);
+            $this->pindahBiayaTambahanRealisasi($sprLama, $sprBaru);
             $this->recalculateTerminUm($sprBaru);
             $this->handleSelisihHarga($sprBaru, $switching->id);
             $this->releaseRumahLama($sprLama->rumah);
@@ -120,6 +122,10 @@ class SprSwitchingService
             // Pindah realisasi
             $this->pindahRealisasi($sprA, $sprBaruA, $switching->id);
             $this->pindahRealisasi($sprB, $sprBaruB, $switching->id);
+
+            // Transfer realisasi biaya tambahan unit — dari rumah lama ke rumah baru
+            $this->pindahBiayaTambahanRealisasi($sprA, $sprBaruA);
+            $this->pindahBiayaTambahanRealisasi($sprB, $sprBaruB);
 
             // Recalculate termin + selisih untuk masing2
             $this->recalculateTerminUm($sprBaruA);
@@ -195,7 +201,10 @@ class SprSwitchingService
         $tipe = $rumahBaru->tipeRumah;
         $kategori = $tipe?->kategori ?? $sprLama->kategori;
         $hargaJual = (float) ($tipe?->harga_jual ?? 0);
-        $biayaTambahan = (float) ($tipe?->biaya_administrasi ?? 0) + (float) ($rumahBaru->biaya_tambahan ?? 0);
+        // Biaya tambahan SPR = cuma biaya_administrasi dari tipe.
+        // rumah.biaya_tambahan (hook/view) TIDAK masuk SPR — dikelola terpisah via
+        // BiayaTambahanRealisasi (transfer ke unit baru di bawah).
+        $biayaTambahan = (float) ($tipe?->biaya_administrasi ?? 0);
         $diskon = (float) ($rumahBaru->discount ?? 0);
         $ppn = (float) ($rumahBaru->ppn ?? 0);
         $totalHarga = max(0, $hargaJual + $biayaTambahan + $ppn - $diskon);
@@ -305,6 +314,26 @@ class SprSwitchingService
     }
 
     /**
+     * Transfer realisasi biaya tambahan unit — dari rumah lama ke rumah baru + link ke SPR baru.
+     * Sisa/kelebihan otomatis ke-hitung dari accessor Rumah.sisa_biaya_tambahan
+     * (basis: rumah_baru.biaya_tambahan vs total realisasi terbayar).
+     */
+    private function pindahBiayaTambahanRealisasi(Spr $sprLama, Spr $sprBaru): void
+    {
+        if (! $sprLama->rumah_id || ! $sprBaru->rumah_id) {
+            return;
+        }
+        BiayaTambahanRealisasi::where('rumah_id', $sprLama->rumah_id)
+            ->where(function ($q) use ($sprLama) {
+                $q->whereNull('spr_id')->orWhere('spr_id', $sprLama->id);
+            })
+            ->update([
+                'rumah_id' => $sprBaru->rumah_id,
+                'spr_id' => $sprBaru->id,
+            ]);
+    }
+
+    /**
      * Buat termin BF + UM untuk SPR baru (mengikuti pola form SPR create).
      * BF = 1 termin (nominal UTJ). UM = split ke termin equal kalau UM > 0.
      */
@@ -324,9 +353,11 @@ class SprSwitchingService
             return;
         }
 
-        // Split UM ke 4 termin (default subsidi KPR)
+        // Split UM ke 4 termin (default subsidi KPR).
+        // Sisa cicilan = um_net − utj_nominal (UTJ dianggap bagian dari UM Sendiri).
         $jumlahTermin = 4;
-        $perTermin = round((float) $sprBaru->um_net / $jumlahTermin, 0);
+        $sisaCicil = max(0, (float) $sprBaru->um_net - (float) $sprBaru->utj_nominal);
+        $perTermin = round($sisaCicil / $jumlahTermin, 0);
         // Anchor prioritas: tanggal transfer UTJ → tanggal SPR → now (fallback).
         $anchor = SprJadwalTermin::toAnchor($sprBaru->utj_tanggal_transaksi)
             ?? SprJadwalTermin::toAnchor($sprBaru->tanggal_spr)
