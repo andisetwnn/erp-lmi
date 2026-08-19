@@ -181,6 +181,16 @@
                     </flux:sidebar.group>
                 @endcan
 
+                @canany(['pemberkasan.kelola', 'pemberkasan.lihat'])
+                    <flux:sidebar.group :heading="__('Pemberkasan')" icon="folder-open" expandable
+                                        :expanded="request()->routeIs('pemberkasan.*')">
+                        <flux:sidebar.item icon="clipboard-document-list" :href="route('pemberkasan.input.index')"
+                                           :current="request()->routeIs('pemberkasan.input.*')" wire:navigate>
+                            {{ __('Input Pemberkasan') }}
+                        </flux:sidebar.item>
+                    </flux:sidebar.group>
+                @endcanany
+
                 @can('pembayaran.kelola')
                     @php
                         $countUtj = \App\Models\Master\Spr::where('status', 'submitted')->count();

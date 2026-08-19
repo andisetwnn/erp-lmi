@@ -95,6 +95,7 @@ new #[Title('Detail SPR')] class extends Component
             'realisasiPembayaran.inputBy',
             'switchedFromSpr.rumah',
             'switchedToSpr.rumah',
+            'pemberkasan',
         ])->findOrFail($id);
     }
 
@@ -1110,12 +1111,33 @@ new #[Title('Detail SPR')] class extends Component
                             'done' => (bool) $spr->spr_finalized_at,
                         ],
                     ];
+                    $p = $spr->pemberkasan; // \App\Models\Master\SprPemberkasan|null
                     $timelineEksternal = [
-                        ['label' => 'Berkas KPR',   'value' => null],
-                        ['label' => 'Wawancara',    'value' => null],
-                        ['label' => 'SP3K',         'value' => null],
-                        ['label' => 'Rencana Akad', 'value' => null],
-                        ['label' => 'Akad AJB',     'value' => null],
+                        [
+                            'label' => 'Berkas KPR',
+                            'value' => $p?->bm_tanggal?->format('d/m/Y'),
+                            'done' => (bool) $p?->bm_tanggal,
+                        ],
+                        [
+                            'label' => 'Wawancara',
+                            'value' => $p?->wcr_tanggal?->format('d/m/Y'),
+                            'done' => (bool) $p?->wcr_tanggal,
+                        ],
+                        [
+                            'label' => 'SP3K',
+                            'value' => $p?->sp3k_tanggal?->format('d/m/Y'),
+                            'done' => (bool) $p?->sp3k_tanggal,
+                        ],
+                        [
+                            'label' => 'Rencana Akad',
+                            'value' => $p?->rencana_akad_tanggal?->format('d/m/Y'),
+                            'done' => (bool) $p?->rencana_akad_tanggal,
+                        ],
+                        [
+                            'label' => 'Akad AJB',
+                            'value' => $spr->tgl_akad?->format('d/m/Y'),
+                            'done' => (bool) $spr->tgl_akad,
+                        ],
                     ];
 
                     $renderItem = function ($t) {
@@ -1154,8 +1176,8 @@ new #[Title('Detail SPR')] class extends Component
                         </div>
                     </div>
 
-                    {{-- Tahap Eksternal KPR (belum aktif — placeholder modul mendatang) --}}
-                    <div class="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/60 p-3 dark:border-zinc-700 dark:bg-zinc-800/30">
+                    {{-- Tahap Pemberkasan KPR (sinkron dari modul Pemberkasan) --}}
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50/60 p-3 dark:border-zinc-700 dark:bg-zinc-800/30">
                         <div class="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                             <flux:icon.clock class="size-3" />
                             {{ __('Tahapan Pemberkasan') }}
@@ -1164,11 +1186,19 @@ new #[Title('Detail SPR')] class extends Component
                             @foreach ($timelineEksternal as $t)
                                 <div class="flex flex-col">
                                     <dt class="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                                        <flux:icon.minus-circle class="size-3 text-zinc-300" />
+                                        @if ($t['done'] ?? false)
+                                            <flux:icon.check-circle class="size-3 text-emerald-600" />
+                                        @else
+                                            <flux:icon.minus-circle class="size-3 text-zinc-300" />
+                                        @endif
                                         {{ $t['label'] }}
                                     </dt>
-                                    <dd class="mt-0.5 font-semibold text-zinc-400">
-                                        <span class="italic text-[10px]">Belum</span>
+                                    <dd class="mt-0.5 font-semibold {{ ($t['done'] ?? false) ? 'text-zinc-900 dark:text-white' : 'text-zinc-400' }}">
+                                        @if ($t['value'])
+                                            {{ $t['value'] }}
+                                        @else
+                                            <span class="italic text-[10px]">Belum</span>
+                                        @endif
                                     </dd>
                                 </div>
                             @endforeach

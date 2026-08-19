@@ -41,6 +41,8 @@ class RolePermissionSeeder extends Seeder
             'spr.pindah-unit',    // Pindah kavling / swap SPR
             'spr.cetak',          // Cetak PDF SPR final
             'biayatambahan.kelola', // Input realisasi biaya tambahan unit + refund (Finance & Admin Sales)
+            'pemberkasan.kelola',  // Input tahapan pemberkasan KPR (BM, WCR, SP3K, LPA, Rencana Akad) — Admin KPR
+            'pemberkasan.lihat',   // View-only pemberkasan (direktur, PM, finance)
 
             // ─── FINANCE ───
             'pembayaran.kelola',  // Konfirmasi UTJ + realisasi cicilan + tempel materai
@@ -83,6 +85,7 @@ class RolePermissionSeeder extends Seeder
             'direktur' => [
                 'spr.lihat',
                 'spr.cetak',
+                'pemberkasan.lihat',
                 'bukubesar.lihat',
                 'kasbank.lihat',
                 'labarugi.lihat',
@@ -106,6 +109,7 @@ class RolePermissionSeeder extends Seeder
                 'spr.approve',
                 'spr.pindah-unit',
                 'spr.cetak',
+                'pemberkasan.lihat',
                 'laporan.lihat',
                 'log.lihat',
                 'monitoring.lihat',
@@ -121,6 +125,7 @@ class RolePermissionSeeder extends Seeder
                 'spr.cetak',
                 'pembayaran.kelola',
                 'pembayaran.approve',
+                'pemberkasan.lihat',
                 'biayatambahan.kelola',
                 'jurnal.umum.kelola',
                 'jurnal.bank.kelola',
@@ -141,12 +146,13 @@ class RolePermissionSeeder extends Seeder
                 'ttd.kelola',
             ],
 
-            // Admin KPR: kelola customer + proses pembatalan SPR + laporan
+            // Admin KPR: kelola customer + proses pembatalan SPR + pemberkasan KPR + laporan
             'admin-kpr' => [
                 'master.customer.kelola',
                 'spr.lihat',
                 'spr.batal',
                 'spr.cetak',
+                'pemberkasan.kelola',
                 'laporan.lihat',
                 'ttd.kelola',
             ],

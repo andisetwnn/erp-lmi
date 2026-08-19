@@ -98,6 +98,8 @@ new #[Title('Pengguna Sistem')] class extends Component
         'spr.pindah-unit'           => 'Pindah Kavling',
         'spr.cetak'                 => 'Cetak PDF SPR',
         'biayatambahan.kelola'      => 'Kelola Biaya Tambahan Unit',
+        'pemberkasan.kelola'        => 'Kelola Pemberkasan KPR',
+        'pemberkasan.lihat'         => 'Lihat Pemberkasan KPR',
         // Finance
         'pembayaran.kelola'         => 'Kelola Penerimaan Konsumen',
         'pembayaran.approve'        => 'Approve Pembayaran',
@@ -146,6 +148,8 @@ new #[Title('Pengguna Sistem')] class extends Component
         'spr.pindah-unit'           => 'Memindahkan customer dari satu kavling ke kavling lain, termasuk menukar unit antar dua SPR. Selisih harga dan realisasi otomatis diproses.',
         'spr.cetak'                 => 'Mencetak PDF SPR (baik draft maupun versi final bermaterai).',
         'biayatambahan.kelola'      => 'Input realisasi pembayaran biaya tambahan unit (kavling hook, view, dll) beserta refund saat SPR dibatalkan. Diproses terpisah dari SPR — tidak memengaruhi total harga SPR / cicilan.',
+        'pemberkasan.kelola'        => 'Kelola tahapan pemberkasan KPR untuk Admin KPR: input tanggal Berkas Masuk, Wawancara, SP3K, LPA (khusus BTN), Rencana Akad + upload file berkas customer. Sumber data untuk tracking approval bank sebelum akad.',
+        'pemberkasan.lihat'         => 'View-only tabel pemberkasan KPR — tidak bisa input/edit. Cocok untuk direktur, PM, dan Finance yg butuh visibility progress berkas ke bank.',
         // Finance
         'pembayaran.kelola'         => 'Mengakses menu Penerimaan Konsumen: konfirmasi UTJ, mencatat cicilan Uang Muka, menempelkan e-Materai, dan memproses realisasi pembayaran.',
         'pembayaran.approve'        => 'Menyetujui pengembalian dana (refund) & reversal realisasi pembayaran — biasanya finance-manager.',

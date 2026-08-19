@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
 
 #[ObservedBy(SprObserver::class)]
@@ -268,6 +269,11 @@ class Spr extends Model
         return $this->hasMany(SprRealisasiPembayaran::class)
             ->orderBy('tanggal_bayar')
             ->orderBy('id');
+    }
+
+    public function pemberkasan(): HasOne
+    {
+        return $this->hasOne(SprPemberkasan::class);
     }
 
     /** Total pembayaran yang sudah cair dari semua termin (BF + UM cair). */

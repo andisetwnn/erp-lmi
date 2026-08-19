@@ -112,6 +112,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::livewire('spr/{id}', 'pages::approval.spr-show')->name('spr.show')->where('id', '[0-9]+');
     });
 
+    // PEMBERKASAN — Admin KPR track proses berkas customer ke bank
+    Route::middleware('permission:pemberkasan.lihat|pemberkasan.kelola')->prefix('pemberkasan')->name('pemberkasan.')->group(function () {
+        Route::livewire('input', 'pages::pemberkasan.input')->name('input.index');
+    });
+
     // FINANCE — proses approval, jurnal, dll
     Route::middleware('permission:pembayaran.kelola')->prefix('finance')->name('finance.')->group(function () {
         Route::livewire('penerimaan-konsumen', 'pages::finance.penerimaan-konsumen')->name('penerimaan-konsumen.index');
