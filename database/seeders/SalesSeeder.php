@@ -39,17 +39,12 @@ class SalesSeeder extends Seeder
                 $kode = 'SLS-'.str_pad((string) $urut, 3, '0', STR_PAD_LEFT);
                 $password = str_replace('.', '', $data['dbos']).'123';
 
-                $sales = Sales::updateOrCreate(
-                    ['dbos_username' => $data['dbos']],
-                    [
-                        'kode' => $kode,
-                        'nama' => $data['nama'],
-                        'jenis_sales_id' => $jenisAgent->id,
-                        'sales_grup_id' => $grup->id,
-                        'is_aktif' => true,
-                        'dbos_password' => $password,
-                    ],
-                );
+                $sales = $this->simpanSales($data['dbos'], $kode, $password, [
+                    'nama' => $data['nama'],
+                    'jenis_sales_id' => $jenisAgent->id,
+                    'sales_grup_id' => $grup->id,
+                    'is_aktif' => true,
+                ]);
 
                 if (! empty($data['is_pimpinan'])) {
                     $pimpinanId = $sales->id;
@@ -76,18 +71,38 @@ class SalesSeeder extends Seeder
             $kode = 'SLS-'.str_pad((string) $urutSolo, 3, '0', STR_PAD_LEFT);
             $password = str_replace('.', '', $data['dbos']).'123';
 
-            Sales::updateOrCreate(
-                ['dbos_username' => $data['dbos']],
-                [
-                    'kode' => $kode,
-                    'nama' => $data['nama'],
-                    'jenis_sales_id' => $jenisAgent->id,
-                    'sales_grup_id' => null,
-                    'is_aktif' => true,
-                    'dbos_password' => $password,
-                ],
-            );
+            $this->simpanSales($data['dbos'], $kode, $password, [
+                'nama' => $data['nama'],
+                'jenis_sales_id' => $jenisAgent->id,
+                'sales_grup_id' => null,
+                'is_aktif' => true,
+            ]);
             $urutSolo++;
         }
+    }
+
+    /**
+     * Simpan sales tanpa menyentuh identitas sales yang sudah ada.
+     *
+     * Seeder ini juga dijalankan di server yang sudah hidup untuk menambah sales baru,
+     * jadi `kode` dan `dbos_password` hanya diisi saat record pertama kali dibuat:
+     *   - password ditimpa → sales yang sudah menggantinya sendiri terkunci keluar
+     *   - kode ditimpa     → kode sales solo bergeser tiap kali seeder dijalankan ulang,
+     *     karena nomor lanjutannya dihitung dari MAX(kode) yang ikut naik
+     *
+     * @param  array<string, mixed>  $atribut
+     */
+    private function simpanSales(string $dbosUsername, string $kode, string $passwordAwal, array $atribut): Sales
+    {
+        $sales = Sales::firstOrNew(['dbos_username' => $dbosUsername]);
+
+        $sales->fill($atribut);
+        if (! $sales->exists) {
+            $sales->kode = $kode;
+            $sales->dbos_password = $passwordAwal;
+        }
+        $sales->save();
+
+        return $sales;
     }
 }

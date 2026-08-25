@@ -38,6 +38,16 @@ return [
             'report' => false,
         ],
 
+        // Alias eksplisit ke storage/app/private — dipakai modul upload berkas KPR, KTP customer, dsb.
+        // serve=false karena akses harus lewat controller yang cek auth (jangan expose lewat /storage URL).
+        'private' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private'),
+            'serve' => false,
+            'throw' => false,
+            'report' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

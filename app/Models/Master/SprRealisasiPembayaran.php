@@ -61,7 +61,7 @@ class SprRealisasiPembayaran extends Model
     public static function generateNextNomor(): string
     {
         $driver = \DB::connection()->getDriverName();
-        // MySQL: REGEXP + CAST AS UNSIGNED. SQLite (test): GLOB pattern + CAST AS INTEGER.
+        // Buku kuitansi UM terpisah dari biaya tambahan — cukup cek tabel sendiri.
         if ($driver === 'mysql') {
             $query = static::whereNotNull('nomor_kwitansi')
                 ->where('nomor_kwitansi', 'REGEXP', '^[0-9]+$')

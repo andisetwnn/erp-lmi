@@ -323,6 +323,8 @@ new #[Title('Detail SPR')] class extends Component
         $this->btMetode = 'cash';
         $sisa = (float) ($this->spr->rumah?->sisa_biaya_tambahan ?? 0);
         $this->btJumlah = (string) $sisa; // default = sisa yg belum lunas
+        // Auto-fill nomor kuitansi berikutnya (cross-tabel UM + biaya tambahan — 1 buku fisik)
+        $this->btNomorKuitansi = BiayaTambahanRealisasi::generateNextNomor();
         $this->resetErrorBag();
         Flux::modal('input-biaya-tambahan')->show();
     }
@@ -363,6 +365,17 @@ new #[Title('Detail SPR')] class extends Component
 
         if (! $this->spr->rumah_id) {
             Flux::toast(variant: 'danger', text: 'Unit tidak valid.');
+
+            return;
+        }
+
+        // Dedup nomor kuitansi di buku biaya tambahan (terpisah dari buku UM)
+        $dupQuery = BiayaTambahanRealisasi::where('nomor_kuitansi', $validated['btNomorKuitansi']);
+        if ($this->btEditId) {
+            $dupQuery->where('id', '!=', $this->btEditId);
+        }
+        if ($dupQuery->exists()) {
+            $this->addError('btNomorKuitansi', "Nomor kuitansi {$validated['btNomorKuitansi']} sudah dipakai di realisasi biaya tambahan lain.");
 
             return;
         }

@@ -119,9 +119,9 @@ new #[Title('Input Pemberkasan')] class extends Component
         $spr = Spr::with('pemberkasan')->findOrFail($sprId);
         $p = $spr->pemberkasan;
 
-        // Guard: LPA cuma untuk CBN
-        if ($field === 'lpa' && $p?->bank_kode !== 'CBN') {
-            Flux::toast(variant: 'warning', text: 'LPA hanya wajib untuk Bank BTN (CBN). Pilih bank CBN dulu.');
+        // Guard: LPA cuma untuk BTN (CBN konvensional + BSY syariah)
+        if ($field === 'lpa' && ! in_array($p?->bank_kode, ['CBN', 'BSY'], true)) {
+            Flux::toast(variant: 'warning', text: 'LPA hanya wajib untuk Bank BTN (CBN / BSY). Pilih bank BTN dulu.');
 
             return;
         }
@@ -333,7 +333,7 @@ new #[Title('Input Pemberkasan')] class extends Component
                 ->whereBetween('sp3k_expired', [now(), now()->addDays(30)])),
             'sp3k_expired' => $q->whereHas('pemberkasan', fn ($p) => $p->whereNotNull('sp3k_expired')
                 ->where('sp3k_expired', '<', now())),
-            'lpa_wajib' => $q->whereHas('pemberkasan', fn ($p) => $p->where('bank_kode', 'CBN')
+            'lpa_wajib' => $q->whereHas('pemberkasan', fn ($p) => $p->whereIn('bank_kode', ['CBN', 'BSY'])
                 ->whereNotNull('sp3k_tanggal')->whereNull('lpa_tanggal')),
             'akad_diset' => $q->whereHas('pemberkasan', fn ($p) => $p->whereNotNull('rencana_akad_tanggal')),
             default => null,
@@ -610,9 +610,9 @@ new #[Title('Input Pemberkasan')] class extends Component
                                     </td>
 
                                     {{-- LPA — cuma untuk CBN (editable) --}}
-                                    <td @class(['whitespace-nowrap px-3 py-2', $editableCell => $canEdit && $p?->bank_kode === 'CBN'])
-                                        @if ($canEdit && $p?->bank_kode === 'CBN') wire:click="openField({{ $s->id }}, 'lpa')" title="Klik untuk input LPA" @endif>
-                                        @if ($p?->bank_kode === 'CBN')
+                                    <td @class(['whitespace-nowrap px-3 py-2', $editableCell => $canEdit && in_array($p?->bank_kode, ['CBN', 'BSY'], true)])
+                                        @if ($canEdit && in_array($p?->bank_kode, ['CBN', 'BSY'], true)) wire:click="openField({{ $s->id }}, 'lpa')" title="Klik untuk input LPA" @endif>
+                                        @if (in_array($p?->bank_kode, ['CBN', 'BSY'], true))
                                             @if ($p->lpa_tanggal)
                                                 {{ $p->lpa_tanggal->format('d/m/y') }}
                                             @else
@@ -620,7 +620,7 @@ new #[Title('Input Pemberkasan')] class extends Component
                                             @endif
                                             @if ($canEdit) {!! $editPencil !!} @endif
                                         @else
-                                            <span class="text-zinc-400" title="LPA hanya untuk BTN (CBN)">N/A</span>
+                                            <span class="text-zinc-400" title="LPA hanya untuk BTN (CBN/BSY)">N/A</span>
                                         @endif
                                     </td>
 

@@ -56,4 +56,27 @@ class BiayaTambahanRealisasi extends Model
     {
         return $this->belongsTo(User::class, 'refunded_by_user_id');
     }
+
+    /**
+     * Generate nomor kuitansi berikutnya untuk BUKU BIAYA TAMBAHAN (terpisah dari buku UM).
+     * Boleh nomor sama dengan UM karena buku kuitansi fisik berbeda.
+     * WAJIB dipanggil di dalam DB::transaction — lock berlaku sampai commit.
+     */
+    public static function generateNextNomor(): string
+    {
+        $driver = \DB::connection()->getDriverName();
+        if ($driver === 'mysql') {
+            $query = static::whereNotNull('nomor_kuitansi')
+                ->where('nomor_kuitansi', 'REGEXP', '^[0-9]+$')
+                ->lockForUpdate();
+            $last = (int) $query->max(\DB::raw('CAST(nomor_kuitansi AS UNSIGNED)'));
+        } else {
+            $query = static::whereNotNull('nomor_kuitansi')
+                ->where('nomor_kuitansi', 'GLOB', '[0-9]*')
+                ->lockForUpdate();
+            $last = (int) $query->max(\DB::raw('CAST(nomor_kuitansi AS INTEGER)'));
+        }
+
+        return str_pad((string) ($last + 1), 5, '0', STR_PAD_LEFT);
+    }
 }

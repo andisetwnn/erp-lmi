@@ -72,3 +72,6 @@ desktop.ini
 
 # Local DB backups from demo:zero-out command (never commit)
 /storage/backups
+
+# Arsip lokal command import v1 — isinya sudah tersimpan di riwayat git
+/storage/archived-commands

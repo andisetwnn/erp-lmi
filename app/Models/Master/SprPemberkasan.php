@@ -33,18 +33,19 @@ class SprPemberkasan extends Model
         'sp3k_nominal' => 'decimal:2',
     ];
 
-    /** 4 bank yg dipakai admin KPR. Kunci = kode singkat, value = label. */
+    /** 5 bank yg dipakai admin KPR. Kunci = kode singkat, value = label. */
     public const BANK_OPTIONS = [
         'CBN' => 'BTN KC Cibinong',
+        'BSY' => 'BTN Syariah',
         'BSN' => 'BSN KCP Warung Jambu',
         'NBU' => 'Bank Nobu',
         'BCA' => 'Bank BCA',
     ];
 
-    /** LPA hanya wajib untuk bank BTN (CBN). */
+    /** LPA hanya wajib untuk bank BTN (CBN konvensional + BSY syariah). */
     public function lpaRequired(): bool
     {
-        return $this->bank_kode === 'CBN';
+        return in_array($this->bank_kode, ['CBN', 'BSY'], true);
     }
 
     /** Hitung berapa tahap sudah lengkap (dari total 5). LPA cuma dihitung kalau bank = CBN. */
