@@ -166,10 +166,29 @@ class ImportSopCommand extends Command
         );
         $this->alasanPindahKavlingId = $alasan->id;
 
-        // Resolve approver historis — Febry (PM/approver umum), Uli (Finance)
-        $this->approverPmId = User::where('username', 'febri')->value('id');
-        $this->approverFinanceId = User::where('username', 'uli')->value('id');
-        $this->line("Approver PM (Febri): #{$this->approverPmId}");
+        // Resolve approver historis — Febry (PM/approver umum), Uli (Finance).
+        // Tanda tangan di dokumen SPR diambil dari user ini, bukan dari kolom path,
+        // jadi kalau tidak ketemu dokumennya tercetak tanpa tanda tangan.
+        $this->approverPmId = $this->cariApprover(['febri', 'febry'], 'Febry');
+        $this->approverFinanceId = $this->cariApprover(['uli'], 'Uli');
+
+        if (! $this->approverPmId || ! $this->approverFinanceId) {
+            $this->error('Approver historis tidak ditemukan — import dibatalkan.');
+            $this->line('  PM (Febry)     : '.($this->approverPmId ? "#{$this->approverPmId}" : 'TIDAK KETEMU'));
+            $this->line('  Finance (Uli)  : '.($this->approverFinanceId ? "#{$this->approverFinanceId}" : 'TIDAK KETEMU'));
+            $this->newLine();
+            $this->warn('Tanda tangan di dokumen SPR diambil dari user approver. Tanpa mereka,');
+            $this->warn('215 dokumen tercetak tanpa tanda tangan dan harus diperbaiki manual.');
+            $this->newLine();
+            $this->line('Username yang ada di database:');
+            foreach (User::orderBy('id')->get(['id', 'name', 'username']) as $u) {
+                $this->line(sprintf('  #%-3s %-28s %s', $u->id, $u->name, $u->username));
+            }
+
+            return self::FAILURE;
+        }
+
+        $this->line("Approver PM (Febry)   : #{$this->approverPmId}");
         $this->line("Approver Finance (Uli): #{$this->approverFinanceId}");
 
         // Prewarm cache tipe_rumah by LB
@@ -845,6 +864,20 @@ class ImportSopCommand extends Command
             ]);
             $this->stats['termin_created']++;
         }
+    }
+
+    /**
+     * Cari user approver historis. Ejaan username berbeda antar server — di lokal
+     * "febri", di production "febry" — jadi jangan bergantung pada satu ejaan saja.
+     *
+     * @param  array<int, string>  $username  Kandidat username, dicoba berurutan.
+     * @param  string  $awalNama  Awalan nama sebagai cadangan terakhir.
+     */
+    protected function cariApprover(array $username, string $awalNama): ?int
+    {
+        $id = User::whereIn('username', $username)->value('id');
+
+        return $id ?: User::where('name', 'like', $awalNama.'%')->value('id');
     }
 
     /** Bersihkan NIK — delegasi ke parser supaya koreksi NIK dipakai importer & preview. */
