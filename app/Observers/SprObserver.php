@@ -8,16 +8,23 @@ use App\Models\Master\Spr;
 class SprObserver
 {
     /**
+     * Status SPR yang mengunci unit. Akad adalah kelanjutan dari approved — unit yang
+     * sudah akad justru paling tidak boleh muncul sebagai tersedia.
+     */
+    private const STATUS_MENGUNCI = ['approved', 'akad'];
+
+    /**
      * Sinkronkan rumah.status mengikuti status SPR.
-     * - approved              → rumah 'terjual'
-     * - approved → rejected   → rumah 'booking' (booking masih aktif, bisa re-submit)
-     * - approved → cancelled  → rumah 'available' (unit benar-benar dilepas)
+     * - approved / akad            → rumah 'terjual'
+     * - approved → akad            → tetap 'terjual' (dua-duanya mengunci)
+     * - mengunci → cancelled       → rumah 'available' (unit benar-benar dilepas)
+     * - mengunci → rejected/draft  → rumah 'booking' (booking masih aktif, bisa re-submit)
      */
     public function saved(Spr $spr): void
     {
-        // SPR baru dibuat langsung dengan status approved (mis. import historic)
+        // SPR baru dibuat langsung dalam status mengunci (mis. import historis)
         if ($spr->wasRecentlyCreated && ! $spr->wasChanged('status')) {
-            if ($spr->status === 'approved') {
+            if ($this->mengunci($spr->status)) {
                 $this->lockRumah($spr);
             }
 
@@ -28,18 +35,25 @@ class SprObserver
             return;
         }
 
-        $newStatus = $spr->status;
-        $oldStatus = $spr->getOriginal('status');
+        $baru = $spr->status;
+        $lama = $spr->getOriginal('status');
 
-        if ($newStatus === 'approved' && $oldStatus !== 'approved') {
+        if ($this->mengunci($baru) && ! $this->mengunci($lama)) {
             $this->lockRumah($spr);
-        } elseif ($oldStatus === 'approved' && $newStatus === 'cancelled') {
+        } elseif ($this->mengunci($lama) && $baru === 'cancelled') {
             // Pembatalan: unit dilepas total
             $this->releaseRumah($spr);
-        } elseif ($oldStatus === 'approved' && $newStatus !== 'approved') {
+        } elseif ($this->mengunci($lama) && ! $this->mengunci($baru)) {
             // Reject / revert: kembali ke booking
             $this->unlockRumah($spr);
         }
+
+        // approved → akad: dua-duanya mengunci, unit sengaja tidak disentuh
+    }
+
+    private function mengunci(?string $status): bool
+    {
+        return in_array($status, self::STATUS_MENGUNCI, true);
     }
 
     private function lockRumah(Spr $spr): void

@@ -145,3 +145,37 @@ test('SPR approved → cancelled akan release rumah ke available (bukan booking)
 
     expect($this->rumah->fresh()->status)->toBe('available');
 });
+
+test('SPR yang langsung dibuat berstatus akad ikut lock rumah ke terjual', function () {
+    // Import historis membuat 58 SPR langsung berstatus akad. Observer versi lama hanya
+    // mengenali 'approved', jadi unit yang sudah akad tertinggal 'available'.
+    makeSpr('akad');
+
+    expect($this->rumah->fresh()->status)->toBe('terjual');
+});
+
+test('SPR approved → akad tidak melepas rumah', function () {
+    $spr = makeSpr('approved');
+    expect($this->rumah->fresh()->status)->toBe('terjual');
+
+    $spr->update(['status' => 'akad']);
+
+    expect($this->rumah->fresh()->status)->toBe('terjual');
+});
+
+test('SPR akad → cancelled melepas rumah ke available', function () {
+    $spr = makeSpr('akad');
+    expect($this->rumah->fresh()->status)->toBe('terjual');
+
+    $spr->update(['status' => 'cancelled']);
+
+    expect($this->rumah->fresh()->status)->toBe('available');
+});
+
+test('SPR akad → rejected mengembalikan rumah ke booking', function () {
+    $spr = makeSpr('akad');
+
+    $spr->update(['status' => 'rejected']);
+
+    expect($this->rumah->fresh()->status)->toBe('booking');
+});
