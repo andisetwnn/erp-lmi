@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+// Observer registered di AppServiceProvider::boot() (pattern existing project)
 class Rumah extends Model
 {
     protected $table = 'rumah';
@@ -21,6 +22,10 @@ class Rumah extends Model
         'discount',
         'ppn',
         'status',
+        'progres_fisik',
+        'lot',
+        'progres_updated_at',
+        'progres_updated_by_user_id',
         'tanggal_launching',
         'siteplan_x',
         'siteplan_y',
@@ -34,6 +39,9 @@ class Rumah extends Model
         'biaya_tambahan' => 'decimal:2',
         'discount' => 'decimal:2',
         'ppn' => 'decimal:2',
+        'progres_fisik' => 'integer',
+        'lot' => 'integer',
+        'progres_updated_at' => 'datetime',
         'tanggal_launching' => 'date',
         'siteplan_x' => 'decimal:2',
         'siteplan_y' => 'decimal:2',
@@ -65,6 +73,16 @@ class Rumah extends Model
     public function biayaTambahanRealisasi(): HasMany
     {
         return $this->hasMany(BiayaTambahanRealisasi::class);
+    }
+
+    public function progresLog(): HasMany
+    {
+        return $this->hasMany(RumahProgresLog::class)->orderByDesc('created_at');
+    }
+
+    public function progresUpdatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'progres_updated_by_user_id');
     }
 
     public function bookingAktif(): ?Booking
