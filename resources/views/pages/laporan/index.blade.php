@@ -176,8 +176,12 @@ new #[Title('Laporan')] class extends Component
         'performance'  => ['Peringkat Sales',  'trophy',           'indigo',  'penjualan'],
         'realisasi'    => ['Kwitansi Masuk',   'banknotes',        'purple',  'keuangan'],
         'outstanding'  => ['Tunggakan UM',     'clock',            'amber',   'keuangan'],
-        'biayatambahan'=> ['Biaya Tambahan',   'currency-dollar',  'amber',   'keuangan'],
-        'rekap'        => ['Laporan Lengkap',  'document-text',    'emerald', 'keuangan'],
+        // Tab 'biayatambahan' tidak didaftarkan lagi — nilainya sudah ada sebagai kolom
+        // di Master Data. Kodenya masih utuh kalau perlu dihidupkan kembali.
+        // Satu laporan lengkap saja: susunan kolomnya mengikuti sheet SOP buku manual.
+        // Tab 'rekap' lama sengaja tidak didaftarkan lagi — kodenya masih ada kalau
+        // sewaktu-waktu perlu dihidupkan kembali.
+        'sop'          => ['Master Data',      'table-cells',      'emerald', 'keuangan'],
     ];
 
     public const CATEGORIES = [
@@ -244,6 +248,7 @@ public function setPeriod(string $p): void
             'performance' => $this->dataPerformance($from, $to),
             'biayatambahan' => $this->dataBiayaTambahan($from, $to),
             'rekap' => $this->dataRekap($from, $to),
+            'sop' => $this->dataSop($from, $to),
             default => [],
         };
 
@@ -695,6 +700,30 @@ public function setPeriod(string $p): void
         );
     }
 
+    /**
+     * Laporan dengan susunan kolom mengikuti sheet SOP buku manual, supaya hasil sistem
+     * bisa disandingkan langsung dengan file aslinya. Kolomnya disusun di
+     * LaporanSopFormat agar tampilan layar dan export Excel tidak pernah lepas sinkron.
+     */
+    private function dataSop($from, $to): array
+    {
+        $query = $this->baseSprQuery()->with(\App\Support\LaporanSopFormat::relasi());
+        if ($this->dateFrom || $this->dateTo) {
+            $query->whereBetween('spr.tanggal_spr', [$from, $to]);
+        }
+
+        $paginator = $query->orderBy('spr.nomor_spr')->paginate($this->perPage);
+
+        $nomorAwal = ($paginator->currentPage() - 1) * $paginator->perPage() + 1;
+
+        return [
+            'sopHeaders' => \App\Support\LaporanSopFormat::headers(),
+            'sopRows' => \App\Support\LaporanSopFormat::rows(collect($paginator->items()), $nomorAwal),
+            'sopPaginator' => $paginator,
+            'sopKolomBeku' => \App\Support\LaporanSopFormat::KOLOM_BEKU,
+        ];
+    }
+
     private function dataPembatalan($from, $to): array
     {
         // Exclude SPR yang cancelled karena Pindah Kavling — dilaporkan di tab terpisah.
@@ -821,11 +850,11 @@ public function setPeriod(string $p): void
             $searchPlaceholder = match ($tab) {
                 'stock' => 'Cari blok / nomor unit...',
                 'realisasi' => 'Cari nomor kwitansi / nomor SPR...',
-                'penjualan', 'pembatalan', 'outstanding', 'rekap' => 'Cari nomor SPR / nama customer / blok...',
+                'penjualan', 'pembatalan', 'outstanding', 'rekap', 'sop' => 'Cari nomor SPR / nama customer / blok...',
                 'pindah' => 'Cari nomor transaksi (PK/...) / nama customer / blok...',
                 default => null,
             };
-            $showSales = in_array($tab, ['penjualan', 'realisasi', 'performance', 'outstanding', 'pembatalan', 'pindah', 'rekap']);
+            $showSales = in_array($tab, ['penjualan', 'realisasi', 'performance', 'outstanding', 'pembatalan', 'pindah', 'rekap', 'sop']);
             $showPerpage = $tab !== 'performance';
             $inputCls = 'h-9 rounded-lg border border-zinc-200 bg-white px-2.5 text-xs shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white';
         @endphp
@@ -1495,6 +1524,110 @@ public function setPeriod(string $p): void
                     </table>
                 </div>
                 <div class="border-t border-zinc-100 p-3 dark:border-zinc-800">{{ $sprs->links() }}</div>
+            </div>
+        @endif
+
+        @if ($tab === 'sop')
+            @php
+                // Kolom uang & angka dirender rata kanan; sisanya rata kiri.
+                $sopAngka = function (string $h) {
+                    return in_array($h, ['NO', 'LOT', 'LB', 'LT', '% UM'], true)
+                        || str_starts_with($h, 'UM')
+                        || in_array($h, [
+                            'HARGA JUAL AWAL', 'BIAYA TAMBAHAN', 'BIAYA LAIN2', 'TOTAL HARGA JUAL',
+                            'PERMOHONAN KPR', 'ACC KPR', 'TOTAL U.M', 'SBUM', 'UM SETELAH SBUM',
+                            'BF/UTJ', 'AKUMULASI UANG MUKA', 'SISA UANG MUKA',
+                        ], true);
+                };
+                $sopUang = function (string $h) {
+                    return str_starts_with($h, 'UM') && $h !== '% UM'
+                        || in_array($h, [
+                            'HARGA JUAL AWAL', 'BIAYA TAMBAHAN', 'BIAYA LAIN2', 'TOTAL HARGA JUAL',
+                            'PERMOHONAN KPR', 'ACC KPR', 'TOTAL U.M', 'SBUM', 'UM SETELAH SBUM',
+                            'BF/UTJ', 'AKUMULASI UANG MUKA', 'SISA UANG MUKA',
+                        ], true);
+                };
+            @endphp
+
+            @php
+                // Kolom beku WAJIB punya lebar pasti. Kalau lebarnya dibiarkan mengikuti isi,
+                // offset `left` tidak pernah cocok dan kolom di bawahnya mengintip lewat celah
+                // — teks alamat/telepon/NPWP bocor menembus kolom yang seharusnya menutupi.
+                // Lebar dikunci di th maupun td, dan isi yang kepanjangan dipotong elipsis.
+                $sopKiri = ['0', '3rem', '8.5rem'];
+                $sopLebar = ['3rem', '5.5rem', '14rem'];
+                $sopGayaBeku = function (int $i) use ($sopKiri, $sopLebar) {
+                    $w = $sopLebar[$i];
+
+                    return "left: {$sopKiri[$i]}; width: {$w}; min-width: {$w}; max-width: {$w};";
+                };
+            @endphp
+
+            <div class="rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-xs" style="width: max-content">
+                        <thead>
+                            <tr class="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800/60">
+                                @foreach ($sopHeaders as $i => $h)
+                                    <th @class([
+                                            'whitespace-nowrap px-2.5 py-2 font-bold uppercase tracking-wide text-[10px] text-zinc-600 dark:text-zinc-300',
+                                            'text-right' => $sopAngka($h),
+                                            'text-left' => ! $sopAngka($h),
+                                            'sticky z-10 bg-zinc-50 dark:bg-zinc-800' => $i < $sopKolomBeku,
+                                            'border-r border-zinc-300 dark:border-zinc-600' => $i === $sopKolomBeku - 1,
+                                        ])
+                                        @if ($i < $sopKolomBeku) style="{{ $sopGayaBeku($i) }}" @endif>
+                                        @if ($i < $sopKolomBeku)
+                                            {{-- Elemen dalam yang memotong isi: tanpa ini, tabel
+                                                 auto-layout melebarkan sel mengikuti teks terpanjang
+                                                 dan lebar yang dikunci di atas jadi percuma. --}}
+                                            <div class="overflow-hidden text-ellipsis whitespace-nowrap">{{ $h }}</div>
+                                        @else
+                                            {{ $h }}
+                                        @endif
+                                    </th>
+                                @endforeach
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($sopRows as $row)
+                                <tr class="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/40">
+                                    @foreach ($row as $i => $nilai)
+                                        @php
+                                            $h = $sopHeaders[$i] ?? '';
+                                            $kosong = $nilai === null || $nilai === '';
+                                            $teks = $kosong ? '–' : ($sopUang($h) ? number_format((float) $nilai, 0, ',', '.') : $nilai);
+                                            $beku = $i < $sopKolomBeku;
+                                        @endphp
+                                        <td @class([
+                                                'whitespace-nowrap px-2.5 py-1.5',
+                                                'text-right tabular-nums' => $sopAngka($h),
+                                                'text-zinc-400' => $kosong,
+                                                'sticky z-10 bg-white dark:bg-zinc-900' => $beku,
+                                                'font-medium' => $i === 0,
+                                                'font-mono' => $i === 1,
+                                                'border-r border-zinc-200 dark:border-zinc-700' => $i === $sopKolomBeku - 1,
+                                            ])
+                                            @if ($beku) style="{{ $sopGayaBeku($i) }}" title="{{ $nilai }}" @endif>
+                                            @if ($beku)
+                                                <div class="overflow-hidden text-ellipsis whitespace-nowrap">{{ $teks }}</div>
+                                            @else
+                                                {{ $teks }}
+                                            @endif
+                                        </td>
+                                    @endforeach
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="{{ count($sopHeaders) }}" class="px-4 py-10 text-center text-zinc-500">
+                                        Tidak ada SPR pada filter ini.
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+                <div class="border-t border-zinc-100 p-3 dark:border-zinc-800">{{ $sopPaginator->links() }}</div>
             </div>
         @endif
 

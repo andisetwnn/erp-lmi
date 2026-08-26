@@ -7,6 +7,7 @@ use App\Models\Master\Sales;
 use App\Models\Master\SalesGrup;
 use App\Models\Master\Spr;
 use App\Models\Master\SprRealisasiPembayaran;
+use App\Support\LaporanSopFormat;
 use Carbon\Carbon;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\WithHeadings;
@@ -41,6 +42,7 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
             'pembatalan' => 'Pembatalan SPR',
             'performance' => 'Sales Performance',
             'rekap' => 'Rekap Lengkap',
+            'sop' => 'Format SOP',
             default => 'Laporan',
         };
     }
@@ -66,6 +68,7 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
                 'Alasan Pembatalan', 'Cancel Keterangan', 'Cancelled At', 'Refund Amount', 'Refund Status',
                 'Approved At', 'PM Approved At', 'Materai At',
             ],
+            'sop' => LaporanSopFormat::headers(),
             default => [],
         };
     }
@@ -80,8 +83,23 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
             'pembatalan' => $this->rowsPembatalan(),
             'performance' => $this->rowsPerformance(),
             'rekap' => $this->rowsRekap(),
+            'sop' => $this->rowsSop(),
             default => [],
         };
+    }
+
+    /**
+     * Susunan kolom mengikuti sheet SOP buku manual. Definisi kolomnya dipakai bersama
+     * dengan tampilan layar lewat LaporanSopFormat supaya keduanya tidak lepas sinkron.
+     */
+    private function rowsSop(): array
+    {
+        $q = $this->baseSprQuery()->with(LaporanSopFormat::relasi());
+        if ($this->from && $this->to) {
+            $q->whereBetween('spr.tanggal_spr', [$this->from, $this->to]);
+        }
+
+        return LaporanSopFormat::rows($q->orderBy('spr.nomor_spr')->get());
     }
 
     private function baseSprQuery(?array $statuses = null)
