@@ -91,3 +91,46 @@ it('menyusun pilihan tahun tanpa bergantung fungsi tanggal khusus MySQL', functi
 
     expect($m['tahunOptions'])->toContain($this->tahun);
 });
+
+it('menyediakan dua pilihan rincian dan bertahan di pilihan yang dipakai', function () {
+    $c = Livewire::test('pages::dashboard.direksi');
+
+    expect($c->get('rincianMatriks'))->toBe('proyek');
+
+    $c->call('setRincian', 'bulan');
+    expect($c->get('rincianMatriks'))->toBe('bulan');
+
+    $c->call('setRincian', 'proyek');
+    expect($c->get('rincianMatriks'))->toBe('proyek');
+});
+
+it('mengabaikan pilihan rincian yang tidak dikenal', function () {
+    $c = Livewire::test('pages::dashboard.direksi')->call('setRincian', 'mingguan');
+
+    expect($c->get('rincianMatriks'))->toBe('proyek');
+});
+
+it('menampilkan kolom bulan hanya pada rincian bulanan', function () {
+    isiTarget($this->proyek->id, $this->tahun, 5, 3, 8);
+
+    $perProyek = Livewire::test('pages::dashboard.direksi')->call('setRincian', 'proyek')->html();
+    $perBulan = Livewire::test('pages::dashboard.direksi')->call('setRincian', 'bulan')->html();
+
+    expect($perProyek)->not->toContain('>Mei<')
+        ->and($perBulan)->toContain('>Mei<')
+        ->and($perBulan)->toContain('SELISIH');
+});
+
+it('menjaga angka setahun sama di kedua rincian', function () {
+    foreach (range(1, 12) as $bulan) {
+        isiTarget($this->proyek->id, $this->tahun, $bulan, 2, 5);
+    }
+
+    $m = matriks($this->tahun);
+    $pid = $this->proyek->id;
+
+    expect($m['akadTarget'][$pid])->toBe(24)
+        ->and(array_sum($m['akadTargetBulan'][$pid]))->toBe(24)
+        ->and($m['penjualanTarget'][$pid])->toBe(60)
+        ->and(array_sum($m['penjualanTargetBulan'][$pid]))->toBe(60);
+});
