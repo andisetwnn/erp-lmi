@@ -54,15 +54,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         $user = Auth::user();
 
         return redirect(match (true) {
+            $user->hasRole('direktur') => route('dashboard.direksi'),
             $user->hasRole('finance') => route('dashboard.finance'),
             $user->hasRole('project-manager') => route('dashboard.pm'),
-            default => route('dashboard.executive'), // super-admin, direktur, admin-kpr
+            default => route('dashboard.executive'), // super-admin, admin-kpr, dll
         });
     })->name('dashboard');
 
     Route::livewire('dashboard/executive', 'pages::dashboard.executive')->name('dashboard.executive');
     Route::livewire('dashboard/pm', 'pages::dashboard.pm')->name('dashboard.pm');
     Route::livewire('dashboard/finance', 'pages::dashboard.finance')->name('dashboard.finance');
+    Route::livewire('dashboard/direksi', 'pages::dashboard.direksi')->name('dashboard.direksi');
 
     // USER AKSES — kelola user & role sistem pusat (super-admin)
     Route::middleware('permission:user.kelola')->group(function () {
@@ -106,6 +108,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         });
     });
 
+    // MARKETING — Target/RAB
+    Route::middleware('permission:target.kelola')->prefix('marketing')->name('marketing.')->group(function () {
+        Route::livewire('target', 'pages::marketing.target')->name('target.index');
+    });
+
     // APPROVAL — Project Manager approve SPR
     Route::middleware('permission:spr.approve')->prefix('approval')->name('approval.')->group(function () {
         Route::livewire('spr', 'pages::approval.spr-list')->name('spr.index');
@@ -115,6 +122,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // PEMBERKASAN — Admin KPR track proses berkas customer ke bank
     Route::middleware('permission:pemberkasan.lihat|pemberkasan.kelola')->prefix('pemberkasan')->name('pemberkasan.')->group(function () {
         Route::livewire('input', 'pages::pemberkasan.input')->name('input.index');
+    });
+
+    // TEKNIK — Admin Teknik input progres fisik + LOT rumah (view tanpa harga)
+    Route::middleware('permission:teknik.rumah.lihat')->prefix('teknik')->name('teknik.')->group(function () {
+        Route::livewire('rumah', 'pages::teknik.rumah')->name('rumah.index');
     });
 
     // FINANCE — proses approval, jurnal, dll

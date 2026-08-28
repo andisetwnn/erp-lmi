@@ -100,6 +100,11 @@ new #[Title('Pengguna Sistem')] class extends Component
         'biayatambahan.kelola'      => 'Kelola Biaya Tambahan Unit',
         'pemberkasan.kelola'        => 'Kelola Pemberkasan KPR',
         'pemberkasan.lihat'         => 'Lihat Pemberkasan KPR',
+        // Teknik
+        'teknik.rumah.lihat'        => 'Lihat Data Rumah Teknik',
+        'teknik.rumah.update'       => 'Update Progres Fisik Rumah',
+        // Target Marketing
+        'target.kelola'             => 'Kelola Target Marketing (RAB)',
         // Finance
         'pembayaran.kelola'         => 'Kelola Penerimaan Konsumen',
         'pembayaran.approve'        => 'Approve Pembayaran',
@@ -150,6 +155,9 @@ new #[Title('Pengguna Sistem')] class extends Component
         'biayatambahan.kelola'      => 'Input realisasi pembayaran biaya tambahan unit (kavling hook, view, dll) beserta refund saat SPR dibatalkan. Diproses terpisah dari SPR — tidak memengaruhi total harga SPR / cicilan.',
         'pemberkasan.kelola'        => 'Kelola tahapan pemberkasan KPR untuk Admin KPR: input tanggal Berkas Masuk, Wawancara, SP3K, LPA (khusus BTN), Rencana Akad + upload file berkas customer. Sumber data untuk tracking approval bank sebelum akad.',
         'pemberkasan.lihat'         => 'View-only tabel pemberkasan KPR — tidak bisa input/edit. Cocok untuk direktur, PM, dan Finance yg butuh visibility progress berkas ke bank.',
+        'teknik.rumah.lihat'        => 'Akses menu Teknik → Data Rumah. Lihat daftar unit dengan progres fisik, LOT, dan status bangunan (tanpa data harga/finansial). Cocok untuk Admin Teknik, PM, Direktur.',
+        'teknik.rumah.update'       => 'Update persentase progres fisik pembangunan unit (0-100%) + nomor LOT sertifikat. Setiap perubahan otomatis tercatat di log audit trail.',
+        'target.kelola'             => 'Input & edit target penjualan/akad per proyek per tahun (RAB tahunan). Angka target akan tampil di matrix Marketing Performance dashboard direksi. Biasanya diinput oleh Direktur di awal tahun.',
         // Finance
         'pembayaran.kelola'         => 'Mengakses menu Penerimaan Konsumen: konfirmasi UTJ, mencatat cicilan Uang Muka, menempelkan e-Materai, dan memproses realisasi pembayaran.',
         'pembayaran.approve'        => 'Menyetujui pengembalian dana (refund) & reversal realisasi pembayaran — biasanya finance-manager.',

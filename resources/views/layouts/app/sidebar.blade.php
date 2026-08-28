@@ -128,7 +128,7 @@
                     </flux:sidebar.group>
                 @endcanany
 
-                @canany(['spr.lihat', 'master.kelola', 'master.customer.kelola', 'pembayaran.kelola'])
+                @canany(['spr.lihat', 'master.kelola', 'master.customer.kelola', 'pembayaran.kelola', 'target.kelola'])
                     <flux:sidebar.group :heading="__('Marketing')" icon="megaphone" expandable
                                         :expanded="request()->routeIs('marketing.*') || request()->routeIs('master.prospect-customer.*') || request()->routeIs('finance.tempel-materai.*')">
                         @canany(['master.kelola', 'master.customer.kelola'])
@@ -137,6 +137,12 @@
                                 {{ __('Prospect Customer') }}
                             </flux:sidebar.item>
                         @endcanany
+                        @can('target.kelola')
+                            <flux:sidebar.item icon="flag" :href="route('marketing.target.index')"
+                                               :current="request()->routeIs('marketing.target.*')" wire:navigate>
+                                {{ __('Target / RAB') }}
+                            </flux:sidebar.item>
+                        @endcan
                         @can('spr.lihat')
                             <flux:sidebar.item icon="document-text" :href="route('marketing.spr.index')"
                                                :current="request()->routeIs('marketing.spr.*')" wire:navigate>
@@ -190,6 +196,16 @@
                         </flux:sidebar.item>
                     </flux:sidebar.group>
                 @endcanany
+
+                @can('teknik.rumah.lihat')
+                    <flux:sidebar.group :heading="__('Teknik')" icon="wrench-screwdriver" expandable
+                                        :expanded="request()->routeIs('teknik.*')">
+                        <flux:sidebar.item icon="home-modern" :href="route('teknik.rumah.index')"
+                                           :current="request()->routeIs('teknik.rumah.*')" wire:navigate>
+                            {{ __('Data Rumah') }}
+                        </flux:sidebar.item>
+                    </flux:sidebar.group>
+                @endcan
 
                 @can('pembayaran.kelola')
                     @php

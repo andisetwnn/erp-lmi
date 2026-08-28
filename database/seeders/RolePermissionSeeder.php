@@ -44,6 +44,13 @@ class RolePermissionSeeder extends Seeder
             'pemberkasan.kelola',  // Input tahapan pemberkasan KPR (BM, WCR, SP3K, LPA, Rencana Akad) — Admin KPR
             'pemberkasan.lihat',   // View-only pemberkasan (direktur, PM, finance)
 
+            // ─── TEKNIK (progres fisik bangunan) ───
+            'teknik.rumah.lihat',   // Lihat menu teknik/rumah (Admin Teknik, PM, Direktur)
+            'teknik.rumah.update',  // Update progres fisik + LOT (Admin Teknik only)
+
+            // ─── TARGET MARKETING (RAB tahunan direksi) ───
+            'target.kelola',        // Input/edit target akad & penjualan per proyek per tahun
+
             // ─── FINANCE ───
             'pembayaran.kelola',  // Konfirmasi UTJ + realisasi cicilan + tempel materai
             'pembayaran.approve', // Approve refund / reversal (biasanya finance-manager)
@@ -81,11 +88,13 @@ class RolePermissionSeeder extends Seeder
             // Super admin: SEMUA permission
             'super-admin' => $permissions,
 
-            // Direktur: view-only (SPR, akunting, laporan, log, monitor)
+            // Direktur: view-only (SPR, akunting, laporan, log, monitor) + kelola target
             'direktur' => [
+                'target.kelola',
                 'spr.lihat',
                 'spr.cetak',
                 'pemberkasan.lihat',
+                'teknik.rumah.lihat',
                 'bukubesar.lihat',
                 'kasbank.lihat',
                 'labarugi.lihat',
@@ -110,6 +119,7 @@ class RolePermissionSeeder extends Seeder
                 'spr.pindah-unit',
                 'spr.cetak',
                 'pemberkasan.lihat',
+                'teknik.rumah.lihat',
                 'laporan.lihat',
                 'log.lihat',
                 'monitoring.lihat',
@@ -164,6 +174,12 @@ class RolePermissionSeeder extends Seeder
                 'biayatambahan.kelola',
                 'laporan.lihat',
                 'ttd.kelola',
+            ],
+
+            // Admin Teknik: input progres fisik + LOT rumah (tanpa akses harga/finansial)
+            'admin-teknik' => [
+                'teknik.rumah.lihat',
+                'teknik.rumah.update',
             ],
         ];
 
