@@ -9,9 +9,9 @@ use Livewire\Livewire;
 uses(RefreshDatabase::class);
 
 /**
- * Matriks Marketing Performance dirinci per bulan. Angka setahun menyembunyikan bulan
- * yang meleset — satu bulan panen bisa menutupi lima bulan kosong. Test ini menjaga
- * agar tiap target mendarat di bulan yang benar dan tidak ada bulan yang hilang.
+ * Matriks Marketing Performance membandingkan target dan realisasi per proyek.
+ * Target disimpan per bulan, jadi angka setahun adalah penjumlahan dua belas bulan —
+ * kalau penjumlahannya salah, direktur membaca pencapaian yang keliru.
  */
 beforeEach(function () {
     $this->seed();
@@ -30,63 +30,64 @@ function matriks(int $tahun): array
         ->viewData('marketing');
 }
 
-it('selalu menyediakan dua belas bulan penuh untuk tiap proyek', function () {
-    $m = matriks($this->tahun);
-
-    foreach (['akadTargetBulan', 'akadRealBulan', 'penjualanTargetBulan', 'penjualanRealBulan'] as $kunci) {
-        expect($m[$kunci])->toHaveKey($this->proyek->id);
-        expect(array_keys($m[$kunci][$this->proyek->id]))->toBe(range(1, 12), "$kunci tidak lengkap 12 bulan");
-    }
-});
-
-it('menempatkan target pada bulan yang benar, bukan bergeser', function () {
+function isiTarget(int $proyekId, int $tahun, int $bulan, int $akad, int $jual): void
+{
     TargetMarketing::create([
-        'proyek_id' => $this->proyek->id,
-        'tahun' => $this->tahun,
-        'bulan' => 3,
-        'target_akad' => 7,
-        'target_penjualan' => 11,
+        'proyek_id' => $proyekId,
+        'tahun' => $tahun,
+        'bulan' => $bulan,
+        'target_akad' => $akad,
+        'target_penjualan' => $jual,
     ]);
+}
 
-    $m = matriks($this->tahun);
-    $akad = $m['akadTargetBulan'][$this->proyek->id];
-    $jual = $m['penjualanTargetBulan'][$this->proyek->id];
-
-    expect($akad[3])->toBe(7)
-        ->and($jual[3])->toBe(11)
-        ->and($akad[2])->toBe(0)
-        ->and($akad[4])->toBe(0);
-});
-
-it('menjumlahkan rincian bulanan sama dengan angka setahun', function () {
+it('menjumlahkan target dua belas bulan jadi angka setahun per proyek', function () {
     foreach ([1, 6, 12] as $bulan) {
-        TargetMarketing::create([
-            'proyek_id' => $this->proyek->id,
-            'tahun' => $this->tahun,
-            'bulan' => $bulan,
-            'target_akad' => 4,
-            'target_penjualan' => 9,
-        ]);
+        isiTarget($this->proyek->id, $this->tahun, $bulan, 4, 9);
     }
 
     $m = matriks($this->tahun);
 
-    expect(array_sum($m['akadTargetBulan'][$this->proyek->id]))->toBe(12)
-        ->and(array_sum($m['penjualanTargetBulan'][$this->proyek->id]))->toBe(27)
-        ->and($m['akadTarget'][$this->proyek->id])->toBe(12)
+    expect($m['akadTarget'][$this->proyek->id])->toBe(12)
         ->and($m['penjualanTarget'][$this->proyek->id])->toBe(27);
 });
 
+it('menyediakan angka untuk setiap proyek walau targetnya belum diisi', function () {
+    $m = matriks($this->tahun);
+
+    foreach ($m['proyekList'] as $p) {
+        expect($m['akadTarget'])->toHaveKey($p->id)
+            ->and($m['penjualanTarget'])->toHaveKey($p->id)
+            ->and($m['akadTarget'][$p->id])->toBe(0);
+    }
+});
+
 it('tidak membawa target tahun lain ke tahun yang sedang dilihat', function () {
-    TargetMarketing::create([
-        'proyek_id' => $this->proyek->id,
-        'tahun' => $this->tahun - 1,
-        'bulan' => 5,
-        'target_akad' => 50,
-        'target_penjualan' => 50,
-    ]);
+    isiTarget($this->proyek->id, $this->tahun - 1, 5, 50, 50);
 
     $m = matriks($this->tahun);
 
-    expect(array_sum($m['akadTargetBulan'][$this->proyek->id]))->toBe(0);
+    expect($m['akadTarget'][$this->proyek->id])->toBe(0);
+});
+
+it('menampilkan matriks per proyek beserta kolom gabungan', function () {
+    isiTarget($this->proyek->id, $this->tahun, 1, 3, 8);
+
+    $html = Livewire::test('pages::dashboard.direksi')
+        ->set('selectedTahun', $this->tahun)
+        ->html();
+
+    expect($html)->toContain('Akad progress')
+        ->and($html)->toContain('Penjualan progress')
+        ->and($html)->toContain('*ALL')
+        ->and($html)->toContain('TARGET')
+        ->and($html)->toContain('REAL')
+        ->and($html)->toContain($this->proyek->nama_proyek);
+});
+
+it('menyusun pilihan tahun tanpa bergantung fungsi tanggal khusus MySQL', function () {
+    // YEAR() tidak ada di SQLite. Test ini yang menjaga dashboard tetap bisa diuji.
+    $m = matriks($this->tahun);
+
+    expect($m['tahunOptions'])->toContain($this->tahun);
 });

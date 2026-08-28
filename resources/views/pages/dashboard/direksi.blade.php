@@ -88,88 +88,26 @@ new #[Title('Dashboard Direksi')] class extends Component
             $penjualanTarget[$p->id] = (int) ($targetSums->get($p->id)?->sum_penjualan ?? 0);
         }
 
-        // ── Rincian per bulan ──
-        // Angka YTD di atas menyembunyikan bulan yang meleset: satu bulan panen bisa
-        // menutupi lima bulan kosong. Rincian ini yang dipakai matriks di layar.
-        $bulanKosong = array_fill(1, 12, 0);
-
-        $akadRealBulan = $this->perBulanPerProyek(
-            Spr::query()->where('spr.status', 'akad')->whereBetween('spr.tgl_akad', [$tahunAwal, $tahunAkhir]),
-            'spr.tgl_akad'
-        );
-        $penjualanRealBulan = $this->perBulanPerProyek(
-            Spr::query()->where('spr.status', '!=', 'cancelled')->whereBetween('spr.tanggal_spr', [$tahunAwal, $tahunAkhir]),
-            'spr.tanggal_spr'
-        );
-
-        $akadTargetBulan = [];
-        $penjualanTargetBulan = [];
-        $targetBaris = TargetMarketing::where('tahun', $this->selectedTahun)->get();
-        foreach ($proyekList as $p) {
-            $akadTargetBulan[$p->id] = $bulanKosong;
-            $penjualanTargetBulan[$p->id] = $bulanKosong;
-            $akadRealBulan[$p->id] ??= $bulanKosong;
-            $penjualanRealBulan[$p->id] ??= $bulanKosong;
-        }
-        foreach ($targetBaris as $t) {
-            if (! isset($akadTargetBulan[$t->proyek_id])) {
-                continue;
-            }
-            $akadTargetBulan[$t->proyek_id][$t->bulan] = (int) $t->target_akad;
-            $penjualanTargetBulan[$t->proyek_id][$t->bulan] = (int) $t->target_penjualan;
-        }
-
         // Options dropdown tahun — dari data SPR yang ada
-        $tahunSql = $this->ekspresiTanggal('tahun', 'tanggal_spr');
+        $tahunSql = $this->ekspresiTahun('tanggal_spr');
         $tahunSprMin = Spr::min(DB::raw($tahunSql)) ?: (int) now()->year;
         $tahunSprMax = max((int) now()->year, Spr::max(DB::raw($tahunSql)) ?: (int) now()->year);
         $tahunOptions = range($tahunSprMax, $tahunSprMin);
 
-        return compact(
-            'proyekList', 'akadTarget', 'akadReal', 'penjualanTarget', 'penjualanReal', 'tahunOptions',
-            'akadTargetBulan', 'akadRealBulan', 'penjualanTargetBulan', 'penjualanRealBulan',
-        );
+        return compact('proyekList', 'akadTarget', 'akadReal', 'penjualanTarget', 'penjualanReal', 'tahunOptions');
     }
 
     /**
-     * Ekspresi SQL untuk mengambil bulan/tahun dari kolom tanggal.
+     * Ekspresi SQL untuk mengambil tahun dari kolom tanggal.
      *
-     * MONTH() dan YEAR() hanya ada di MySQL — SQLite yang dipakai test suite tidak
-     * mengenalnya, jadi dashboard ini dulu tidak bisa diuji sama sekali.
+     * YEAR() hanya ada di MySQL — SQLite yang dipakai test suite tidak mengenalnya,
+     * jadi dashboard ini dulu tidak bisa diuji sama sekali.
      */
-    protected function ekspresiTanggal(string $bagian, string $kolom): string
+    protected function ekspresiTahun(string $kolom): string
     {
-        $mysql = in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
-        $fungsi = $bagian === 'bulan' ? 'MONTH' : 'YEAR';
-        $format = $bagian === 'bulan' ? '%m' : '%Y';
-
-        return $mysql
-            ? "$fungsi($kolom)"
-            : "CAST(strftime('$format', $kolom) AS INTEGER)";
-    }
-
-    /**
-     * Hitung jumlah SPR per proyek per bulan (1-12) untuk tahun terpilih.
-     *
-     * @return array<int, array<int, int>> [proyek_id => [bulan => jumlah]]
-     */
-    protected function perBulanPerProyek($query, string $kolomTanggal): array
-    {
-        $bulan = $this->ekspresiTanggal('bulan', $kolomTanggal);
-
-        $baris = $query
-            ->join('rumah', 'rumah.id', '=', 'spr.rumah_id')
-            ->selectRaw("rumah.proyek_id, $bulan as bulan, COUNT(*) as jml")
-            ->groupBy('rumah.proyek_id', DB::raw($bulan))
-            ->get();
-
-        $hasil = [];
-        foreach ($baris as $b) {
-            $hasil[$b->proyek_id] ??= array_fill(1, 12, 0);
-            $hasil[$b->proyek_id][(int) $b->bulan] = (int) $b->jml;
-        }
-
-        return $hasil;
+        return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true)
+            ? "YEAR($kolom)"
+            : "CAST(strftime('%Y', $kolom) AS INTEGER)";
     }
 
     /**
@@ -343,144 +281,106 @@ new #[Title('Dashboard Direksi')] class extends Component
                 </div>
             </div>
 
-            {{-- Matriks target vs realisasi, dirinci per bulan --}}
+            {{-- Matriks target vs realisasi per proyek, mengikuti bentuk laporan lama --}}
             @php
-                // Angka setahun menyembunyikan bulan yang meleset — satu bulan panen bisa
-                // menutupi lima bulan kosong. Karena itu dirinci per bulan, dengan kolom
-                // total di ujung kanan sebagai ringkasannya.
-                $namaBulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-
                 $metrikList = [
                     [
-                        'label' => 'Akad progress',
-                        'target' => $marketing['akadTargetBulan'],
-                        'real' => $marketing['akadRealBulan'],
-                        'kelasKepala' => 'bg-emerald-50 dark:bg-emerald-950/30',
+                        'judul' => 'Akad progress',
+                        'label' => 'Akad YTD',
+                        'target' => $marketing['akadTarget'],
+                        'real' => $marketing['akadReal'],
                         'kelasBadge' => 'bg-emerald-600',
-                        'kelasJudul' => 'text-emerald-900 dark:text-emerald-100',
-                        'kelasReal' => 'text-emerald-700 dark:text-emerald-400',
+                        'kelasLabel' => 'text-emerald-700 dark:text-emerald-400',
                     ],
                     [
-                        'label' => 'Penjualan',
-                        'target' => $marketing['penjualanTargetBulan'],
-                        'real' => $marketing['penjualanRealBulan'],
-                        'kelasKepala' => 'bg-blue-50 dark:bg-blue-950/30',
+                        'judul' => 'Penjualan progress',
+                        'label' => 'Penjualan YTD',
+                        'target' => $marketing['penjualanTarget'],
+                        'real' => $marketing['penjualanReal'],
                         'kelasBadge' => 'bg-blue-600',
-                        'kelasJudul' => 'text-blue-900 dark:text-blue-100',
-                        'kelasReal' => 'text-blue-700 dark:text-blue-400',
+                        'kelasLabel' => 'text-blue-700 dark:text-blue-400',
                     ],
                 ];
-
-                $jumlahkanBulan = function (array $perProyek) {
-                    $hasil = array_fill(1, 12, 0);
-                    foreach ($perProyek as $bulanan) {
-                        foreach ($bulanan as $b => $n) {
-                            $hasil[$b] += (int) $n;
-                        }
-                    }
-
-                    return $hasil;
-                };
-
-                $banyakProyek = count($marketing['proyekList']) > 1;
             @endphp
 
             @foreach ($metrikList as $m)
                 @php
-                    $barisGrup = [];
-                    if ($banyakProyek) {
-                        $barisGrup[] = [
-                            'nama' => '*ALL',
-                            'target' => $jumlahkanBulan($m['target']),
-                            'real' => $jumlahkanBulan($m['real']),
-                        ];
-                    }
-                    foreach ($marketing['proyekList'] as $p) {
-                        $barisGrup[] = [
-                            'nama' => $p->nama_proyek,
-                            'target' => $m['target'][$p->id] ?? array_fill(1, 12, 0),
-                            'real' => $m['real'][$p->id] ?? array_fill(1, 12, 0),
-                        ];
-                    }
+                    $totalTarget = collect($m['target'])->sum();
+                    $totalReal = collect($m['real'])->sum();
+                    $selisih = $totalReal - $totalTarget;
                 @endphp
 
-                <div class="mb-4 overflow-x-auto rounded-lg border border-zinc-200 last:mb-0 dark:border-zinc-700">
-                    <div class="flex items-center gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-700 {{ $m['kelasKepala'] }}">
-                        <span class="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] font-bold uppercase text-white {{ $m['kelasBadge'] }}">
-                            <flux:icon.tag class="size-3" /> {{ $m['label'] }}
-                        </span>
-                        <span class="text-xs font-semibold {{ $m['kelasJudul'] }}">{{ $selectedTahun }} · per bulan</span>
+                <div class="mb-4 last:mb-0">
+                    <div class="mb-2 flex items-center gap-2">
+                        <span class="rounded px-2 py-0.5 text-[10px] font-bold uppercase text-white {{ $m['kelasBadge'] }}">YTD</span>
+                        <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">{{ $m['judul'] }}</span>
                     </div>
 
-                    <table class="w-full text-xs" style="min-width: 56rem">
-                        <thead class="bg-zinc-50 text-[10px] uppercase text-zinc-500 dark:bg-zinc-800">
-                            <tr>
-                                <th class="px-3 py-2 text-left" style="width: 9rem"></th>
-                                @foreach ($namaBulan as $nb)
-                                    <th class="px-2 py-2 text-right font-semibold">{{ $nb }}</th>
-                                @endforeach
-                                <th class="border-l border-zinc-200 px-3 py-2 text-right font-bold dark:border-zinc-700">Total</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
-                            @foreach ($barisGrup as $g)
-                                @if ($banyakProyek)
-                                    <tr class="bg-zinc-50 dark:bg-zinc-800/50">
-                                        <td colspan="14" class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-500">{{ $g['nama'] }}</td>
-                                    </tr>
-                                @endif
-
+                    <div class="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-700">
+                        <table class="w-full text-xs">
+                            <thead class="bg-zinc-50 text-[10px] uppercase text-zinc-500 dark:bg-zinc-800">
                                 <tr>
-                                    <td class="whitespace-nowrap px-3 py-2 text-zinc-600">
+                                    <th class="whitespace-nowrap px-3 py-2 text-left" style="min-width: 11rem">
+                                        <span class="inline-flex items-center gap-1.5 {{ $m['kelasLabel'] }}">
+                                            <flux:icon.tag class="size-3" />
+                                            <span class="font-bold">{{ $m['label'] }}</span>
+                                        </span>
+                                    </th>
+                                    <th class="px-3 py-2 text-right font-bold text-zinc-700 dark:text-zinc-200" style="min-width: 5rem">*ALL</th>
+                                    @foreach ($marketing['proyekList'] as $p)
+                                        <th class="px-3 py-2 text-right font-semibold" style="min-width: 6rem">{{ $p->nama_proyek }}</th>
+                                    @endforeach
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
+                                <tr>
+                                    <td class="whitespace-nowrap px-3 py-2.5 text-zinc-600 dark:text-zinc-400">
                                         <span class="inline-flex items-center gap-1.5">
-                                            <flux:icon.flag class="size-3.5 text-zinc-400" />
+                                            <flux:icon.clipboard-document-list class="size-4 text-zinc-400" />
                                             <span class="font-semibold">TARGET</span>
                                         </span>
                                     </td>
-                                    @for ($b = 1; $b <= 12; $b++)
-                                        @php $v = (int) ($g['target'][$b] ?? 0); @endphp
-                                        <td class="px-2 py-2 text-right font-mono tabular-nums {{ $v === 0 ? 'text-zinc-300 dark:text-zinc-600' : '' }}">{{ $num($v) }}</td>
-                                    @endfor
-                                    <td class="border-l border-zinc-200 px-3 py-2 text-right font-mono font-bold tabular-nums dark:border-zinc-700">{{ $num(array_sum($g['target'])) }}</td>
+                                    <td class="px-3 py-2.5 text-right font-mono text-sm font-bold tabular-nums">{{ $num($totalTarget) }}</td>
+                                    @foreach ($marketing['proyekList'] as $p)
+                                        @php $v = (int) ($m['target'][$p->id] ?? 0); @endphp
+                                        <td class="px-3 py-2.5 text-right font-mono tabular-nums {{ $v === 0 ? 'text-zinc-300 dark:text-zinc-600' : '' }}">{{ $num($v) }}</td>
+                                    @endforeach
                                 </tr>
-
                                 <tr class="bg-zinc-50/50 dark:bg-zinc-800/30">
-                                    <td class="whitespace-nowrap px-3 py-2">
+                                    <td class="whitespace-nowrap px-3 py-2.5">
                                         <span class="inline-flex items-center gap-1.5">
-                                            <flux:icon.user-circle class="size-3.5 {{ $m['kelasReal'] }}" />
-                                            <span class="font-semibold {{ $m['kelasReal'] }}">REAL</span>
+                                            <flux:icon.home-modern class="size-4 {{ $m['kelasLabel'] }}" />
+                                            <span class="font-semibold {{ $m['kelasLabel'] }}">REAL</span>
                                         </span>
                                     </td>
-                                    @for ($b = 1; $b <= 12; $b++)
-                                        @php $v = (int) ($g['real'][$b] ?? 0); @endphp
-                                        <td class="px-2 py-2 text-right font-mono tabular-nums {{ $v === 0 ? 'text-zinc-300 dark:text-zinc-600' : $m['kelasReal'] }}">{{ $num($v) }}</td>
-                                    @endfor
-                                    <td class="border-l border-zinc-200 px-3 py-2 text-right font-mono font-bold tabular-nums dark:border-zinc-700 {{ $m['kelasReal'] }}">{{ $num(array_sum($g['real'])) }}</td>
+                                    <td class="px-3 py-2.5 text-right font-mono text-sm font-bold tabular-nums {{ $m['kelasLabel'] }}">{{ $num($totalReal) }}</td>
+                                    @foreach ($marketing['proyekList'] as $p)
+                                        @php $v = (int) ($m['real'][$p->id] ?? 0); @endphp
+                                        <td class="px-3 py-2.5 text-right font-mono tabular-nums {{ $v === 0 ? 'text-zinc-300 dark:text-zinc-600' : $m['kelasLabel'] }}">{{ $num($v) }}</td>
+                                    @endforeach
                                 </tr>
+                            </tbody>
+                        </table>
+                    </div>
 
-                                <tr>
-                                    <td class="whitespace-nowrap px-3 py-2 text-zinc-600">
-                                        <span class="inline-flex items-center gap-1.5">
-                                            <flux:icon.arrows-up-down class="size-3.5 text-zinc-400" />
-                                            <span class="font-semibold">SELISIH</span>
-                                        </span>
-                                    </td>
-                                    @for ($b = 1; $b <= 12; $b++)
-                                        @php
-                                            $d = (int) ($g['real'][$b] ?? 0) - (int) ($g['target'][$b] ?? 0);
-                                            $kelasD = $d > 0 ? 'text-emerald-600' : ($d < 0 ? 'text-rose-600' : 'text-zinc-300 dark:text-zinc-600');
-                                        @endphp
-                                        <td class="px-2 py-2 text-right font-mono tabular-nums {{ $kelasD }}">{{ $d > 0 ? '+'.$num($d) : $num($d) }}</td>
-                                    @endfor
-                                    @php
-                                        $dTotal = array_sum($g['real']) - array_sum($g['target']);
-                                        $kelasDTotal = $dTotal > 0 ? 'text-emerald-600' : ($dTotal < 0 ? 'text-rose-600' : 'text-zinc-400');
-                                    @endphp
-                                    <td class="border-l border-zinc-200 px-3 py-2 text-right font-mono font-bold tabular-nums dark:border-zinc-700 {{ $kelasDTotal }}">{{ $dTotal > 0 ? '+'.$num($dTotal) : $num($dTotal) }}</td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+                    {{-- Penanda arah: sekali lihat ketahuan di atas atau di bawah target --}}
+                    @if ($totalTarget > 0)
+                        @php
+                            $persen = (int) round($totalReal / $totalTarget * 100);
+                            $kurang = $selisih < 0;
+                        @endphp
+                        <div class="mt-2 flex items-center gap-2 text-xs">
+                            <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold {{ $kurang ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' }}">
+                                @if ($kurang)
+                                    <flux:icon.arrow-down class="size-3" />
+                                @else
+                                    <flux:icon.arrow-up class="size-3" />
+                                @endif
+                                {{ $selisih > 0 ? '+'.$num($selisih) : $num($selisih) }}
+                            </span>
+                            <span class="text-zinc-500">{{ $persen }}% dari target {{ $selectedTahun }}</span>
+                        </div>
+                    @endif
                 </div>
             @endforeach
         </div>
