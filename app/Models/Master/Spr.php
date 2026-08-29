@@ -261,7 +261,32 @@ class Spr extends Model
     public function terminPembayaran(): HasMany
     {
         return $this->hasMany(SprTerminPembayaran::class)
-            ->orderByRaw("FIELD(jenis, 'bf', 'um', 'sbum'), urutan");
+            ->orderByRaw(self::urutanJenisSql(['bf', 'um', 'sbum']).', urutan');
+    }
+
+    /**
+     * Ekspresi urutan berdasarkan daftar nilai, mis. bf → um → sbum.
+     *
+     * FIELD() hanya ada di MySQL. SQLite yang dipakai test suite tidak mengenalnya,
+     * jadi relasi ini dulu membuat setiap halaman yang memuat SPR gagal diuji.
+     * Padanannya CASE WHEN, yang dipahami kedua-duanya.
+     *
+     * @param  array<int, string>  $nilai
+     */
+    public static function urutanJenisSql(array $nilai, string $kolom = 'jenis'): string
+    {
+        if (DB::connection()->getDriverName() === 'mysql') {
+            $daftar = implode(',', array_map(fn ($v) => "'$v'", $nilai));
+
+            return "FIELD($kolom, $daftar)";
+        }
+
+        $kasus = '';
+        foreach ($nilai as $i => $v) {
+            $kasus .= " WHEN '$v' THEN $i";
+        }
+
+        return "CASE $kolom$kasus ELSE ".count($nilai).' END';
     }
 
     public function realisasiPembayaran(): HasMany

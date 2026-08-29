@@ -44,6 +44,13 @@ new #[Title('Detail SPR')] class extends Component
 
     public ?string $editRealisasiKeterangan = null;
 
+    /** Realisasi yang sedang dikonfirmasi penghapusannya. */
+    public ?int $hapusRealisasiId = null;
+
+    public ?string $hapusRealisasiRingkasan = null;
+
+    public ?string $hapusRealisasiAlasan = null;
+
     // Upload dokumen SPR ttd + meterai dari customer
     public $dokumenSignedFile = null;
 
@@ -311,6 +318,59 @@ new #[Title('Detail SPR')] class extends Component
         $this->reset(['editRealisasiId', 'editRealisasiTanggal', 'editRealisasiJumlah', 'editRealisasiMetode', 'editRealisasiKeterangan']);
 
         Flux::toast(variant: 'success', text: 'Realisasi kwitansi '.$r->nomor_kwitansi.' diperbarui.');
+    }
+
+    public function openHapusRealisasi(int $id): void
+    {
+        abort_unless(Auth::user()?->can('pembayaran.kelola'), 403);
+
+        $r = SprRealisasiPembayaran::where('spr_id', $this->spr->id)
+            ->where('jenis', 'um')
+            ->findOrFail($id);
+
+        $this->hapusRealisasiId = $r->id;
+        $this->hapusRealisasiRingkasan = sprintf(
+            'Kwitansi %s · Rp %s · %s',
+            $r->nomor_kwitansi ?: '(tanpa nomor)',
+            number_format((float) $r->jumlah, 0, ',', '.'),
+            $r->tanggal_bayar?->format('d/m/Y') ?? '-'
+        );
+        $this->hapusRealisasiAlasan = null;
+        $this->resetErrorBag();
+        Flux::modal('hapus-realisasi')->show();
+    }
+
+    /**
+     * Hapus satu baris realisasi UM yang salah input.
+     *
+     * Hanya UM yang boleh dihapus — baris BF/UTJ tertaut ke kolom utj_* di SPR dan
+     * menghapusnya akan membuat data booking fee tidak sinkron. Untuk itu pakai
+     * pembatalan SPR, bukan penghapusan baris.
+     */
+    public function hapusRealisasi(): void
+    {
+        abort_unless(Auth::user()?->can('pembayaran.kelola'), 403);
+
+        $this->validate([
+            'hapusRealisasiAlasan' => ['required', 'string', 'min:3', 'max:500'],
+        ], [], ['hapusRealisasiAlasan' => 'alasan penghapusan']);
+
+        $r = SprRealisasiPembayaran::where('spr_id', $this->spr->id)
+            ->where('jenis', 'um')
+            ->findOrFail($this->hapusRealisasiId);
+
+        $nomor = $r->nomor_kwitansi;
+
+        // Catat dulu selagi barisnya masih ada — sesudah delete, isinya tidak bisa dibaca lagi.
+        BusinessActivityLogger::realisasiDeleted($r, $this->hapusRealisasiAlasan);
+
+        $r->delete();
+
+        Flux::modal('hapus-realisasi')->close();
+        $this->loadSpr($this->spr->id);
+        $this->reset(['hapusRealisasiId', 'hapusRealisasiRingkasan', 'hapusRealisasiAlasan']);
+
+        Flux::toast(variant: 'success', text: 'Realisasi kwitansi '.($nomor ?: '(tanpa nomor)').' dihapus.');
     }
 
     // ═══════════════ BIAYA TAMBAHAN UNIT ═══════════════
@@ -1545,6 +1605,11 @@ new #[Title('Detail SPR')] class extends Component
                                                             title="{{ __('Edit realisasi (koreksi nominal / tanggal)') }}">
                                                         <flux:icon.pencil-square class="size-3.5" />
                                                     </button>
+                                                    <button type="button" wire:click="openHapusRealisasi({{ $r->id }})"
+                                                            class="rounded p-1 text-zinc-400 transition hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/30"
+                                                            title="{{ __('Hapus realisasi (salah input)') }}">
+                                                        <flux:icon.trash class="size-3.5" />
+                                                    </button>
                                                 </td>
                                             @endif
                                         </tr>
@@ -1868,6 +1933,46 @@ new #[Title('Detail SPR')] class extends Component
                     </flux:button>
                 </div>
             </form>
+        </flux:modal>
+
+        {{-- Konfirmasi hapus realisasi UM yang salah input --}}
+        <flux:modal name="hapus-realisasi" class="md:w-md" focusable>
+            <div class="space-y-4">
+                <div class="flex items-start gap-3">
+                    <div class="rounded-lg bg-rose-100 p-2 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
+                        <flux:icon.exclamation-triangle class="size-5" />
+                    </div>
+                    <div>
+                        <flux:heading size="lg">{{ __('Hapus realisasi ini?') }}</flux:heading>
+                        <flux:subheading>{{ __('Baris pembayaran akan hilang dari daftar dan sisa UM dihitung ulang.') }}</flux:subheading>
+                    </div>
+                </div>
+
+                @if ($hapusRealisasiRingkasan)
+                    <div class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 font-mono text-sm text-rose-900 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-200">
+                        {{ $hapusRealisasiRingkasan }}
+                    </div>
+                @endif
+
+                <flux:field>
+                    <flux:label badge="{{ __('Wajib') }}">{{ __('Alasan penghapusan') }}</flux:label>
+                    <flux:input wire:model="hapusRealisasiAlasan"
+                                placeholder="{{ __('mis. salah input, dobel dengan kwitansi lain') }}" />
+                    <flux:error name="hapusRealisasiAlasan" />
+                    <flux:description>
+                        {{ __('Alasan dan seluruh isi barisnya dicatat di log aktivitas — setelah dihapus, log itu satu-satunya jejak yang tersisa.') }}
+                    </flux:description>
+                </flux:field>
+
+                <div class="flex justify-end gap-2">
+                    <flux:modal.close>
+                        <flux:button variant="ghost">{{ __('Batal') }}</flux:button>
+                    </flux:modal.close>
+                    <flux:button variant="danger" icon="trash" wire:click="hapusRealisasi">
+                        {{ __('Hapus') }}
+                    </flux:button>
+                </div>
+            </div>
         </flux:modal>
 
         {{-- ═══════════════════════ MODAL: INPUT / EDIT BIAYA TAMBAHAN ═══════════════════════ --}}

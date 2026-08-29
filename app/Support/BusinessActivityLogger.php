@@ -334,6 +334,41 @@ class BusinessActivityLogger
             ->log("Edit realisasi {$jenis} · kwitansi {$realisasi->nomor_kwitansi} · {$customer} · {$nominalLama} → {$nominalBaru}");
     }
 
+    /**
+     * Realisasi pembayaran dihapus — biasanya salah input yang terlanjur tersimpan.
+     *
+     * Seluruh isi barisnya disimpan di properties, bukan sekadar id-nya: setelah baris
+     * itu hilang dari tabel, log ini satu-satunya jejak yang tersisa untuk menjawab
+     * "uang berapa yang dulu tercatat di kwitansi ini, dan siapa yang menghapusnya".
+     */
+    public static function realisasiDeleted(SprRealisasiPembayaran $realisasi, ?string $alasan = null): void
+    {
+        $realisasi->loadMissing('spr.prospectCustomer');
+        $spr = $realisasi->spr;
+        $customer = $spr?->prospectCustomer?->nama_lengkap ?? '—';
+        $nominalFmt = 'Rp '.number_format((float) $realisasi->jumlah, 0, ',', '.');
+        $jenis = strtoupper($realisasi->jenis);
+
+        activity('keuangan')
+            ->causedBy(self::causer())
+            ->performedOn($realisasi)
+            ->event('realisasi.deleted')
+            ->withProperties([
+                'nomor_kwitansi' => $realisasi->nomor_kwitansi,
+                'nomor_spr' => $spr?->nomor_spr,
+                'customer' => $customer,
+                'jenis' => $realisasi->jenis,
+                'alasan' => $alasan,
+                'dihapus' => [
+                    'tanggal_bayar' => $realisasi->tanggal_bayar?->format('Y-m-d'),
+                    'jumlah' => (float) $realisasi->jumlah,
+                    'metode' => $realisasi->metode,
+                    'keterangan' => $realisasi->keterangan,
+                ],
+            ])
+            ->log("Hapus realisasi {$jenis} · kwitansi {$realisasi->nomor_kwitansi} · {$customer} · {$nominalFmt}".($alasan ? " · alasan: {$alasan}" : ''));
+    }
+
     public static function refundProcessed(Spr $spr, float $jumlah): void
     {
         $customer = $spr->prospectCustomer?->nama_lengkap ?? '—';
