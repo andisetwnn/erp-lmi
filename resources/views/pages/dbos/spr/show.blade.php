@@ -304,7 +304,7 @@ new #[Title('Detail SPR'), Layout('layouts.dbos')] class extends Component
         @php
             $termins = $spr->terminPembayaran()
                 ->whereIn('jenis', ['bf', 'um'])
-                ->orderByRaw("FIELD(jenis, 'bf', 'um'), urutan")
+                ->orderByRaw(\App\Models\Master\Spr::urutanJenisSql(['bf', 'um']).', urutan')
                 ->get();
 
             // Kumpulkan realisasi per jenis, urut tanggal (FIFO).

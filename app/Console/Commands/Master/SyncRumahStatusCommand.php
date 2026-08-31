@@ -51,7 +51,7 @@ class SyncRumahStatusCommand extends Command
         foreach ($melenceng as $r) {
             $spr = Spr::where('rumah_id', $r->id)
                 ->whereIn('status', self::STATUS_MENGUNCI)
-                ->orderByRaw("FIELD(status, 'akad', 'approved')")
+                ->orderByRaw(Spr::urutanJenisSql(['akad', 'approved'], 'status'))
                 ->first();
 
             $this->line(sprintf('  %-9s %-10s → terjual   (%s · %s)',

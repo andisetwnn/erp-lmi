@@ -45,7 +45,7 @@ new #[Title('Booking Baru'), Layout('layouts.dbos')] class extends Component
                         ->orWhere('blok', 'like', $search.'%')
                         ->orWhere('nomor_unit', 'like', $search.'%');
                 })
-                ->orderByRaw("FIELD(status, 'available', 'booking', 'terjual', 'draft')")
+                ->orderByRaw(\App\Models\Master\Spr::urutanJenisSql(['available', 'booking', 'terjual', 'draft'], 'status'))
                 ->orderBy('proyek_id')
                 ->orderBy('blok')
                 ->orderBy('nomor_unit')
