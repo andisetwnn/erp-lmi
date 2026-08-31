@@ -14,6 +14,10 @@ new #[Title('Neraca')] class extends Component
     #[Url(as: 'from')]
     public string $from = '';
 
+    /** 'detail' = sampai akun; 'resume' = berhenti di kelompok. */
+    #[Url(as: 'versi')]
+    public string $versi = '';
+
     public function mount(): void
     {
         if ($this->tanggal === '') {
@@ -21,6 +25,10 @@ new #[Title('Neraca')] class extends Component
         }
         if ($this->from === '') {
             $this->from = now()->startOfYear()->toDateString();
+        }
+        if ($this->versi === '') {
+            // Direksi butuh gambaran besar, accounting butuh rinciannya.
+            $this->versi = auth()->user()?->hasRole('direktur') ? 'resume' : 'detail';
         }
     }
 
@@ -39,6 +47,7 @@ new #[Title('Neraca')] class extends Component
         return [
             'perusahaan' => $perusahaan,
             'data' => $data,
+            'rinci' => $this->versi !== 'resume',
         ];
     }
 }; ?>
@@ -72,11 +81,12 @@ new #[Title('Neraca')] class extends Component
             </div>
             <div class="flex gap-2">
                 <flux:button variant="ghost" icon="document-arrow-down"
+                             title="Excel selalu berisi rincian per akun — berkas kerja Accounting"
                              href="{{ route('akunting.neraca.excel', ['tgl' => $tanggal, 'from' => $from]) }}">
                     {{ __('Excel') }}
                 </flux:button>
                 <flux:button variant="ghost" icon="printer"
-                             href="{{ route('akunting.neraca.print', ['tgl' => $tanggal, 'from' => $from]) }}"
+                             href="{{ route('akunting.neraca.print', ['tgl' => $tanggal, 'from' => $from, 'versi' => $versi]) }}"
                              target="_blank">
                     {{ __('Cetak PDF') }}
                 </flux:button>
@@ -92,6 +102,19 @@ new #[Title('Neraca')] class extends Component
             <div>
                 <flux:input type="date" wire:model.live="tanggal" label="Per Tanggal (Cutoff)"
                             description="Snapshot posisi aset/kewajiban/modal" />
+            </div>
+            <div>
+                <label class="mb-1 block text-sm font-medium">Tampilan</label>
+                <flux:button.group>
+                    <flux:button size="sm" wire:click="$set('versi', 'detail')"
+                                 :variant="$versi !== 'resume' ? 'primary' : 'filled'">
+                        Detail
+                    </flux:button>
+                    <flux:button size="sm" wire:click="$set('versi', 'resume')"
+                                 :variant="$versi === 'resume' ? 'primary' : 'filled'">
+                        Resume
+                    </flux:button>
+                </flux:button.group>
             </div>
         </div>
 
@@ -140,16 +163,18 @@ new #[Title('Neraca')] class extends Component
                                             {{ number_format($group['total'], 0, ',', '.') }}
                                         </td>
                                     </tr>
-                                    @foreach ($group['items'] as $item)
-                                        <tr class="text-xs text-zinc-600 dark:text-zinc-400">
-                                            <td class="border border-zinc-300 px-3 py-1 pl-8 dark:border-zinc-600">
-                                                {{ $item['coa']->kode }} - {{ $item['coa']->nama }}
-                                            </td>
-                                            <td class="border border-zinc-300 px-3 py-1 text-right font-mono tabular-nums dark:border-zinc-600">
-                                                {{ number_format($item['saldo'], 0, ',', '.') }}
-                                            </td>
-                                        </tr>
-                                    @endforeach
+                                    @if ($rinci)
+                                        @foreach ($group['items'] as $item)
+                                            <tr class="text-xs text-zinc-600 dark:text-zinc-400">
+                                                <td class="border border-zinc-300 px-3 py-1 pl-8 dark:border-zinc-600">
+                                                    {{ $item['coa']->kode }} - {{ $item['coa']->nama }}
+                                                </td>
+                                                <td class="border border-zinc-300 px-3 py-1 text-right font-mono tabular-nums dark:border-zinc-600">
+                                                    {{ number_format($item['saldo'], 0, ',', '.') }}
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    @endif
                                 @empty
                                     <tr>
                                         <td colspan="2" class="border border-zinc-300 px-3 py-4 text-center italic text-zinc-400 dark:border-zinc-600">
@@ -189,16 +214,18 @@ new #[Title('Neraca')] class extends Component
                                             {{ number_format($group['total'], 0, ',', '.') }}
                                         </td>
                                     </tr>
-                                    @foreach ($group['items'] as $item)
-                                        <tr class="text-xs text-zinc-600 dark:text-zinc-400">
-                                            <td class="border border-zinc-300 px-3 py-1 pl-8 dark:border-zinc-600">
-                                                {{ $item['coa']->kode }} - {{ $item['coa']->nama }}
-                                            </td>
-                                            <td class="border border-zinc-300 px-3 py-1 text-right font-mono tabular-nums dark:border-zinc-600">
-                                                {{ number_format($item['saldo'], 0, ',', '.') }}
-                                            </td>
-                                        </tr>
-                                    @endforeach
+                                    @if ($rinci)
+                                        @foreach ($group['items'] as $item)
+                                            <tr class="text-xs text-zinc-600 dark:text-zinc-400">
+                                                <td class="border border-zinc-300 px-3 py-1 pl-8 dark:border-zinc-600">
+                                                    {{ $item['coa']->kode }} - {{ $item['coa']->nama }}
+                                                </td>
+                                                <td class="border border-zinc-300 px-3 py-1 text-right font-mono tabular-nums dark:border-zinc-600">
+                                                    {{ number_format($item['saldo'], 0, ',', '.') }}
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    @endif
                                 @empty
                                     <tr>
                                         <td colspan="2" class="border border-zinc-300 px-3 py-4 text-center italic text-zinc-400 dark:border-zinc-600">
@@ -231,16 +258,18 @@ new #[Title('Neraca')] class extends Component
                                             {{ number_format($group['total'], 0, ',', '.') }}
                                         </td>
                                     </tr>
-                                    @foreach ($group['items'] as $item)
-                                        <tr class="text-xs text-zinc-600 dark:text-zinc-400">
-                                            <td class="border border-zinc-300 px-3 py-1 pl-8 dark:border-zinc-600">
-                                                {{ $item['coa']->kode }} - {{ $item['coa']->nama }}
-                                            </td>
-                                            <td class="border border-zinc-300 px-3 py-1 text-right font-mono tabular-nums dark:border-zinc-600">
-                                                {{ number_format($item['saldo'], 0, ',', '.') }}
-                                            </td>
-                                        </tr>
-                                    @endforeach
+                                    @if ($rinci)
+                                        @foreach ($group['items'] as $item)
+                                            <tr class="text-xs text-zinc-600 dark:text-zinc-400">
+                                                <td class="border border-zinc-300 px-3 py-1 pl-8 dark:border-zinc-600">
+                                                    {{ $item['coa']->kode }} - {{ $item['coa']->nama }}
+                                                </td>
+                                                <td class="border border-zinc-300 px-3 py-1 text-right font-mono tabular-nums dark:border-zinc-600">
+                                                    {{ number_format($item['saldo'], 0, ',', '.') }}
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    @endif
                                 @endforeach
                                 {{-- Laba (Rugi) Periode --}}
                                 <tr class="text-xs text-zinc-600 dark:text-zinc-400 italic">

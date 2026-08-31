@@ -266,8 +266,9 @@
                             </flux:sidebar.item>
                         @endcan
                         @can('labarugi.lihat')
+                            {{-- Versi tahunan jadi tab di dalam halaman ini, bukan menu sendiri --}}
                             <flux:sidebar.item icon="chart-bar-square" :href="route('akunting.laba-rugi.index')"
-                                               :current="request()->routeIs('akunting.laba-rugi.*')" wire:navigate>
+                                               :current="request()->routeIs('akunting.laba-rugi*')" wire:navigate>
                                 {{ __('Laba Rugi') }}
                             </flux:sidebar.item>
                         @endcan

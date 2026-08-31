@@ -24,6 +24,7 @@ class LaporanAkuntingPdfController extends Controller
         $request->validate([
             'from' => 'required|date',
             'to' => 'required|date|after_or_equal:from',
+            'versi' => 'nullable|in:detail,resume',
         ]);
 
         $perusahaan = Perusahaan::first();
@@ -38,17 +39,42 @@ class LaporanAkuntingPdfController extends Controller
             'data' => $data,
             'from' => $request->query('from'),
             'to' => $request->query('to'),
+            // Cetakan harus sama dengan yang barusan dilihat di layar.
+            'rinci' => $request->query('versi') !== 'resume',
         ])->setPaper('a4', 'portrait');
 
         return $pdf->stream('LabaRugi-'.$request->query('from').'-'.$request->query('to').'.pdf');
     }
 
     /** GET /akunting/neraca/print?tgl=Y-m-d&from=Y-m-d */
+    public function labaRugiTahunan(Request $request)
+    {
+        $request->validate([
+            'tahun' => 'required|integer|min:2000|max:2100',
+            'versi' => 'nullable|in:detail,resume',
+        ]);
+
+        $perusahaan = Perusahaan::first();
+        $data = app(LaporanAkuntingService::class)->labaRugiTahunan(
+            $perusahaan->id,
+            (int) $request->query('tahun'),
+        );
+
+        $pdf = Pdf::loadView('exports.laba-rugi-tahunan-pdf', [
+            'perusahaan' => $perusahaan,
+            'data' => $data,
+            'rinci' => $request->query('versi') !== 'resume',
+        ])->setPaper('a4', 'landscape');
+
+        return $pdf->stream('LabaRugiTahunan-'.$request->query('tahun').'.pdf');
+    }
+
     public function neraca(Request $request)
     {
         $request->validate([
             'tgl' => 'required|date',
             'from' => 'nullable|date',
+            'versi' => 'nullable|in:detail,resume',
         ]);
 
         $perusahaan = Perusahaan::first();
@@ -62,6 +88,7 @@ class LaporanAkuntingPdfController extends Controller
             'perusahaan' => $perusahaan,
             'data' => $data,
             'tanggal' => $request->query('tgl'),
+            'rinci' => $request->query('versi') !== 'resume',
         ])->setPaper('a4', 'portrait');
 
         return $pdf->stream('Neraca-'.$request->query('tgl').'.pdf');

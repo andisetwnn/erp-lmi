@@ -197,6 +197,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 ->name('laba-rugi.print');
             Route::get('laba-rugi/excel', [LaporanAkuntingPdfController::class, 'labaRugiExcel'])
                 ->name('laba-rugi.excel');
+
+            // Akumulasi & perbandingan laba rugi per bulan dalam satu tahun
+            Route::livewire('laba-rugi-tahunan', 'pages::akunting.laba-rugi-tahunan')
+                ->name('laba-rugi-tahunan.index');
+            Route::get('laba-rugi-tahunan/print', [LaporanAkuntingPdfController::class, 'labaRugiTahunan'])
+                ->name('laba-rugi-tahunan.print');
         });
 
         // Neraca

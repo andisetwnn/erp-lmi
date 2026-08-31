@@ -100,6 +100,7 @@
                 <td class="col-item"></td>
                 <td class="col-total">{{ number_format($group['total'], 0, ',', '.') }}</td>
             </tr>
+            @if ($rinci)
             @foreach ($group['items'] as $item)
                 <tr class="item">
                     <td class="col-nama">{{ $item['coa']->kode }} — {{ $item['coa']->nama }}</td>
@@ -107,6 +108,7 @@
                     <td class="col-total"></td>
                 </tr>
             @endforeach
+            @endif
         @empty
             <tr><td colspan="3" style="text-align:center; color:#999; padding: 8px;">Tidak ada aset.</td></tr>
         @endforelse
@@ -133,6 +135,7 @@
                 <td class="col-item"></td>
                 <td class="col-total">{{ number_format($group['total'], 0, ',', '.') }}</td>
             </tr>
+            @if ($rinci)
             @foreach ($group['items'] as $item)
                 <tr class="item">
                     <td class="col-nama">{{ $item['coa']->kode }} — {{ $item['coa']->nama }}</td>
@@ -140,6 +143,7 @@
                     <td class="col-total"></td>
                 </tr>
             @endforeach
+            @endif
         @empty
             <tr><td colspan="3" style="text-align:center; color:#999; padding: 8px;">Tidak ada kewajiban.</td></tr>
         @endforelse
@@ -166,6 +170,7 @@
                 <td class="col-item"></td>
                 <td class="col-total">{{ number_format($group['total'], 0, ',', '.') }}</td>
             </tr>
+            @if ($rinci)
             @foreach ($group['items'] as $item)
                 <tr class="item">
                     <td class="col-nama">{{ $item['coa']->kode }} — {{ $item['coa']->nama }}</td>
@@ -173,6 +178,7 @@
                     <td class="col-total"></td>
                 </tr>
             @endforeach
+            @endif
         @endforeach
         <tr class="item-italic">
             <td class="col-nama">{{ $data['laba_periode'] >= 0 ? 'Laba' : 'Rugi' }} Periode Berjalan</td>

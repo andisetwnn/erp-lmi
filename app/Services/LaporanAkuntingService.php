@@ -64,6 +64,163 @@ class LaporanAkuntingService
      *   'tanggal'
      * ]
      */
+    /**
+     * Laba Rugi satu tahun penuh, dipecah per bulan Januari–Desember.
+     *
+     * Sengaja TIDAK memanggil labaRugi() dua belas kali: fungsi itu menghitung saldo
+     * satu query per akun (85 akun untuk pendapatan+beban), jadi setahun berarti lebih
+     * dari seribu query untuk satu halaman. Di sini semuanya diambil sekali lalu
+     * dikelompokkan di memori.
+     *
+     * Return:
+     * [
+     *   'tahun'      => int,
+     *   'bulan'      => [1..12 => nama bulan],
+     *   'pendapatan' => ['baris' => [['header','per_bulan'=>[1..12],'total']], 'per_bulan', 'total'],
+     *   'beban'      => sama,
+     *   'laba_rugi'  => ['per_bulan' => [1..12], 'total'],
+     * ]
+     *
+     * @return array<string, mixed>
+     */
+    public function labaRugiTahunan(int $perusahaanId, int $tahun): array
+    {
+        $mulai = Carbon::create($tahun, 1, 1)->startOfDay()->toDateString();
+        $selesai = Carbon::create($tahun, 12, 31)->endOfDay()->toDateString();
+
+        // Satu query untuk seluruh tahun: saldo per akun per bulan.
+        $mutasi = DB::table('jurnal_detail as jd')
+            ->join('jurnal as j', 'j.id', 'jd.jurnal_id')
+            ->join('coa as c', 'c.id', 'jd.coa_id')
+            ->where('c.perusahaan_id', $perusahaanId)
+            ->whereIn('c.tipe', ['pendapatan', 'beban'])
+            ->where('j.status', 'posted')
+            ->whereDate('j.tanggal', '>=', $mulai)
+            ->whereDate('j.tanggal', '<=', $selesai)
+            ->groupBy('c.id', 'bulan')
+            ->selectRaw(
+                self::ekspresiBulan('j.tanggal').' as bulan, c.id as coa_id, '.
+                'COALESCE(SUM(jd.debet),0) as debet, COALESCE(SUM(jd.kredit),0) as kredit'
+            )
+            ->get();
+
+        if ($mutasi->isEmpty()) {
+            return $this->kosongLabaRugiTahunan($tahun);
+        }
+
+        // Header tiap akun diambil sekali, bukan per baris mutasi.
+        $coaList = Coa::where('perusahaan_id', $perusahaanId)
+            ->whereIn('id', $mutasi->pluck('coa_id')->unique())
+            ->with('parent:id,kode,nama')
+            ->get()
+            ->keyBy('id');
+
+        $kelompok = ['pendapatan' => [], 'beban' => []];
+
+        foreach ($mutasi as $baris) {
+            $coa = $coaList->get($baris->coa_id);
+            if (! $coa) {
+                continue;
+            }
+
+            $debet = (float) $baris->debet;
+            $kredit = (float) $baris->kredit;
+            $saldo = $coa->saldo_normal === 'debit' ? $debet - $kredit : $kredit - $debet;
+
+            if ($saldo == 0.0) {
+                continue;
+            }
+
+            $header = $coa->parent ?? $coa;
+            $kunci = $header->id;
+            $tipe = $coa->tipe;
+
+            if (! isset($kelompok[$tipe][$kunci])) {
+                $kelompok[$tipe][$kunci] = [
+                    'header' => $header,
+                    'per_bulan' => array_fill(1, 12, 0.0),
+                    'total' => 0.0,
+                ];
+            }
+
+            $bulan = (int) $baris->bulan;
+            $kelompok[$tipe][$kunci]['per_bulan'][$bulan] += $saldo;
+            $kelompok[$tipe][$kunci]['total'] += $saldo;
+        }
+
+        $hasil = [];
+        foreach (['pendapatan', 'beban'] as $tipe) {
+            uasort($kelompok[$tipe], fn ($a, $b) => strcmp($a['header']->kode, $b['header']->kode));
+
+            $perBulan = array_fill(1, 12, 0.0);
+            foreach ($kelompok[$tipe] as $baris) {
+                foreach (range(1, 12) as $b) {
+                    $perBulan[$b] += $baris['per_bulan'][$b];
+                }
+            }
+
+            $hasil[$tipe] = [
+                'baris' => array_values($kelompok[$tipe]),
+                'per_bulan' => $perBulan,
+                'total' => array_sum($perBulan),
+            ];
+        }
+
+        $labaPerBulan = [];
+        foreach (range(1, 12) as $b) {
+            $labaPerBulan[$b] = $hasil['pendapatan']['per_bulan'][$b] - $hasil['beban']['per_bulan'][$b];
+        }
+
+        return [
+            'tahun' => $tahun,
+            'bulan' => self::namaBulan(),
+            'pendapatan' => $hasil['pendapatan'],
+            'beban' => $hasil['beban'],
+            'laba_rugi' => [
+                'per_bulan' => $labaPerBulan,
+                'total' => array_sum($labaPerBulan),
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function kosongLabaRugiTahunan(int $tahun): array
+    {
+        $nol = array_fill(1, 12, 0.0);
+
+        return [
+            'tahun' => $tahun,
+            'bulan' => self::namaBulan(),
+            'pendapatan' => ['baris' => [], 'per_bulan' => $nol, 'total' => 0.0],
+            'beban' => ['baris' => [], 'per_bulan' => $nol, 'total' => 0.0],
+            'laba_rugi' => ['per_bulan' => $nol, 'total' => 0.0],
+        ];
+    }
+
+    /**
+     * Ambil nomor bulan dari kolom tanggal.
+     *
+     * MONTH() hanya ada di MySQL; test suite jalan di SQLite, jadi dibedakan
+     * supaya laporan ini tetap bisa diuji.
+     */
+    private static function ekspresiBulan(string $kolom): string
+    {
+        return DB::connection()->getDriverName() === 'mysql'
+            ? "MONTH($kolom)"
+            : "CAST(strftime('%m', $kolom) AS INTEGER)";
+    }
+
+    /** @return array<int, string> */
+    private static function namaBulan(): array
+    {
+        $nama = [];
+        foreach (range(1, 12) as $b) {
+            $nama[$b] = Carbon::create(2000, $b, 1)->translatedFormat('M');
+        }
+
+        return $nama;
+    }
+
     public function neraca(int $perusahaanId, string $tanggal, ?string $from = null): array
     {
         // Aset, Kewajiban, Modal → dari awal (tanpa from date)
