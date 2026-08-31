@@ -124,7 +124,10 @@ class LaporanAkuntingService
      * - aset, beban       → debet - kredit
      * - kewajiban, modal, pendapatan → kredit - debet
      */
-    public function saldoAkun(Coa $coa, ?string $from, string $to): float
+    /**
+     * @param  array{0: string, 1: int}|null  $rekanan  Batasi ke satu rekanan [type, id].
+     */
+    public function saldoAkun(Coa $coa, ?string $from, string $to, ?array $rekanan = null): float
     {
         $sums = DB::table('jurnal_detail as jd')
             ->join('jurnal as j', 'j.id', 'jd.jurnal_id')
@@ -132,6 +135,9 @@ class LaporanAkuntingService
             ->where('j.status', 'posted')
             ->when($from, fn ($q) => $q->whereDate('j.tanggal', '>=', $from))
             ->whereDate('j.tanggal', '<=', $to)
+            ->when($rekanan, fn ($q) => $q
+                ->where('jd.rekanan_type', $rekanan[0])
+                ->where('jd.rekanan_id', $rekanan[1]))
             ->selectRaw('COALESCE(SUM(jd.debet),0) as debet, COALESCE(SUM(jd.kredit),0) as kredit')
             ->first();
 

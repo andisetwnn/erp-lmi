@@ -1,17 +1,25 @@
 <?php
 
+use App\Livewire\Concerns\MemilihRekanan;
+use App\Livewire\Concerns\MengelolaLampiranJurnal;
 use App\Models\Akunting\Jurnal;
 use App\Models\Master\Coa;
 use App\Models\Master\Perusahaan;
 use App\Services\JurnalService;
+use App\Support\RekananPilihan;
 use Flux\Flux;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
+use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
 new #[Title('Jurnal Umum')] class extends Component
 {
+    use MemilihRekanan;
+    use MengelolaLampiranJurnal;
+    use WithFileUploads;
     use WithPagination;
 
     #[Url(as: 'q')]
@@ -40,7 +48,12 @@ new #[Title('Jurnal Umum')] class extends Component
 
     public string $keterangan = '';
 
-    /** @var array<int, array{coa_id:?int, debet:string, kredit:string}> */
+    /**
+     * Rekanan disimpan sebagai satu string "App\Models\...\Sales:7" supaya cukup satu
+     * input per baris; dipecah jadi type/id waktu simpan.
+     *
+     * @var array<int, array{coa_id:?int, debet:string, kredit:string, rekanan:string}>
+     */
     public array $detail = [];
 
     // View detail modal state
@@ -62,8 +75,8 @@ new #[Title('Jurnal Umum')] class extends Component
     protected function resetDetail(): void
     {
         $this->detail = [
-            ['coa_id' => null, 'debet' => '', 'kredit' => ''],
-            ['coa_id' => null, 'debet' => '', 'kredit' => ''],
+            $this->barisKosong(),
+            $this->barisKosong(),
         ];
     }
 
@@ -99,9 +112,38 @@ new #[Title('Jurnal Umum')] class extends Component
         }
     }
 
+    /** @return array{coa_id:?int, debet:string, kredit:string, rekanan:string} */
+    protected function barisKosong(): array
+    {
+        return ['coa_id' => null, 'debet' => '', 'kredit' => '', 'rekanan' => ''];
+    }
+
     public function tambahBaris(): void
     {
-        $this->detail[] = ['coa_id' => null, 'debet' => '', 'kredit' => ''];
+        $this->detail[] = $this->barisKosong();
+    }
+
+    /** Buka pemilih rekanan untuk satu baris detail. */
+    public function openRekanan(int $index): void
+    {
+        if (! isset($this->detail[$index])) {
+            return;
+        }
+        $this->bukaRekanan((string) $index);
+    }
+
+    protected function terapkanRekanan(string $nilai, ?string $tujuan): void
+    {
+        if ($tujuan !== null && isset($this->detail[(int) $tujuan])) {
+            $this->detail[(int) $tujuan]['rekanan'] = $nilai;
+        }
+    }
+
+    public function kosongkanRekanan(int $index): void
+    {
+        if (isset($this->detail[$index])) {
+            $this->detail[$index]['rekanan'] = '';
+        }
     }
 
     public function hapusBaris(int $index): void
@@ -136,6 +178,8 @@ new #[Title('Jurnal Umum')] class extends Component
 
     public function openCreate(): void
     {
+        abort_unless(Auth::user()?->can('jurnal.umum.kelola'), 403);
+
         $this->reset(['editId', 'keterangan']);
         $this->tanggal = now()->toDateString();
         $this->kategori_bukti = 'KAS';
@@ -182,6 +226,8 @@ new #[Title('Jurnal Umum')] class extends Component
 
     public function openEdit(int $id): void
     {
+        abort_unless(Auth::user()?->can('jurnal.umum.kelola'), 403);
+
         $j = Jurnal::with('detail')->findOrFail($id);
         if ($j->isPosted()) {
             Flux::toast('Jurnal sudah posted, tidak bisa diedit.', variant: 'warning');
@@ -196,6 +242,7 @@ new #[Title('Jurnal Umum')] class extends Component
             'coa_id' => $d->coa_id,
             'debet' => $d->debet > 0 ? number_format((float) $d->debet, 0, ',', '.') : '',
             'kredit' => $d->kredit > 0 ? number_format((float) $d->kredit, 0, ',', '.') : '',
+            'rekanan' => RekananPilihan::nilai($d->rekanan_type, $d->rekanan_id),
         ])->toArray();
         $this->resetErrorBag();
         Flux::modal('form-jurnal')->show();
@@ -208,6 +255,14 @@ new #[Title('Jurnal Umum')] class extends Component
 
     public function simpan(bool $langsungPost = false): void
     {
+        abort_unless(Auth::user()?->can('jurnal.umum.kelola'), 403);
+
+        // "Simpan & Posting" memanggil service langsung, jadi izin posting harus dicek
+        // di sini juga — kalau tidak, tombol itu jadi jalan pintas melewati jurnal.post.
+        if ($langsungPost) {
+            abort_unless(Auth::user()?->can('jurnal.post'), 403);
+        }
+
         $this->validate([
             'tanggal' => 'required|date',
             'detail' => 'required|array|min:2',
@@ -232,12 +287,19 @@ new #[Title('Jurnal Umum')] class extends Component
             );
         }
 
-        // Prep detail
-        $details = collect($this->detail)->map(fn ($r) => [
-            'coa_id' => (int) $r['coa_id'],
-            'debet' => $this->parseNominal($r['debet']),
-            'kredit' => $this->parseNominal($r['kredit']),
-        ])->toArray();
+        // Prep detail. Rekanan opsional — pecah() memulangkan [null, null] kalau kosong
+        // atau kalau nilainya tidak ada di daftar yang diizinkan.
+        $details = collect($this->detail)->map(function ($r) {
+            [$rekananType, $rekananId] = RekananPilihan::pecah($r['rekanan'] ?? '');
+
+            return [
+                'coa_id' => (int) $r['coa_id'],
+                'debet' => $this->parseNominal($r['debet']),
+                'kredit' => $this->parseNominal($r['kredit']),
+                'rekanan_type' => $rekananType,
+                'rekanan_id' => $rekananId,
+            ];
+        })->toArray();
 
         $svc = app(JurnalService::class);
 
@@ -288,6 +350,10 @@ new #[Title('Jurnal Umum')] class extends Component
 
     public function postJurnal(int $id): void
     {
+        // Posting memindahkan jurnal ke Buku Besar dan menguncinya — izinnya terpisah
+        // dari izin menginput, supaya yang mencatat tidak sekaligus yang mengesahkan.
+        abort_unless(Auth::user()?->can('jurnal.post'), 403);
+
         try {
             $j = Jurnal::findOrFail($id);
             app(JurnalService::class)->post($j);
@@ -299,6 +365,9 @@ new #[Title('Jurnal Umum')] class extends Component
 
     public function reverseJurnal(int $id, string $alasan = 'Pembalikan manual'): void
     {
+        // Reversal membuat jurnal baru yang ikut masuk Buku Besar — setara posting.
+        abort_unless(Auth::user()?->can('jurnal.post'), 403);
+
         try {
             $j = Jurnal::findOrFail($id);
             app(JurnalService::class)->reverse($j, $alasan);
@@ -310,6 +379,8 @@ new #[Title('Jurnal Umum')] class extends Component
 
     public function hapusJurnal(int $id): void
     {
+        abort_unless(Auth::user()?->can('jurnal.delete'), 403);
+
         try {
             $j = Jurnal::findOrFail($id);
             app(JurnalService::class)->delete($j);
@@ -323,7 +394,8 @@ new #[Title('Jurnal Umum')] class extends Component
     {
         $q = Jurnal::query()
             ->where('tipe', 'umum')
-            ->with(['detail', 'createdBy:id,name']);
+            ->with(['detail', 'createdBy:id,name'])
+            ->withCount('lampiran');
 
         if ($this->search !== '') {
             $q->where(function ($qq) {
@@ -355,11 +427,18 @@ new #[Title('Jurnal Umum')] class extends Component
         // View detail jurnal
         $viewJurnal = null;
         if ($this->viewId) {
-            $viewJurnal = Jurnal::with(['detail.coa:id,kode,nama', 'createdBy:id,name', 'postedBy:id,name'])
+            $viewJurnal = Jurnal::with(['detail.coa:id,kode,nama', 'detail.rekanan', 'createdBy:id,name', 'postedBy:id,name'])
                 ->find($this->viewId);
         }
 
-        return [
+        $user = Auth::user();
+
+        return $this->dataRekanan() + $this->dataLampiran() + [
+            // Tombol disembunyikan sesuai izin; penjagaan sebenarnya tetap di method,
+            // karena menyembunyikan tombol bukan pengamanan.
+            'bolehKelola' => (bool) $user?->can('jurnal.umum.kelola'),
+            'bolehPost' => (bool) $user?->can('jurnal.post'),
+            'bolehHapus' => (bool) $user?->can('jurnal.delete'),
             'jurnalList' => $q->orderByDesc('tanggal')->orderByDesc('id')
                 ->paginate((int) $this->perPage),
             'coaOptions' => Coa::query()
@@ -405,9 +484,11 @@ new #[Title('Jurnal Umum')] class extends Component
                     <flux:subheading>{{ __('Catatan pertama seluruh transaksi keuangan (double-entry: debet = kredit).') }}</flux:subheading>
                 </div>
             </div>
-            <flux:button variant="primary" icon="plus" wire:click="openCreate">
-                {{ __('Buat Jurnal Baru') }}
-            </flux:button>
+            @if ($bolehKelola)
+                <flux:button variant="primary" icon="plus" wire:click="openCreate">
+                    {{ __('Buat Jurnal Baru') }}
+                </flux:button>
+            @endif
         </div>
 
         {{-- SUMMARY CARDS --}}
@@ -468,6 +549,7 @@ new #[Title('Jurnal Umum')] class extends Component
                         <th class="px-4 py-3 text-right font-semibold">Total Debet</th>
                         <th class="px-4 py-3 text-right font-semibold">Total Kredit</th>
                         <th class="px-4 py-3 text-center font-semibold">Status</th>
+                        <th class="px-4 py-3 text-center font-semibold">Berkas</th>
                         <th class="px-4 py-3 font-semibold">Dibuat oleh</th>
                         <th class="px-4 py-3 text-right font-semibold">Aksi</th>
                     </tr>
@@ -501,6 +583,19 @@ new #[Title('Jurnal Umum')] class extends Component
                                     <flux:badge color="amber" size="sm">Draft</flux:badge>
                                 @endif
                             </td>
+                            <td class="px-4 py-2.5 text-center">
+                                {{-- Ada berkas pendukung atau belum — kelihatan tanpa perlu buka menu --}}
+                                <button type="button" wire:click="bukaLampiran({{ $j->id }})"
+                                        title="{{ $j->lampiran_count ? $j->lampiran_count.' berkas pendukung' : 'Belum ada berkas pendukung' }}"
+                                        @class([
+                                            'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs',
+                                            'font-semibold text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40' => $j->lampiran_count,
+                                            'text-zinc-300 hover:bg-zinc-100 hover:text-zinc-500 dark:text-zinc-600 dark:hover:bg-zinc-800' => ! $j->lampiran_count,
+                                        ])>
+                                    <flux:icon.paper-clip class="size-4" />
+                                    {{ $j->lampiran_count ?: '' }}
+                                </button>
+                            </td>
                             <td class="px-4 py-2.5 whitespace-nowrap text-xs text-zinc-600 dark:text-zinc-400">
                                 {{ $j->createdBy?->name ?? '-' }}
                             </td>
@@ -509,19 +604,39 @@ new #[Title('Jurnal Umum')] class extends Component
                                     <flux:button size="xs" icon="ellipsis-horizontal" variant="ghost" />
                                     <flux:menu>
                                         <flux:menu.item icon="eye" wire:click="openView({{ $j->id }})">Lihat Detail</flux:menu.item>
+                                        <flux:menu.item icon="paper-clip" wire:click="bukaLampiran({{ $j->id }})">
+                                            Berkas Pendukung
+                                            @if ($j->lampiran_count)
+                                                ({{ $j->lampiran_count }})
+                                            @endif
+                                        </flux:menu.item>
                                         @if ($j->isDraft())
-                                            <flux:menu.item icon="pencil" wire:click="openEdit({{ $j->id }})">Edit</flux:menu.item>
-                                            <flux:menu.item icon="check-circle" wire:click="openConfirm('post', {{ $j->id }}, '{{ $j->no_bukti }}')">
-                                                Posting
-                                            </flux:menu.item>
-                                            <flux:menu.separator />
-                                            <flux:menu.item icon="trash" variant="danger" wire:click="openConfirm('hapus', {{ $j->id }}, '{{ $j->no_bukti }}')">
-                                                Hapus
-                                            </flux:menu.item>
+                                            @if ($bolehKelola)
+                                                <flux:menu.item icon="pencil" wire:click="openEdit({{ $j->id }})">Edit</flux:menu.item>
+                                            @endif
+                                            @if ($bolehPost)
+                                                <flux:menu.item icon="check-circle" wire:click="openConfirm('post', {{ $j->id }}, '{{ $j->no_bukti }}')">
+                                                    Posting
+                                                </flux:menu.item>
+                                            @endif
+                                            @if ($bolehHapus)
+                                                <flux:menu.separator />
+                                                <flux:menu.item icon="trash" variant="danger" wire:click="openConfirm('hapus', {{ $j->id }}, '{{ $j->no_bukti }}')">
+                                                    Hapus
+                                                </flux:menu.item>
+                                            @endif
                                         @else
-                                            <flux:menu.item icon="arrow-uturn-left" wire:click="openConfirm('reverse', {{ $j->id }}, '{{ $j->no_bukti }}')">
-                                                Reverse
+                                            {{-- Jurnal posted tidak bisa diedit. Ditampilkan mati, bukan
+                                                 dihilangkan, supaya jelas kenapa pilihannya tidak ada. --}}
+                                            <flux:menu.separator />
+                                            <flux:menu.item icon="lock-closed" disabled>
+                                                Sudah diposting — perbaikan lewat Reverse
                                             </flux:menu.item>
+                                            @if ($bolehPost)
+                                                <flux:menu.item icon="arrow-uturn-left" wire:click="openConfirm('reverse', {{ $j->id }}, '{{ $j->no_bukti }}')">
+                                                    Reverse
+                                                </flux:menu.item>
+                                            @endif
                                         @endif
                                     </flux:menu>
                                 </flux:dropdown>
@@ -529,7 +644,7 @@ new #[Title('Jurnal Umum')] class extends Component
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="px-4 py-12 text-center text-zinc-400 dark:text-zinc-500">
+                            <td colspan="9" class="px-4 py-12 text-center text-zinc-400 dark:text-zinc-500">
                                 Belum ada jurnal umum. Klik <strong>Buat Jurnal Baru</strong> untuk mulai.
                             </td>
                         </tr>
@@ -585,6 +700,10 @@ new #[Title('Jurnal Umum')] class extends Component
                             <tr class="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400">
                                 <th class="w-8 px-2 py-2"></th>
                                 <th class="px-3 py-2 font-semibold">Kode Akun</th>
+                                <th class="px-3 py-2 font-semibold">
+                                    Rekanan
+                                    <span class="ml-1 font-normal normal-case text-zinc-400">(opsional)</span>
+                                </th>
                                 <th class="w-40 px-3 py-2 text-right font-semibold">Debet</th>
                                 <th class="w-40 px-3 py-2 text-right font-semibold">Kredit</th>
                                 <th class="w-10 px-2 py-2"></th>
@@ -604,6 +723,30 @@ new #[Title('Jurnal Umum')] class extends Component
                                         @error("detail.$i.coa_id")
                                             <div class="mt-1 text-xs text-rose-600">{{ $message }}</div>
                                         @enderror
+                                    </td>
+                                    <td class="px-3 py-1.5 min-w-44">
+                                        @php
+                                            $nilaiRekanan = $row['rekanan'] ?? '';
+                                            $rk = $nilaiRekanan ? ($rekananLabel[$nilaiRekanan] ?? null) : null;
+                                        @endphp
+                                        <div class="flex items-center gap-1">
+                                            <button type="button" wire:click="openRekanan({{ $i }})"
+                                                    class="min-w-0 flex-1 truncate rounded border border-zinc-300 bg-white px-2 py-1.5 text-left text-xs hover:bg-zinc-50 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800 dark:hover:bg-zinc-700">
+                                                @if ($rk)
+                                                    <span class="text-zinc-800 dark:text-zinc-200">{{ $rk['nama'] }}</span>
+                                                    <span class="ml-1 text-[10px] uppercase text-zinc-400">{{ $rk['kategori'] }}</span>
+                                                @else
+                                                    <span class="text-zinc-400">Pilih rekanan...</span>
+                                                @endif
+                                            </button>
+                                            @if ($rk)
+                                                <button type="button" wire:click="kosongkanRekanan({{ $i }})"
+                                                        title="Kosongkan rekanan"
+                                                        class="shrink-0 rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-rose-500 dark:hover:bg-zinc-700">
+                                                    <svg class="size-3.5" fill="none" viewBox="0 0 20 20" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l8 8m0-8l-8 8" /></svg>
+                                                </button>
+                                            @endif
+                                        </div>
                                     </td>
                                     <td class="px-3 py-1.5">
                                         <div x-data="rupiahInput()" x-init="init('detail.{{ $i }}.debet')">
@@ -628,7 +771,7 @@ new #[Title('Jurnal Umum')] class extends Component
                         </tbody>
                         <tfoot class="border-t-2 border-zinc-300 bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800">
                             <tr class="font-semibold">
-                                <td colspan="2" class="px-3 py-2 text-right">TOTAL</td>
+                                <td colspan="3" class="px-3 py-2 text-right">TOTAL</td>
                                 <td class="px-3 py-2 text-right font-mono tabular-nums">
                                     {{ number_format($this->totalDebet, 0, ',', '.') }}
                                 </td>
@@ -638,7 +781,7 @@ new #[Title('Jurnal Umum')] class extends Component
                                 <td></td>
                             </tr>
                             <tr>
-                                <td colspan="2" class="px-3 py-2 text-right text-xs text-zinc-500">Selisih (Debet - Kredit)</td>
+                                <td colspan="3" class="px-3 py-2 text-right text-xs text-zinc-500">Selisih (Debet - Kredit)</td>
                                 <td colspan="2" class="px-3 py-2 text-right font-mono tabular-nums font-semibold
                                                        {{ $this->isBalanced ? 'text-emerald-600' : 'text-rose-600' }}">
                                     @if ($this->isBalanced)
@@ -662,12 +805,36 @@ new #[Title('Jurnal Umum')] class extends Component
             <div class="flex justify-end gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-700">
                 <flux:modal.close><flux:button variant="ghost">Batal</flux:button></flux:modal.close>
                 <flux:button variant="filled" wire:click="simpan">Simpan Draft</flux:button>
-                <flux:button variant="primary" wire:click="simpanDanPost" :disabled="!$this->isBalanced">
-                    Simpan & Posting
-                </flux:button>
+                @if ($bolehPost)
+                    <flux:button variant="primary" wire:click="simpanDanPost" :disabled="!$this->isBalanced">
+                        Simpan & Posting
+                    </flux:button>
+                @endif
             </div>
         </div>
     </flux:modal>
+
+    {{-- MODAL PILIH REKANAN --}}
+    {{-- Sengaja disejajarkan dengan form-jurnal, bukan di dalamnya, supaya tidak ikut
+         terpotong wadah tabel yang punya scroll sendiri. --}}
+    <x-rekanan-modal
+        :kategori-list="$rekananKategoriList"
+        :kategori-aktif="$rekananKategori"
+        :halaman-ini="$rekananHalamanIni"
+        :jumlah="$rekananJumlah"
+        :dari-nomor="$rekananDariNomor"
+        :halaman-aktif="$rekananHalamanAktif"
+        :total-halaman="$rekananTotalHalaman"
+    />
+
+    {{-- MODAL BERKAS PENDUKUNG --}}
+    <x-lampiran-modal
+        :jurnal="$lampiranJurnal"
+        :daftar="$lampiranDaftar"
+        :preview="$lampiranPreview"
+        :boleh-kelola="$bolehKelolaLampiran"
+        :hapus-id="$hapusLampiranId"
+    />
 
     {{-- MODAL VIEW DETAIL (read-only) --}}
     <flux:modal name="view-jurnal" @class(['max-w-4xl'])>
@@ -722,6 +889,7 @@ new #[Title('Jurnal Umum')] class extends Component
                         <thead class="bg-zinc-50 dark:bg-zinc-800">
                             <tr class="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400">
                                 <th class="px-3 py-2 font-semibold">Kode Akun</th>
+                                <th class="px-3 py-2 font-semibold">Rekanan</th>
                                 <th class="px-3 py-2 text-right font-semibold">Debet</th>
                                 <th class="px-3 py-2 text-right font-semibold">Kredit</th>
                             </tr>
@@ -732,6 +900,17 @@ new #[Title('Jurnal Umum')] class extends Component
                                     <td class="px-3 py-2">
                                         <span class="font-mono text-xs text-zinc-500">{{ $d->coa->kode }}</span>
                                         <span class="ml-2">{{ $d->coa->nama }}</span>
+                                    </td>
+                                    <td class="px-3 py-2 text-xs">
+                                        @php
+                                            // Relasi sudah di-eager-load, jadi tidak jadi query per baris
+                                            $labelRekanan = \App\Support\RekananPilihan::labelDari($d->rekanan);
+                                        @endphp
+                                        @if ($labelRekanan)
+                                            {{ $labelRekanan }}
+                                        @else
+                                            <span class="text-zinc-400">&mdash;</span>
+                                        @endif
                                     </td>
                                     <td class="px-3 py-2 text-right font-mono tabular-nums">
                                         {{ $d->debet > 0 ? number_format((float) $d->debet, 0, ',', '.') : '-' }}
@@ -744,7 +923,7 @@ new #[Title('Jurnal Umum')] class extends Component
                         </tbody>
                         <tfoot class="border-t-2 border-zinc-300 bg-zinc-50 font-bold dark:border-zinc-600 dark:bg-zinc-800">
                             <tr>
-                                <td class="px-3 py-2 text-right uppercase">TOTAL</td>
+                                <td colspan="2" class="px-3 py-2 text-right uppercase">TOTAL</td>
                                 <td class="px-3 py-2 text-right font-mono tabular-nums">
                                     {{ number_format((float) $viewJurnal->detail->sum('debet'), 0, ',', '.') }}
                                 </td>

@@ -45,6 +45,9 @@
     <div class="info-l">
         <div class="info-row"><span class="info-lbl">No. Akun</span><span class="info-val">{{ $coa->kode }}</span></div>
         <div class="info-row"><span class="info-lbl">Nama Akun</span><span class="info-val">{{ $coa->nama }}</span></div>
+        @if ($rekananLabel)
+            <div class="info-row"><span class="info-lbl">Rekanan</span><span class="info-val">{{ $rekananLabel }}</span></div>
+        @endif
     </div>
     <div class="info-r">
         <div class="saldo-box">
@@ -72,6 +75,7 @@
             <th style="width:70px;">Tanggal</th>
             <th style="width:110px;">No Bukti</th>
             <th>Uraian Transaksi</th>
+            <th style="width:130px;">Rekanan</th>
             <th style="width:100px; text-align:right;">Debet</th>
             <th style="width:100px; text-align:right;">Kredit</th>
             <th style="width:110px; text-align:right;">Saldo</th>
@@ -82,6 +86,7 @@
             <td>{{ \Carbon\Carbon::parse($from)->translatedFormat('d M y') }}</td>
             <td></td>
             <td>SALDO AWAL …</td>
+            <td></td>
             <td class="num">-</td>
             <td class="num">-</td>
             <td class="num" style="font-weight:bold;">{{ number_format($running, 0, ',', '.') }}</td>
@@ -98,19 +103,21 @@
                 <td>{{ \Carbon\Carbon::parse($m->tanggal)->translatedFormat('d M y') }}</td>
                 <td>{{ $m->no_bukti }}</td>
                 <td>{{ $m->keterangan ?: '-' }}</td>
+                {{-- Peta dibuat sekali di controller, jadi tidak jadi query per baris --}}
+                <td>{{ $rekananPeta[$m->rekanan_type.':'.$m->rekanan_id] ?? '-' }}</td>
                 <td class="num">{{ $m->debet > 0 ? number_format($m->debet, 0, ',', '.') : '-' }}</td>
                 <td class="num">{{ $m->kredit > 0 ? number_format($m->kredit, 0, ',', '.') : '-' }}</td>
                 <td class="num" style="font-weight:bold; {{ $running < 0 ? 'color:#7d1919;' : '' }}">{{ number_format($running, 0, ',', '.') }}</td>
             </tr>
         @empty
             <tr>
-                <td colspan="6" style="text-align:center; color:#999; padding: 20px;">Tidak ada mutasi di periode ini.</td>
+                <td colspan="7" style="text-align:center; color:#999; padding: 20px;">Tidak ada mutasi di periode ini.</td>
             </tr>
         @endforelse
     </tbody>
     <tfoot>
         <tr>
-            <td colspan="3" style="text-align:center; text-transform:uppercase;">TOTAL</td>
+            <td colspan="4" style="text-align:center; text-transform:uppercase;">TOTAL</td>
             <td class="num">{{ number_format($totalDebet, 0, ',', '.') }}</td>
             <td class="num">{{ number_format($totalKredit, 0, ',', '.') }}</td>
             <td class="num">{{ number_format($saldoAkhir, 0, ',', '.') }}</td>

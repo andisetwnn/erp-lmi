@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\BukuBesarPdfController;
+use App\Http\Controllers\JurnalLampiranController;
 use App\Http\Controllers\LaporanAkuntingPdfController;
 use App\Models\Master\Perusahaan;
 use App\Models\Master\Sales;
@@ -174,6 +175,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::middleware('permission:jurnal.umum.kelola')->group(function () {
             Route::livewire('jurnal-umum', 'pages::akunting.jurnal-umum')->name('jurnal-umum.index');
         });
+
+        // Pratinjau berkas pendukung — dipakai Jurnal Umum & Buku Besar, jadi izinnya
+        // salah satu dari keduanya (direktur ikut boleh memeriksa buktinya).
+        Route::get('jurnal-lampiran/{lampiran}/pratinjau', JurnalLampiranController::class)
+            ->middleware('permission:jurnal.umum.kelola|bukubesar.lihat')
+            ->name('jurnal-lampiran.pratinjau');
 
         // Buku Besar
         Route::middleware('permission:bukubesar.lihat')->group(function () {

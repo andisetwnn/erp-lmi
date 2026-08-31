@@ -1,16 +1,28 @@
 <?php
 
+use App\Livewire\Concerns\MemilihRekanan;
+use App\Livewire\Concerns\MengelolaLampiranJurnal;
 use App\Models\Akunting\JurnalDetail;
 use App\Models\Master\Coa;
 use App\Models\Master\Perusahaan;
+use App\Support\RekananPilihan;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 new #[Title('Buku Besar')] class extends Component
 {
+    use MemilihRekanan;
+    use MengelolaLampiranJurnal;
+    use WithFileUploads;
+
     #[Url(as: 'coa')]
     public ?int $coaId = null;
+
+    /** Saring mutasi ke satu rekanan saja — "App\Models\...\ProspectCustomer:12". */
+    #[Url(as: 'rekanan', except: '')]
+    public string $rekananFilter = '';
 
     #[Url(as: 'from')]
     public string $from = '';
@@ -28,6 +40,36 @@ new #[Title('Buku Besar')] class extends Component
         }
     }
 
+    protected function terapkanRekanan(string $nilai, ?string $tujuan): void
+    {
+        $this->rekananFilter = $nilai;
+    }
+
+    public function kosongkanRekananFilter(): void
+    {
+        $this->rekananFilter = '';
+    }
+
+    /**
+     * Saringan rekanan yang sudah dipecah & divalidasi.
+     *
+     * @return array{0: ?string, 1: ?int}
+     */
+    protected function pecahRekananFilter(): array
+    {
+        return RekananPilihan::pecah($this->rekananFilter);
+    }
+
+    /** Terapkan saringan rekanan ke query mana pun yang menyentuh jurnal_detail. */
+    protected function saringRekanan($query, string $prefix = '')
+    {
+        [$type, $id] = $this->pecahRekananFilter();
+
+        return $query->when($type, fn ($q) => $q
+            ->where($prefix.'rekanan_type', $type)
+            ->where($prefix.'rekanan_id', $id));
+    }
+
     /** Query mutasi jurnal_detail per COA + range tgl. */
     public function getMutasiProperty()
     {
@@ -35,13 +77,17 @@ new #[Title('Buku Besar')] class extends Component
             return collect();
         }
 
-        return JurnalDetail::query()
+        return $this->saringRekanan(JurnalDetail::query())
             ->where('coa_id', $this->coaId)
             ->whereHas('jurnal', function ($q) {
                 $q->where('status', 'posted')
                     ->whereBetween('tanggal', [$this->from, $this->to]);
             })
-            ->with(['jurnal:id,tanggal,no_bukti,keterangan'])
+            ->with([
+                'jurnal' => fn ($q) => $q->select('id', 'tanggal', 'no_bukti', 'keterangan')
+                    ->withCount('lampiran'),
+                'rekanan',
+            ])
             ->get()
             ->sortBy([
                 fn ($a, $b) => $a->jurnal->tanggal <=> $b->jurnal->tanggal,
@@ -57,7 +103,9 @@ new #[Title('Buku Besar')] class extends Component
             return 0;
         }
 
-        $sums = JurnalDetail::query()
+        // Saldo awal ikut saringan rekanan — kalau tidak, saldo berjalannya jadi
+        // campuran: awalnya semua rekanan, mutasinya cuma satu.
+        $sums = $this->saringRekanan(JurnalDetail::query())
             ->where('coa_id', $this->coaId)
             ->whereHas('jurnal', function ($q) {
                 $q->where('status', 'posted')
@@ -104,8 +152,9 @@ new #[Title('Buku Besar')] class extends Component
 
     public function with(): array
     {
-        return [
+        return $this->dataRekanan() + $this->dataLampiran() + [
             'coaSelected' => $this->coaSelected,
+            'rekananFilterLabel' => RekananPilihan::label(...$this->pecahRekananFilter()),
             'coaOptions' => Coa::query()
                 ->where('is_aktif', true)
                 ->where('is_header', false)
@@ -145,7 +194,7 @@ new #[Title('Buku Besar')] class extends Component
             </div>
             @if ($coaId)
                 <flux:button variant="ghost" icon="printer"
-                             href="{{ route('akunting.buku-besar.print', ['coa' => $coaId, 'from' => $from, 'to' => $to]) }}"
+                             href="{{ route('akunting.buku-besar.print', array_filter(['coa' => $coaId, 'from' => $from, 'to' => $to, 'rekanan' => $rekananFilter])) }}"
                              target="_blank">
                     {{ __('Print / Export PDF') }}
                 </flux:button>
@@ -169,6 +218,26 @@ new #[Title('Buku Besar')] class extends Component
             </div>
             <div>
                 <flux:input type="date" wire:model.live="to" label="Sampai Tanggal" />
+            </div>
+            <div class="min-w-56">
+                <label class="mb-1 block text-sm font-medium">Rekanan</label>
+                <div class="flex items-center gap-1">
+                    <button type="button" wire:click="bukaRekanan"
+                            class="min-w-0 flex-1 truncate rounded border border-zinc-300 bg-white px-3 py-1.5 text-left text-sm hover:bg-zinc-50 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800 dark:hover:bg-zinc-700">
+                        @if ($rekananFilterLabel)
+                            {{ $rekananFilterLabel }}
+                        @else
+                            <span class="text-zinc-400">Semua rekanan</span>
+                        @endif
+                    </button>
+                    @if ($rekananFilterLabel)
+                        <button type="button" wire:click="kosongkanRekananFilter"
+                                title="Tampilkan semua rekanan"
+                                class="shrink-0 rounded p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-rose-500 dark:hover:bg-zinc-700">
+                            <svg class="size-4" fill="none" viewBox="0 0 20 20" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l8 8m0-8l-8 8" /></svg>
+                        </button>
+                    @endif
+                </div>
             </div>
         </div>
 
@@ -223,6 +292,7 @@ new #[Title('Buku Besar')] class extends Component
                                 <th class="border border-zinc-300 px-3 py-2 text-left text-xs font-semibold uppercase dark:border-zinc-600">Tanggal</th>
                                 <th class="border border-zinc-300 px-3 py-2 text-left text-xs font-semibold uppercase dark:border-zinc-600">No Bukti</th>
                                 <th class="border border-zinc-300 px-3 py-2 text-left text-xs font-semibold uppercase dark:border-zinc-600">Uraian Transaksi</th>
+                                <th class="border border-zinc-300 px-3 py-2 text-left text-xs font-semibold uppercase dark:border-zinc-600">Rekanan</th>
                                 <th class="border border-zinc-300 px-3 py-2 text-right text-xs font-semibold uppercase dark:border-zinc-600">Debet</th>
                                 <th class="border border-zinc-300 px-3 py-2 text-right text-xs font-semibold uppercase dark:border-zinc-600">Kredit</th>
                                 <th class="border border-zinc-300 px-3 py-2 text-right text-xs font-semibold uppercase dark:border-zinc-600">Saldo</th>
@@ -243,6 +313,7 @@ new #[Title('Buku Besar')] class extends Component
                                 </td>
                                 <td class="border border-zinc-300 px-3 py-1.5 dark:border-zinc-600"></td>
                                 <td class="border border-zinc-300 px-3 py-1.5 text-xs italic dark:border-zinc-600">SALDO AWAL …</td>
+                                <td class="border border-zinc-300 px-3 py-1.5 dark:border-zinc-600"></td>
                                 <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">-</td>
                                 <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">-</td>
                                 <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums text-xs font-semibold dark:border-zinc-600">
@@ -263,9 +334,22 @@ new #[Title('Buku Besar')] class extends Component
                                     </td>
                                     <td class="border border-zinc-300 px-3 py-1.5 whitespace-nowrap font-mono text-xs dark:border-zinc-600">
                                         {{ $m->jurnal->no_bukti }}
+                                        {{-- Berkas susulan: bukti bayar sering baru ada setelah jurnal diposting --}}
+                                        <button type="button" wire:click="bukaLampiran({{ $m->jurnal->id }})"
+                                                title="Berkas pendukung"
+                                                class="ml-1 inline-flex items-center gap-0.5 align-middle text-zinc-400 hover:text-blue-600 print:hidden dark:hover:text-blue-400">
+                                            <flux:icon.paper-clip class="size-3.5" />
+                                            @if ($m->jurnal->lampiran_count)
+                                                <span class="text-[10px] font-semibold">{{ $m->jurnal->lampiran_count }}</span>
+                                            @endif
+                                        </button>
                                     </td>
                                     <td class="border border-zinc-300 px-3 py-1.5 text-xs dark:border-zinc-600">
                                         {{ $m->jurnal->keterangan ?: '-' }}
+                                    </td>
+                                    <td class="border border-zinc-300 px-3 py-1.5 text-xs dark:border-zinc-600">
+                                        {{-- Relasi sudah di-eager-load, jadi tidak jadi query per baris --}}
+                                        {{ \App\Support\RekananPilihan::labelDari($m->rekanan) ?: '-' }}
                                     </td>
                                     <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums text-xs dark:border-zinc-600">
                                         {{ $m->debet > 0 ? number_format((float) $m->debet, 0, ',', '.') : '-' }}
@@ -279,7 +363,7 @@ new #[Title('Buku Besar')] class extends Component
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="6" class="border border-zinc-300 px-3 py-8 text-center text-zinc-400 dark:border-zinc-600">
+                                    <td colspan="7" class="border border-zinc-300 px-3 py-8 text-center text-zinc-400 dark:border-zinc-600">
                                         Tidak ada mutasi di periode ini.
                                     </td>
                                 </tr>
@@ -287,7 +371,7 @@ new #[Title('Buku Besar')] class extends Component
                         </tbody>
                         <tfoot class="bg-zinc-100 font-bold dark:bg-zinc-800">
                             <tr>
-                                <td colspan="3" class="border border-zinc-300 px-3 py-2 text-center uppercase dark:border-zinc-600">TOTAL</td>
+                                <td colspan="4" class="border border-zinc-300 px-3 py-2 text-center uppercase dark:border-zinc-600">TOTAL</td>
                                 <td class="border border-zinc-300 px-3 py-2 text-right font-mono tabular-nums dark:border-zinc-600">
                                     {{ number_format($this->totalDebet, 0, ',', '.') }}
                                 </td>
@@ -310,6 +394,29 @@ new #[Title('Buku Besar')] class extends Component
                 </p>
             </div>
         @endif
+    </div>
+
+    {{-- MODAL PILIH REKANAN (di luar wadah tabel supaya tidak terpotong) --}}
+    <div class="print:hidden">
+        <x-rekanan-modal
+            :kategori-list="$rekananKategoriList"
+            :kategori-aktif="$rekananKategori"
+            :halaman-ini="$rekananHalamanIni"
+            :jumlah="$rekananJumlah"
+            :dari-nomor="$rekananDariNomor"
+            :halaman-aktif="$rekananHalamanAktif"
+            :total-halaman="$rekananTotalHalaman"
+            subheading="Saring mutasi ke satu pihak saja — mis. lihat piutang satu konsumen."
+        />
+
+        {{-- MODAL BERKAS PENDUKUNG (susulan setelah jurnal diposting) --}}
+        <x-lampiran-modal
+            :jurnal="$lampiranJurnal"
+            :daftar="$lampiranDaftar"
+        :preview="$lampiranPreview"
+            :boleh-kelola="$bolehKelolaLampiran"
+            :hapus-id="$hapusLampiranId"
+        />
     </div>
 
     {{-- Print CSS --}}

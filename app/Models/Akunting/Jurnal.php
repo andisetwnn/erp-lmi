@@ -64,6 +64,12 @@ class Jurnal extends Model
         return $this->hasMany(JurnalDetail::class);
     }
 
+    /** Berkas pendukung: invoice, bukti transfer, kwitansi. */
+    public function lampiran(): HasMany
+    {
+        return $this->hasMany(JurnalLampiran::class)->latest('id');
+    }
+
     /** Polymorphic sumber: SPR / Kwitansi / dll (kalau auto-generated). */
     public function sumber(): MorphTo
     {
