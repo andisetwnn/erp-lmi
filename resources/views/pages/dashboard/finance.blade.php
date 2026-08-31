@@ -10,7 +10,7 @@ use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
-new #[Title('Dashboard Keuangan')] class extends Component
+new #[Title('Dashboard')] class extends Component
 {
     #[Url(as: 'p')]
     public string $period = 'mtd';
@@ -280,7 +280,7 @@ new #[Title('Dashboard Keuangan')] class extends Component
         {{-- HEADER + FILTER PERIODE --}}
         <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-                <flux:heading size="xl">{{ __('Dashboard Keuangan') }}</flux:heading>
+                <flux:heading size="xl">{{ __('Dashboard') }}</flux:heading>
                 <flux:subheading>
                     @if ($proyekAktif)
                         {{ $proyekAktif->nama_proyek }} · {{ $this->periodLabel() }}
@@ -291,6 +291,7 @@ new #[Title('Dashboard Keuangan')] class extends Component
             </div>
 
             <div class="flex flex-wrap items-center gap-2">
+                <x-dashboard-switcher current="finance" />
                 <div class="inline-flex items-center rounded-lg border border-zinc-200 bg-white p-1 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
                     @foreach ($this::PERIOD_OPTIONS as $k => $lbl)
                         @php $active = $period === $k; @endphp

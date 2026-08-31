@@ -255,8 +255,13 @@ new #[Title('Dashboard')] class extends Component
             ->where('tanggal_spr', '>=', now()->subMonths(11)->startOfMonth());
         if ($this->filterProyek) $trendQ->whereHas('rumah', fn ($r) => $r->where('proyek_id', $this->filterProyek));
 
+        // DATE_FORMAT hanya ada di MySQL — SQLite yang dipakai test suite tidak mengenalnya.
+        $bulanSql = in_array(\DB::connection()->getDriverName(), ['mysql', 'mariadb'], true)
+            ? 'DATE_FORMAT(tanggal_spr, "%Y-%m")'
+            : "strftime('%Y-%m', tanggal_spr)";
+
         $trendData = $trendQ
-            ->selectRaw('DATE_FORMAT(tanggal_spr, "%Y-%m") as bulan, COUNT(*) as cnt, SUM(total_harga) as nilai')
+            ->selectRaw("$bulanSql as bulan, COUNT(*) as cnt, SUM(total_harga) as nilai")
             ->groupBy('bulan')
             ->orderBy('bulan')
             ->get()->keyBy('bulan');
@@ -367,6 +372,7 @@ new #[Title('Dashboard')] class extends Component
             </div>
 
             <div class="flex flex-wrap items-center gap-2">
+                <x-dashboard-switcher current="executive" />
                 <div class="inline-flex items-center rounded-lg border border-zinc-200 bg-white p-1 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
                     @foreach ($this::PERIOD_OPTIONS as $k => $lbl)
                         @php $active = $period === $k; @endphp

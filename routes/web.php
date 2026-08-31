@@ -53,18 +53,46 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', function () {
         $user = Auth::user();
 
+        // Urutan diperiksa dari role paling spesifik. Super-admin sengaja paling akhir
+        // supaya ia mendapat tampilan executive yang menyeluruh, bukan salah satu
+        // dashboard role lain — tapi ia tetap bisa melihat semuanya lewat pemilih
+        // tampilan di header.
         return redirect(match (true) {
             $user->hasRole('direktur') => route('dashboard.direksi'),
             $user->hasRole('finance') => route('dashboard.finance'),
             $user->hasRole('project-manager') => route('dashboard.pm'),
-            default => route('dashboard.executive'), // super-admin, admin-kpr, dll
+            $user->hasRole('admin-kpr') => route('dashboard.kpr'),
+            $user->hasRole('admin-sales') => route('dashboard.sales'),
+            $user->hasRole('admin-teknik') => route('dashboard.teknik'),
+            default => route('dashboard.executive'), // super-admin & sisanya
         });
     })->name('dashboard');
 
-    Route::livewire('dashboard/executive', 'pages::dashboard.executive')->name('dashboard.executive');
-    Route::livewire('dashboard/pm', 'pages::dashboard.pm')->name('dashboard.pm');
-    Route::livewire('dashboard/finance', 'pages::dashboard.finance')->name('dashboard.finance');
-    Route::livewire('dashboard/direksi', 'pages::dashboard.direksi')->name('dashboard.direksi');
+    // Tiap dashboard dikunci ke rolenya. Tanpa ini, siapa pun yang sudah login bisa
+    // mengetik /dashboard/executive dan melihat piutang, kas masuk, serta tunggakan —
+    // termasuk admin teknik yang izinnya hanya memperbarui progres bangunan.
+    // Super-admin selalu diizinkan supaya pemilih tampilan di header tetap berfungsi.
+    Route::middleware('role:super-admin')->group(function () {
+        Route::livewire('dashboard/executive', 'pages::dashboard.executive')->name('dashboard.executive');
+    });
+    Route::middleware('role:project-manager|super-admin')->group(function () {
+        Route::livewire('dashboard/pm', 'pages::dashboard.pm')->name('dashboard.pm');
+    });
+    Route::middleware('role:finance|super-admin')->group(function () {
+        Route::livewire('dashboard/finance', 'pages::dashboard.finance')->name('dashboard.finance');
+    });
+    Route::middleware('role:direktur|super-admin')->group(function () {
+        Route::livewire('dashboard/direksi', 'pages::dashboard.direksi')->name('dashboard.direksi');
+    });
+    Route::middleware('role:admin-kpr|super-admin')->group(function () {
+        Route::livewire('dashboard/kpr', 'pages::dashboard.kpr')->name('dashboard.kpr');
+    });
+    Route::middleware('role:admin-sales|super-admin')->group(function () {
+        Route::livewire('dashboard/sales', 'pages::dashboard.sales')->name('dashboard.sales');
+    });
+    Route::middleware('role:admin-teknik|super-admin')->group(function () {
+        Route::livewire('dashboard/teknik', 'pages::dashboard.teknik')->name('dashboard.teknik');
+    });
 
     // USER AKSES — kelola user & role sistem pusat (super-admin)
     Route::middleware('permission:user.kelola')->group(function () {

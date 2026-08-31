@@ -134,3 +134,79 @@ it('menjaga angka setahun sama di kedua rincian', function () {
         ->and($m['penjualanTarget'][$pid])->toBe(60)
         ->and(array_sum($m['penjualanTargetBulan'][$pid]))->toBe(60);
 });
+
+function proyekKedua(): Proyek
+{
+    return Proyek::create([
+        'nama_proyek' => 'Proyek Kedua',
+        'nama_perumahan' => 'Kedua',
+        'kode_surat' => 'PK2',
+        'desa' => '-',
+        'kelurahan' => '-',
+        'kecamatan' => '-',
+        'kota_kabupaten' => '-',
+        'kode_akuntansi' => 'PK2',
+        'kode_virtual_account' => '999',
+    ]);
+}
+
+/** Ambil label baris grup dari tabel bulanan (baris ber-colspan 14). */
+function labelGrup(string $html): array
+{
+    preg_match_all('/colspan="14"[^>]*>\s*([^<]+?)\s*</', $html, $m);
+
+    return array_values(array_unique(array_map('trim', $m[1])));
+}
+
+it('menyembunyikan penyaring proyek selama proyeknya baru satu', function () {
+    $html = Livewire::test('pages::dashboard.direksi')->call('setRincian', 'bulan')->html();
+
+    expect($html)->not->toContain('Semua Proyek');
+});
+
+it('memunculkan penyaring proyek begitu ada proyek kedua', function () {
+    proyekKedua();
+
+    $html = Livewire::test('pages::dashboard.direksi')->call('setRincian', 'bulan')->html();
+
+    expect($html)->toContain('Semua Proyek');
+});
+
+it('hanya menampilkan penyaring pada rincian bulanan', function () {
+    proyekKedua();
+
+    $perProyek = Livewire::test('pages::dashboard.direksi')->call('setRincian', 'proyek')->html();
+
+    expect($perProyek)->not->toContain('Semua Proyek');
+});
+
+it('mempersempit tabel bulanan ke proyek yang dipilih', function () {
+    $kedua = proyekKedua();
+
+    $c = Livewire::test('pages::dashboard.direksi')->call('setRincian', 'bulan');
+
+    expect(labelGrup($c->html()))->toContain('*ALL', $this->proyek->nama_proyek, 'Proyek Kedua');
+
+    $c->set('proyekMatriks', $this->proyek->id);
+
+    expect(labelGrup($c->html()))
+        ->toContain($this->proyek->nama_proyek)
+        ->not->toContain('Proyek Kedua')
+        ->not->toContain('*ALL');
+
+    $c->set('proyekMatriks', $kedua->id);
+
+    expect(labelGrup($c->html()))->toContain('Proyek Kedua')
+        ->not->toContain($this->proyek->nama_proyek);
+});
+
+it('kembali menampilkan semua proyek kalau pilihannya tidak dikenal', function () {
+    proyekKedua();
+
+    $html = Livewire::test('pages::dashboard.direksi')
+        ->call('setRincian', 'bulan')
+        ->set('proyekMatriks', 999999)
+        ->html();
+
+    expect(labelGrup($html))->toContain('*ALL', 'Proyek Kedua');
+});
