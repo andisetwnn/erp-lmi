@@ -24,6 +24,7 @@ class Rumah extends Model
         'status',
         'progres_fisik',
         'lot',
+        'subcon_id',
         'progres_updated_at',
         'progres_updated_by_user_id',
         'tanggal_launching',
@@ -58,6 +59,12 @@ class Rumah extends Model
     public function tipeRumah(): BelongsTo
     {
         return $this->belongsTo(TipeRumah::class);
+    }
+
+    /** Subkontraktor yang membangun unit ini. */
+    public function subcon(): BelongsTo
+    {
+        return $this->belongsTo(Subcon::class);
     }
 
     public function virtualAccount(): HasMany

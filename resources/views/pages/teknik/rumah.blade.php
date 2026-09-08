@@ -3,8 +3,10 @@
 use App\Models\Master\Proyek;
 use App\Models\Master\Rumah;
 use App\Models\Master\RumahProgresLog;
+use App\Models\Master\Subcon;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
@@ -42,6 +44,22 @@ new #[Title('Data Rumah — Teknik')] class extends Component
 
     public ?int $val_lot = null;
 
+    /** Subkontraktor pembangun. Sementara ikut di sini sampai Teknik punya modulnya sendiri. */
+    public ?int $val_subcon_id = null;
+
+    /** @var array<int, int> id rumah yang dicentang untuk diubah sekaligus */
+    public array $terpilih = [];
+
+    public ?int $massal_subcon_id = null;
+
+    public ?int $massal_progres = null;
+
+    /**
+     * LOT diisi BERURUTAN dari nomor ini, bukan nilai yang sama untuk semua.
+     * LOT adalah nomor sertifikat — menyeragamkannya akan membuat data ganda.
+     */
+    public ?int $massal_lot_mulai = null;
+
     public string $val_catatan = '';
 
     // Drawer history log
@@ -76,6 +94,107 @@ new #[Title('Data Rumah — Teknik')] class extends Component
         }
     }
 
+    public function bersihkanPilihan(): void
+    {
+        $this->terpilih = [];
+    }
+
+    /** Centang semua unit yang sedang tampil di halaman ini. */
+    public function pilihSemuaHalaman(array $ids): void
+    {
+        $this->terpilih = array_values(array_unique(array_merge($this->terpilih, $ids)));
+    }
+
+    public function openMassal(): void
+    {
+        abort_unless(Auth::user()?->can('teknik.rumah.update'), 403);
+
+        if (! $this->terpilih) {
+            Flux::toast(variant: 'warning', text: 'Belum ada unit yang dipilih.');
+
+            return;
+        }
+
+        $this->reset(['massal_subcon_id', 'massal_progres', 'massal_lot_mulai']);
+        $this->val_catatan = '';
+        $this->resetErrorBag();
+        Flux::modal('update-massal')->show();
+    }
+
+    /**
+     * Ubah beberapa unit sekaligus. Isian yang dikosongkan tidak menimpa apa pun —
+     * jadi bisa memperbarui subcont saja tanpa menyentuh progres.
+     */
+    public function simpanMassal(): void
+    {
+        abort_unless(Auth::user()?->can('teknik.rumah.update'), 403);
+
+        $this->validate([
+            'massal_subcon_id' => ['nullable', 'exists:subcon,id'],
+            'massal_progres' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'massal_lot_mulai' => ['nullable', 'integer', 'min:0', 'max:9999'],
+            'val_catatan' => ['nullable', 'string', 'max:500'],
+        ], [], [
+            'massal_subcon_id' => 'subcon',
+            'massal_progres' => 'progres fisik',
+            'massal_lot_mulai' => 'LOT mulai dari',
+        ]);
+
+        if ($this->massal_subcon_id === null && $this->massal_progres === null && $this->massal_lot_mulai === null) {
+            Flux::toast(variant: 'warning', text: 'Tidak ada yang diisi — tidak ada yang diubah.');
+
+            return;
+        }
+
+        // Urutkan seperti tampilan supaya penomoran LOT mengikuti urutan blok-unit.
+        $daftar = Rumah::whereIn('id', $this->terpilih)
+            ->orderBy('blok')->orderBy('nomor_unit')
+            ->get();
+
+        $lot = $this->massal_lot_mulai;
+        $jumlahLog = 0;
+
+        DB::transaction(function () use ($daftar, &$lot, &$jumlahLog) {
+            foreach ($daftar as $r) {
+                $ubah = [];
+
+                if ($this->massal_subcon_id !== null) {
+                    $ubah['subcon_id'] = $this->massal_subcon_id;
+                }
+
+                if ($this->massal_lot_mulai !== null) {
+                    $ubah['lot'] = $lot++;
+                }
+
+                $progresLama = (int) $r->progres_fisik;
+
+                if ($this->massal_progres !== null) {
+                    $ubah['progres_fisik'] = $this->massal_progres;
+                }
+
+                $r->update($ubah);
+
+                // Jejak audit hanya untuk progres yang benar-benar berubah.
+                if ($this->massal_progres !== null && $progresLama !== $this->massal_progres) {
+                    RumahProgresLog::create([
+                        'rumah_id' => $r->id,
+                        'progres_dari' => $progresLama,
+                        'progres_ke' => $this->massal_progres,
+                        'catatan' => $this->val_catatan ?: null,
+                        'updated_by_user_id' => Auth::id(),
+                        'created_at' => now(),
+                    ]);
+                    $jumlahLog++;
+                }
+            }
+        });
+
+        Flux::modal('update-massal')->close();
+        Flux::toast(variant: 'success', text: $daftar->count().' unit diperbarui.');
+
+        $this->reset(['terpilih', 'massal_subcon_id', 'massal_progres', 'massal_lot_mulai', 'val_catatan']);
+    }
+
     public function openUpdate(int $rumahId): void
     {
         abort_unless(Auth::user()?->can('teknik.rumah.update'), 403);
@@ -85,6 +204,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
         $this->editKode = $r->kode_unit;
         $this->val_progres = (int) $r->progres_fisik;
         $this->val_lot = $r->lot;
+        $this->val_subcon_id = $r->subcon_id;
         $this->val_catatan = '';
         $this->resetErrorBag();
         Flux::modal('update-progres')->show();
@@ -97,6 +217,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
         $this->validate([
             'val_progres' => ['required', 'integer', 'min:0', 'max:100'],
             'val_lot' => ['nullable', 'integer', 'min:0', 'max:9999'],
+            'val_subcon_id' => ['nullable', 'exists:subcon,id'],
             'val_catatan' => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -107,6 +228,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
         $r->update([
             'progres_fisik' => $progresBaru,
             'lot' => $this->val_lot,
+            'subcon_id' => $this->val_subcon_id,
         ]);
 
         // Log entry hanya kalau progres benar-benar berubah
@@ -123,7 +245,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
 
         Flux::modal('update-progres')->close();
         Flux::toast(variant: 'success', text: "Progres {$this->editKode} diperbarui.");
-        $this->reset(['editId', 'editKode', 'val_progres', 'val_lot', 'val_catatan']);
+        $this->reset(['editId', 'editKode', 'val_progres', 'val_lot', 'val_subcon_id', 'val_catatan']);
     }
 
     public function openLog(int $rumahId): void
@@ -158,7 +280,8 @@ new #[Title('Data Rumah — Teknik')] class extends Component
                 $s = "%{$this->search}%";
                 $q->where(function ($qq) use ($s) {
                     $qq->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", [$s])
-                        ->orWhere('lot', 'like', $s);
+                        ->orWhere('lot', 'like', $s)
+                        ->orWhereHas('subcon', fn ($c) => $c->where('nama', 'like', $s));
                 });
             })
             ->when($this->filterBlok !== '', fn ($q) => $q->where('blok', $this->filterBlok));
@@ -173,7 +296,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
             ')->first();
 
         // Query dgn filter progres applied untuk listing (range slider min-max)
-        $q = $baseQuery()->with(['tipeRumah:id,nama_tipe,luas_bangunan,luas_tanah', 'progresUpdatedBy:id,name']);
+        $q = $baseQuery()->with(['tipeRumah:id,nama_tipe,luas_bangunan,luas_tanah', 'progresUpdatedBy:id,name', 'subcon:id,nama']);
         $q->whereBetween('progres_fisik', [$this->progresMin, $this->progresMax]);
 
         $blokList = Rumah::query()
@@ -184,6 +307,8 @@ new #[Title('Data Rumah — Teknik')] class extends Component
             'rumahs' => $q->orderBy('blok')->orderByRaw('CAST(nomor_unit AS UNSIGNED) ASC')->paginate((int) $this->perPage),
             'proyekList' => Proyek::orderBy('nama_proyek')->get(['id', 'nama_proyek']),
             'blokList' => $blokList,
+            // Yang non aktif tidak ditawarkan — tapi yang sudah terlanjur terpasang tetap tampil.
+            'subconList' => Subcon::where('is_aktif', true)->orderBy('nama')->get(['id', 'nama']),
             'counts' => $counts,
             'logs' => $this->logRumahId
                 ? RumahProgresLog::with('updatedBy:id,name')
@@ -206,7 +331,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
                 </div>
                 <div>
                     <flux:heading size="xl">{{ __('Data Rumah — Teknik') }}</flux:heading>
-                    <flux:subheading>Progres pembangunan fisik & LOT sertifikat per unit</flux:subheading>
+                    <flux:subheading>Progres pembangunan fisik, LOT sertifikat, & subcon per unit</flux:subheading>
                 </div>
             </div>
         </div>
@@ -325,7 +450,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
         {{-- FILTER LAINNYA (search + blok + perpage) --}}
         <div class="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
             <div class="min-w-64 flex-1">
-                <flux:input wire:model.live.debounce.300ms="search" placeholder="Cari blok-unit atau LOT..." icon="magnifying-glass" />
+                <flux:input wire:model.live.debounce.300ms="search" placeholder="Cari blok-unit, LOT, atau subcon..." icon="magnifying-glass" />
             </div>
             <div class="min-w-32">
                 <flux:select wire:model.live="filterBlok" placeholder="Semua Blok" size="sm">
@@ -351,16 +476,40 @@ new #[Title('Data Rumah — Teknik')] class extends Component
                 Pilih proyek dulu di picker atas untuk menampilkan data rumah.
             </div>
         @else
+            {{-- BILAH AKSI MASSAL --}}
+            @if ($terpilih && Auth::user()?->can('teknik.rumah.update'))
+                <div class="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-2.5 dark:border-cyan-900/40 dark:bg-cyan-950/30">
+                    <span class="text-sm font-medium text-cyan-900 dark:text-cyan-200">
+                        {{ count($terpilih) }} unit dipilih
+                    </span>
+                    <div class="flex items-center gap-2">
+                        <flux:button size="sm" variant="ghost" wire:click="bersihkanPilihan">Batalkan Pilihan</flux:button>
+                        <flux:button size="sm" variant="primary" icon="pencil-square" wire:click="openMassal">
+                            Ubah Sekaligus
+                        </flux:button>
+                    </div>
+                </div>
+            @endif
+
             {{-- TABLE --}}
             <div class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900">
                 <div class="overflow-x-auto">
                     <table class="w-full text-xs">
                         <thead class="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800">
                             <tr class="text-left uppercase text-[10px] font-semibold text-zinc-500">
+                                @if (Auth::user()?->can('teknik.rumah.update'))
+                                    <th class="w-8 px-3 py-2.5">
+                                        <input type="checkbox"
+                                               wire:click="pilihSemuaHalaman({{ Illuminate\Support\Js::from($rumahs->pluck('id')) }})"
+                                               title="Pilih semua di halaman ini"
+                                               class="rounded border-zinc-300 text-cyan-600 focus:ring-cyan-500 dark:border-zinc-600" />
+                                    </th>
+                                @endif
                                 <th class="px-3 py-2.5">Kavling</th>
                                 <th class="px-3 py-2.5">Tipe</th>
                                 <th class="px-3 py-2.5 text-center">LB/LT</th>
                                 <th class="px-3 py-2.5 text-center">LOT</th>
+                                <th class="px-3 py-2.5">Subcon</th>
                                 <th class="px-3 py-2.5">Progres Fisik</th>
                                 <th class="px-3 py-2.5">Update Terakhir</th>
                                 <th class="px-3 py-2.5 text-center">Aksi</th>
@@ -378,13 +527,21 @@ new #[Title('Data Rumah — Teknik')] class extends Component
                                 };
                             @endphp
                             @forelse ($rumahs as $r)
-                                <tr>
+                                <tr wire:key="rumah-{{ $r->id }}"
+                                    @class(['bg-cyan-50/60 dark:bg-cyan-950/20' => in_array($r->id, $terpilih, true)])>
+                                    @if ($canUpdate)
+                                        <td class="px-3 py-2">
+                                            <input type="checkbox" value="{{ $r->id }}" wire:model.live="terpilih"
+                                                   class="rounded border-zinc-300 text-cyan-600 focus:ring-cyan-500 dark:border-zinc-600" />
+                                        </td>
+                                    @endif
                                     <td class="whitespace-nowrap px-3 py-2 font-mono font-semibold">{{ $r->kode_unit }}</td>
                                     <td class="px-3 py-2">{{ $r->tipeRumah?->nama_tipe ?? '—' }}</td>
                                     <td class="whitespace-nowrap px-3 py-2 text-center text-zinc-600 dark:text-zinc-400">
                                         {{ (int) ($r->tipeRumah?->luas_bangunan ?? 0) }}/{{ (int) ($r->tipeRumah?->luas_tanah ?? 0) }}
                                     </td>
                                     <td class="whitespace-nowrap px-3 py-2 text-center font-mono">{{ $r->lot ?? '—' }}</td>
+                                    <td class="whitespace-nowrap px-3 py-2">{{ $r->subcon?->nama ?? '—' }}</td>
                                     <td class="whitespace-nowrap px-3 py-2">
                                         <div class="flex items-center gap-2">
                                             <div class="h-2 w-24 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
@@ -412,7 +569,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="7" class="px-4 py-12 text-center text-zinc-400">
+                                    <td colspan="{{ Auth::user()?->can('teknik.rumah.update') ? 9 : 8 }}" class="px-4 py-12 text-center text-zinc-400">
                                         Tidak ada rumah di proyek ini.
                                     </td>
                                 </tr>
@@ -428,6 +585,46 @@ new #[Title('Data Rumah — Teknik')] class extends Component
     </div>
 
     {{-- MODAL UPDATE PROGRES --}}
+    {{-- MODAL UBAH SEKALIGUS --}}
+    <flux:modal name="update-massal" class="md:w-lg">
+        <div class="space-y-4">
+            <div>
+                <flux:heading size="lg">Ubah {{ count($terpilih) }} Unit Sekaligus</flux:heading>
+                <flux:subheading>Isian yang dikosongkan tidak akan menimpa apa pun.</flux:subheading>
+            </div>
+
+            <flux:select wire:model="massal_subcon_id" label="Subcon (Pemborong)">
+                <option value="">- tidak diubah -</option>
+                @foreach ($subconList as $sc)
+                    <option value="{{ $sc->id }}">{{ $sc->nama }}</option>
+                @endforeach
+            </flux:select>
+            @error('massal_subcon_id') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
+
+            <flux:input type="number" min="0" max="100" wire:model="massal_progres"
+                        label="Progres Fisik (%)" placeholder="kosongkan kalau tidak diubah" />
+            @error('massal_progres') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
+
+            <div>
+                <flux:input type="number" min="0" max="9999" wire:model="massal_lot_mulai"
+                            label="LOT — mulai dari nomor" placeholder="kosongkan kalau tidak diubah" />
+                <p class="mt-1 text-xs text-zinc-500">
+                    LOT diisi <strong>berurutan</strong> mengikuti urutan blok-unit, bukan nomor
+                    yang sama untuk semua &mdash; nomor sertifikat tidak boleh kembar.
+                </p>
+                @error('massal_lot_mulai') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
+            </div>
+
+            <flux:textarea wire:model="val_catatan" rows="2" label="Catatan Perubahan"
+                           placeholder="tercatat di riwayat kalau progres berubah" />
+
+            <div class="flex justify-end gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-700">
+                <flux:modal.close><flux:button variant="ghost">Batal</flux:button></flux:modal.close>
+                <flux:button variant="primary" wire:click="simpanMassal">Simpan</flux:button>
+            </div>
+        </div>
+    </flux:modal>
+
     <flux:modal name="update-progres" class="md:w-lg">
         <div class="space-y-4">
             <div>
@@ -446,6 +643,14 @@ new #[Title('Data Rumah — Teknik')] class extends Component
 
             <flux:input type="number" min="0" max="9999" wire:model="val_lot" label="LOT (Nomor Sertifikat)" placeholder="opsional" />
             @error('val_lot') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
+
+            <flux:select wire:model="val_subcon_id" label="Subcon (Pemborong)">
+                <option value="">- belum ditentukan -</option>
+                @foreach ($subconList as $sc)
+                    <option value="{{ $sc->id }}">{{ $sc->nama }}</option>
+                @endforeach
+            </flux:select>
+            @error('val_subcon_id') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
 
             <flux:textarea wire:model="val_catatan" label="Catatan Perubahan" placeholder="Mis. selesai pengecoran, atap terpasang, dll" rows="3" />
             @error('val_catatan') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
