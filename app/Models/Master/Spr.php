@@ -344,9 +344,13 @@ class Spr extends Model
 
         $driver = DB::connection()->getDriverName();
         // Extract suffix numeric global — MAX across all SPR, bukan per prefix.
+        //
+        // Nomor SPR selalu berbentuk SPR/YYYY/MM/NNNNN, jadi awalannya tetap 12 karakter.
+        // SQLite tidak punya reverse() maupun SUBSTRING_INDEX(), dan substr() dengan
+        // offset tetap dipahami keduanya — inilah yang membuat penomoran ini bisa diuji.
         $suffixSql = $driver === 'mysql'
             ? "CAST(SUBSTRING_INDEX(nomor_spr, '/', -1) AS UNSIGNED)"
-            : "CAST(substr(nomor_spr, length(nomor_spr) - instr(reverse(nomor_spr), '/') + 2) AS INTEGER)";
+            : 'CAST(substr(nomor_spr, 13) AS INTEGER)';
 
         $dbMax = (int) self::query()
             ->lockForUpdate()

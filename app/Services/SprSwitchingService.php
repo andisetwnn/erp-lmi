@@ -274,6 +274,21 @@ class SprSwitchingService
             'utj_bukti_path' => $sprLama->utj_bukti_path,
             'utj_keterangan' => $sprLama->utj_keterangan,
             'status' => $sprLama->status,
+            // Persetujuan ikut pindah. SPR ini bukan penjualan baru — konsumen dan
+            // syaratnya sama, hanya unitnya berganti, dan yang lama sudah disetujui.
+            // Tanpa ini, SPR baru jatuh lagi ke antrean PM karena tab "Menunggu"
+            // menyaring status=approved yang pm_approved_at-nya kosong.
+            'approved_by_user_id' => $sprLama->approved_by_user_id,
+            'approved_at' => $sprLama->approved_at,
+            'pm_approved_by_user_id' => $sprLama->pm_approved_by_user_id,
+            'pm_approved_at' => $sprLama->pm_approved_at,
+            'pm_catatan' => $sprLama->pm_catatan,
+            // Spesimen tanda tangan dibawa supaya cetakan SPR baru tetap lengkap.
+            // Yang TIDAK dibawa: dokumen_signed_path, materai, dan tanda tangan
+            // konsumen — semuanya artefak dokumen unit LAMA. Menyalinnya akan
+            // membuat SPR unit baru menampilkan berkas bertanda tangan unit lama.
+            'ttd_finance_path' => $sprLama->ttd_finance_path,
+            'ttd_pm_path' => $sprLama->ttd_pm_path,
             // Trace switching
             'switched_from_spr_id' => $sprLama->id,
             'catatan' => "PINDAH DARI SPR {$sprLama->nomor_spr} (unit {$sprLama->rumah?->blok}-{$sprLama->rumah?->nomor_unit}) pada ".$now->format('d/m/Y H:i').'.',

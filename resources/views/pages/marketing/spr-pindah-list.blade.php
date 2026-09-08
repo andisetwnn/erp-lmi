@@ -384,14 +384,17 @@ new #[Title('Pindah Kavling')] class extends Component
             {{-- Pilih SPR --}}
             <flux:field>
                 <flux:label>{{ __('SPR yang akan dipindah') }} <span class="text-red-500">*</span></flux:label>
-                <flux:select wire:model.live="pindahSprId">
-                    <flux:select.option value="">— {{ __('Pilih SPR') }} —</flux:select.option>
-                    @foreach ($sprAktifOptions as $s)
-                        <flux:select.option value="{{ $s->id }}">
-                            {{ $s->nomor_display }} · {{ $s->prospectCustomer?->nama_lengkap }} · {{ $s->rumah?->kode_unit }}
-                        </flux:select.option>
-                    @endforeach
-                </flux:select>
+                <x-pilih-cari
+                    wire-property="pindahSprId"
+                    :items="$sprAktifOptions->map(fn ($s) => [
+                        'id' => $s->id,
+                        'judul' => $s->nomor_display.' · '.($s->prospectCustomer?->nama_lengkap ?? '-'),
+                        'keterangan' => 'Unit '.($s->rumah?->kode_unit ?? '-'),
+                    ])"
+                    :placeholder="__('— Pilih SPR —')"
+                    :cari-placeholder="__('Ketik nomor SPR, nama konsumen, atau blok...')"
+                    :kosong="__('Tidak ada SPR yang cocok.')"
+                />
                 <flux:description class="text-[10px]">{{ __('Hanya SPR berstatus SELESAI (sudah disetujui dan bermeterai) yang bisa dipindah.') }}</flux:description>
                 <flux:error name="pindahSprId" />
             </flux:field>
@@ -409,14 +412,17 @@ new #[Title('Pindah Kavling')] class extends Component
                     {{-- Pilih unit tujuan --}}
                     <flux:field>
                         <flux:label>{{ __('Pindah ke unit') }} <span class="text-red-500">*</span></flux:label>
-                        <flux:select wire:model.live="pindahRumahBaruId">
-                            <flux:select.option value="">— {{ __('Pilih unit tujuan') }} —</flux:select.option>
-                            @foreach ($rumahAvailable as $r)
-                                <flux:select.option value="{{ $r->id }}">
-                                    {{ $r->kode_unit }} · {{ $r->tipeRumah?->nama_tipe }} · Rp {{ number_format((float) ($r->tipeRumah?->harga_jual ?? 0), 0, ',', '.') }}
-                                </flux:select.option>
-                            @endforeach
-                        </flux:select>
+                        <x-pilih-cari
+                            wire-property="pindahRumahBaruId"
+                            :items="$rumahAvailable->map(fn ($r) => [
+                                'id' => $r->id,
+                                'judul' => $r->kode_unit.' · '.($r->tipeRumah?->nama_tipe ?? '-'),
+                                'keterangan' => 'Rp '.number_format((float) ($r->tipeRumah?->harga_jual ?? 0), 0, ',', '.'),
+                            ])"
+                            :placeholder="__('— Pilih unit tujuan —')"
+                            :cari-placeholder="__('Ketik blok atau tipe...')"
+                            :kosong="__('Tidak ada unit yang cocok.')"
+                        />
                         <flux:description class="text-[10px]">
                             {{ __('Hanya unit tersedia di proyek dan kategori yang sama') }}
                             @if ($rumahAvailable->isEmpty())
@@ -476,14 +482,17 @@ new #[Title('Pindah Kavling')] class extends Component
             {{-- SPR A --}}
             <flux:field>
                 <flux:label>{{ __('SPR A') }} <span class="text-red-500">*</span></flux:label>
-                <flux:select wire:model.live="swapSprAId">
-                    <flux:select.option value="">— {{ __('Pilih SPR A') }} —</flux:select.option>
-                    @foreach ($sprAktifOptions as $s)
-                        <flux:select.option value="{{ $s->id }}">
-                            {{ $s->nomor_display }} · {{ $s->prospectCustomer?->nama_lengkap }} · {{ $s->rumah?->kode_unit }}
-                        </flux:select.option>
-                    @endforeach
-                </flux:select>
+                <x-pilih-cari
+                    wire-property="swapSprAId"
+                    :items="$sprAktifOptions->map(fn ($s) => [
+                        'id' => $s->id,
+                        'judul' => $s->nomor_display.' · '.($s->prospectCustomer?->nama_lengkap ?? '-'),
+                        'keterangan' => 'Unit '.($s->rumah?->kode_unit ?? '-'),
+                    ])"
+                    :placeholder="__('— Pilih SPR A —')"
+                    :cari-placeholder="__('Ketik nomor SPR, nama konsumen, atau blok...')"
+                    :kosong="__('Tidak ada SPR yang cocok.')"
+                />
                 <flux:error name="swapSprAId" />
             </flux:field>
 
@@ -499,14 +508,17 @@ new #[Title('Pindah Kavling')] class extends Component
                     {{-- SPR B --}}
                     <flux:field>
                         <flux:label>{{ __('SPR B (yang akan ditukar)') }} <span class="text-red-500">*</span></flux:label>
-                        <flux:select wire:model.live="swapSprBId">
-                            <flux:select.option value="">— {{ __('Pilih SPR B') }} —</flux:select.option>
-                            @foreach ($sprBOptions as $sB)
-                                <flux:select.option value="{{ $sB->id }}">
-                                    {{ $sB->nomor_display }} · {{ $sB->prospectCustomer?->nama_lengkap }} · {{ $sB->rumah?->kode_unit }}
-                                </flux:select.option>
-                            @endforeach
-                        </flux:select>
+                        <x-pilih-cari
+                            wire-property="swapSprBId"
+                            :items="$sprBOptions->map(fn ($sB) => [
+                                'id' => $sB->id,
+                                'judul' => $sB->nomor_display.' · '.($sB->prospectCustomer?->nama_lengkap ?? '-'),
+                                'keterangan' => 'Unit '.($sB->rumah?->kode_unit ?? '-'),
+                            ])"
+                            :placeholder="__('— Pilih SPR B —')"
+                            :cari-placeholder="__('Ketik nomor SPR, nama konsumen, atau blok...')"
+                            :kosong="__('Tidak ada SPR yang bisa ditukar.')"
+                        />
                         <flux:description class="text-[10px]">
                             {{ __('Hanya SPR SELESAI di proyek dan kategori yang sama dengan SPR A.') }}
                             @if ($sprBOptions->isEmpty())

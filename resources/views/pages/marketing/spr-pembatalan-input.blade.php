@@ -200,12 +200,13 @@ new #[Title('Input Pembatalan SPR')] class extends Component
 
                 <flux:field>
                     <flux:label>{{ __('Nomor SPR') }} <span class="ms-1 text-red-500">*</span></flux:label>
-                    <flux:select wire:model.live="sprId" :placeholder="__('— Pilih SPR —')">
-                        <flux:select.option value="">{{ __('— Pilih SPR —') }}</flux:select.option>
-                        @foreach ($sprOptions as $opt)
-                            <flux:select.option value="{{ $opt['id'] }}">{{ $opt['label'] }}</flux:select.option>
-                        @endforeach
-                    </flux:select>
+                    <x-pilih-cari
+                        wire-property="sprId"
+                        :items="$sprOptions->map(fn ($o) => ['id' => $o['id'], 'judul' => $o['label']])"
+                        :placeholder="__('— Pilih SPR —')"
+                        :cari-placeholder="__('Ketik nomor SPR, nama, atau blok...')"
+                        :kosong="__('Tidak ada SPR yang cocok.')"
+                    />
                     <flux:description class="text-[10px]">{{ __('Hanya SPR berstatus Diajukan / Disetujui yang bisa dibatalkan.') }}</flux:description>
                 </flux:field>
 
