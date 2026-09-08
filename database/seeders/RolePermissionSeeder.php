@@ -31,6 +31,7 @@ class RolePermissionSeeder extends Seeder
             'master.customer.kelola',
             'master.sales.kelola',
             'master.notaris.kelola',
+            'master.subcon.kelola',
             'master.va.kelola',       // Virtual account
             'master.coa.kelola',      // Chart of Accounts
 
@@ -111,6 +112,7 @@ class RolePermissionSeeder extends Seeder
 
             // Project Manager: approve SPR + kelola master proyek/tipe/rumah (untuk buka blok)
             'project-manager' => [
+                'master.subcon.kelola',
                 'master.proyek.kelola',
                 'master.tipe.kelola',
                 'master.rumah.kelola',
@@ -128,6 +130,7 @@ class RolePermissionSeeder extends Seeder
 
             // Finance: full akunting + pembayaran + master keuangan (notaris/VA/COA)
             'finance' => [
+                'master.subcon.kelola',
                 'master.notaris.kelola',
                 'master.va.kelola',
                 'master.coa.kelola',

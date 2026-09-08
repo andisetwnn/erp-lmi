@@ -119,6 +119,12 @@
                                 {{ __('Notaris') }}
                             </flux:sidebar.item>
                         @endcanany
+                        @canany(['master.kelola', 'master.subcon.kelola'])
+                            <flux:sidebar.item icon="wrench" :href="route('master.subcon.index')"
+                                               :current="request()->routeIs('master.subcon.*')" wire:navigate>
+                                {{ __('Subcon') }}
+                            </flux:sidebar.item>
+                        @endcanany
                         @canany(['master.kelola', 'master.customer.kelola'])
                             <flux:sidebar.item icon="users" :href="route('master.customer.index')"
                                                :current="request()->routeIs('master.customer.*')" wire:navigate>

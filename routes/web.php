@@ -129,6 +129,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::middleware('permission:master.kelola|master.notaris.kelola')->group(function () {
             Route::livewire('notaris', 'pages::master.notaris')->name('notaris.index');
         });
+        Route::middleware('permission:master.kelola|master.subcon.kelola')->group(function () {
+            Route::livewire('subcon', 'pages::master.subcon')->name('subcon.index');
+            Route::livewire('subcon/registrasi', 'pages::master.subcon-create')->name('subcon.create');
+            Route::livewire('subcon/{id}', 'pages::master.subcon-show')
+                ->name('subcon.show')->where('id', '[0-9]+');
+        });
         Route::middleware('permission:master.kelola|master.coa.kelola')->group(function () {
             Route::livewire('coa', 'pages::master.coa')->name('coa.index');
         });
