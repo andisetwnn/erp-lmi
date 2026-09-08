@@ -41,6 +41,7 @@ class RolePermissionSeeder extends Seeder
             'spr.batal',          // Proses pembatalan SPR + refund
             'spr.pindah-unit',    // Pindah kavling / swap SPR
             'spr.cetak',          // Cetak PDF SPR final
+            'spr.akad',           // Tandai SPR sudah akad + isi tanggalnya. Sementara di Admin Sales.
             'biayatambahan.kelola', // Input realisasi biaya tambahan unit + refund (Finance & Admin Sales)
             'pemberkasan.kelola',  // Input tahapan pemberkasan KPR (BM, WCR, SP3K, LPA, Rencana Akad) — Admin KPR
             'pemberkasan.lihat',   // View-only pemberkasan (direktur, PM, finance)
@@ -172,6 +173,7 @@ class RolePermissionSeeder extends Seeder
 
             // Admin Sales: kelola realisasi biaya tambahan unit + lihat SPR
             'admin-sales' => [
+                'spr.akad',
                 'spr.lihat',
                 'spr.cetak',
                 'biayatambahan.kelola',

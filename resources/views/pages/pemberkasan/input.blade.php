@@ -494,6 +494,9 @@ new #[Title('Input Pemberkasan')] class extends Component
                                     $umTarget = (float) $s->um_net;
                                     $umTerbayar = (float) $s->realisasiPembayaran->whereIn('jenis', ['bf', 'um'])->sum('jumlah');
                                     $umPersen = $umTarget > 0 ? round($umTerbayar / $umTarget * 100, 1) : 0;
+                                    // Kelebihan bayar ditulis nominalnya, bukan cuma jadi persen di atas 100.
+                                    // Uang itu hak refund konsumen, jadi admin perlu lihat angkanya langsung.
+                                    $umLebih = $umTarget > 0 ? max(0, $umTerbayar - $umTarget) : 0;
                                     $umPersenCls = match (true) {
                                         $umPersen >= 100 => 'text-emerald-700 dark:text-emerald-400',
                                         $umPersen >= 50 => 'text-blue-700 dark:text-blue-400',
@@ -531,7 +534,14 @@ new #[Title('Input Pemberkasan')] class extends Component
                                     <td class="whitespace-nowrap px-3 py-2 text-right font-mono tabular-nums">{{ $umTarget > 0 ? $fmt($umTarget) : '—' }}</td>
 
                                     {{-- UM Sudah Dibayar (jumlah realisasi BF + UM) --}}
-                                    <td class="whitespace-nowrap px-3 py-2 text-right font-mono tabular-nums {{ $umTerbayar > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-zinc-400' }}">{{ $umTerbayar > 0 ? $fmt($umTerbayar) : '—' }}</td>
+                                    <td class="whitespace-nowrap px-3 py-2 text-right font-mono tabular-nums {{ $umTerbayar > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-zinc-400' }}">
+                                        {{ $umTerbayar > 0 ? $fmt($umTerbayar) : '—' }}
+                                        @if ($umLebih > 0)
+                                            <div class="text-[10px] font-semibold text-amber-700 dark:text-amber-400" title="{{ __('Kelebihan bayar — perlu dikembalikan ke konsumen') }}">
+                                                {{ __('lebih') }} {{ $fmt($umLebih) }}
+                                            </div>
+                                        @endif
+                                    </td>
 
                                     {{-- Persen progress UM --}}
                                     <td class="whitespace-nowrap px-3 py-2 text-right font-mono tabular-nums font-semibold {{ $umPersenCls }}">

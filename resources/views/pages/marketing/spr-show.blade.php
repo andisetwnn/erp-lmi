@@ -72,10 +72,76 @@ new #[Title('Detail SPR')] class extends Component
 
     public ?string $btRefundKeterangan = null;
 
+    /**
+     * Penandaan akad — sementara di sini supaya Admin Sales bisa mengejar akad yang
+     * sudah terjadi tapi belum tercatat. Begitu modul Rencana Akad dipakai, penandaan
+     * pindah ke sana (Admin KPR) dan bagian ini tinggal dimatikan.
+     */
+    public string $tglAkadInput = '';
+
     // Modal confirm hapus
     public ?int $btDeleteId = null;
 
     public string $btDeleteLabel = '';
+
+    private function bolehTandaiAkad(): bool
+    {
+        return (bool) Auth::user()?->can('spr.akad');
+    }
+
+    public function openTandaiAkad(): void
+    {
+        abort_unless($this->bolehTandaiAkad(), 403);
+
+        $this->tglAkadInput = $this->spr->tgl_akad?->toDateString() ?? now()->toDateString();
+        $this->resetErrorBag();
+        Flux::modal('tandai-akad')->show();
+    }
+
+    /** Tanggal akad terisi = SPR dianggap sudah akad. */
+    public function tandaiAkad(): void
+    {
+        abort_unless($this->bolehTandaiAkad(), 403);
+
+        $this->validate([
+            'tglAkadInput' => ['required', 'date', 'before_or_equal:today'],
+        ], [
+            'tglAkadInput.before_or_equal' => 'Tanggal akad tidak boleh di masa depan.',
+        ], ['tglAkadInput' => 'tanggal akad']);
+
+        if (! in_array($this->spr->status, ['approved', 'akad'], true)) {
+            Flux::toast(variant: 'danger', text: 'Hanya SPR yang sudah disetujui bisa ditandai akad.');
+
+            return;
+        }
+
+        $this->spr->update([
+            'tgl_akad' => $this->tglAkadInput,
+            'status' => 'akad',
+        ]);
+
+        BusinessActivityLogger::sprAkad($this->spr->fresh());
+
+        Flux::modal('tandai-akad')->close();
+        $this->loadSpr($this->spr->id);
+        Flux::toast(variant: 'success', text: 'SPR ditandai sudah akad.');
+    }
+
+    /** Batalkan penandaan — untuk membetulkan salah input, bukan membatalkan akadnya. */
+    public function batalkanTandaAkad(): void
+    {
+        abort_unless($this->bolehTandaiAkad(), 403);
+
+        if ($this->spr->status !== 'akad') {
+            return;
+        }
+
+        $this->spr->update(['tgl_akad' => null, 'status' => 'approved']);
+
+        Flux::modal('tandai-akad')->close();
+        $this->loadSpr($this->spr->id);
+        Flux::toast(variant: 'success', text: 'Penandaan akad dibatalkan.');
+    }
 
     public function mount(int $id): void
     {
@@ -212,16 +278,16 @@ new #[Title('Detail SPR')] class extends Component
             'trxMetode' => 'metode pembayaran',
         ]);
 
-        // Cap jumlah supaya tidak lebih dari sisa UM.
+        // Jumlah dicatat apa adanya, TIDAK dipotong ke sisa UM.
+        //
+        // Sebelumnya kelebihan bayar dipangkas diam-diam: bayar 3 juta saat sisa 2,5 juta
+        // tersimpan jadi 2,5 juta, dan 500 ribu yang benar-benar masuk hilang dari catatan.
+        // Padahal kelebihan itu hak refund konsumen — kalau tidak tercatat, tidak ada yang
+        // tahu ada uang yang mesti dikembalikan.
         $totalUmDibayar = (float) $this->spr->realisasiPembayaran->where('jenis', 'um')->sum('jumlah');
-        $sisaUm = max(0, (float) $this->spr->um_net - $totalUmDibayar);
 
-        if ($sisaUm <= 0) {
-            Flux::toast(variant: 'warning', text: 'UM sudah lunas. Tidak bisa tambah transaksi UM lagi.');
-            return;
-        }
-
-        $jumlah = min((float) $validated['trxJumlah'], $sisaUm);
+        $jumlah = (float) $validated['trxJumlah'];
+        $lebih = max(0, ($totalUmDibayar + $jumlah) - (float) $this->spr->um_net);
 
         // Wrap DB::transaction supaya lockForUpdate di generateNextNomor efektif
         // (mencegah race condition pada nomor kwitansi saat concurrent insert).
@@ -244,7 +310,12 @@ new #[Title('Detail SPR')] class extends Component
         Flux::modal('tambah-transaksi')->close();
         $this->loadSpr($this->spr->id);
 
-        Flux::toast(variant: 'success', text: 'Realisasi UM Rp '.number_format($jumlah, 0, ',', '.').' tercatat.');
+        Flux::toast(
+            variant: $lebih > 0 ? 'warning' : 'success',
+            text: $lebih > 0
+                ? 'Realisasi UM Rp '.number_format($jumlah, 0, ',', '.').' tercatat. Kelebihan bayar Rp '.number_format($lebih, 0, ',', '.').' — perlu dikembalikan ke konsumen.'
+                : 'Realisasi UM Rp '.number_format($jumlah, 0, ',', '.').' tercatat.',
+        );
     }
 
     public function openEditRealisasi(int $id): void
@@ -285,17 +356,13 @@ new #[Title('Detail SPR')] class extends Component
 
         $newJumlah = (float) $validated['editRealisasiJumlah'];
 
-        // Cap: jumlah + total realisasi UM lain (exclude row ini) tidak boleh > um_net.
+        // Melebihi kewajiban UM TIDAK ditolak — kelebihan bayar itu kejadian nyata dan
+        // jadi hak refund konsumen. Yang dilakukan cuma memberi tahu, bukan menghalangi.
         $totalUmLain = (float) SprRealisasiPembayaran::where('spr_id', $this->spr->id)
             ->where('jenis', 'um')
             ->where('id', '!=', $r->id)
             ->sum('jumlah');
-        $maxAllowed = max(0, (float) $this->spr->um_net - $totalUmLain);
-        if ($newJumlah > $maxAllowed) {
-            $this->addError('editRealisasiJumlah', 'Jumlah melebihi sisa UM (maks Rp '.number_format($maxAllowed, 0, ',', '.').').');
-
-            return;
-        }
+        $lebihSetelahEdit = max(0, ($totalUmLain + $newJumlah) - (float) $this->spr->um_net);
 
         $old = [
             'tanggal_bayar' => $r->tanggal_bayar?->format('Y-m-d'),
@@ -317,7 +384,12 @@ new #[Title('Detail SPR')] class extends Component
         $this->loadSpr($this->spr->id);
         $this->reset(['editRealisasiId', 'editRealisasiTanggal', 'editRealisasiJumlah', 'editRealisasiMetode', 'editRealisasiKeterangan']);
 
-        Flux::toast(variant: 'success', text: 'Realisasi kwitansi '.$r->nomor_kwitansi.' diperbarui.');
+        Flux::toast(
+            variant: $lebihSetelahEdit > 0 ? 'warning' : 'success',
+            text: $lebihSetelahEdit > 0
+                ? 'Realisasi kwitansi '.$r->nomor_kwitansi.' diperbarui. Kelebihan bayar Rp '.number_format($lebihSetelahEdit, 0, ',', '.').' — perlu dikembalikan ke konsumen.'
+                : 'Realisasi kwitansi '.$r->nomor_kwitansi.' diperbarui.',
+        );
     }
 
     public function openHapusRealisasi(int $id): void
@@ -571,6 +643,9 @@ new #[Title('Detail SPR')] class extends Component
     $utjDibayar = (float) $spr->realisasiPembayaran->where('jenis', 'bf')->sum('jumlah');
     $totalDibayar = $totalUmDibayar + $utjDibayar;
     $kurangUm = max(0, (float) $spr->um_net - $totalDibayar);
+    // Kelebihan bayar harus ikut terlihat — itu jadi hak refund konsumen, dan kalau
+    // cuma ditulis "Lunas" tidak ada yang tahu ada uang yang mesti dikembalikan.
+    $lebihUm = max(0, $totalDibayar - (float) $spr->um_net);
 
     $fmt = fn ($n) => number_format((float) $n, 0, ',', '.');
 @endphp
@@ -603,11 +678,22 @@ new #[Title('Detail SPR')] class extends Component
                 </div>
             </div>
 
-            <a href="{{ route('marketing.spr.list') }}" wire:navigate
-               class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800">
-                <flux:icon.magnifying-glass class="size-3.5" />
-                {{ __('Cari SPR Lain') }}
-            </a>
+            <div class="flex items-center gap-2">
+                @if (auth()->user()?->can('spr.akad') && in_array($spr->status, ['approved', 'akad'], true))
+                    {{-- Sementara di sini; pindah ke Rencana Akad begitu modulnya dipakai --}}
+                    <flux:button size="sm" icon="check-badge"
+                                 :variant="$spr->tgl_akad ? 'filled' : 'primary'"
+                                 wire:click="openTandaiAkad">
+                        {{ $spr->tgl_akad ? __('Akad '.$spr->tgl_akad->format('d/m/Y')) : __('Tandai Sudah Akad') }}
+                    </flux:button>
+                @endif
+
+                <a href="{{ route('marketing.spr.list') }}" wire:navigate
+                   class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800">
+                    <flux:icon.magnifying-glass class="size-3.5" />
+                    {{ __('Cari SPR Lain') }}
+                </a>
+            </div>
         </div>
 
         {{-- BANNER SWITCHING (Pindah Kavling) --}}
@@ -1427,6 +1513,11 @@ new #[Title('Detail SPR')] class extends Component
                                         <dt class="font-semibold text-amber-800 dark:text-amber-300">Sisa Kurang</dt>
                                         <dd class="font-mono font-bold tabular-nums text-amber-700 dark:text-amber-300">{{ $fmt($kurangUm) }}</dd>
                                     </div>
+                                @elseif ($lebihUm > 0)
+                                    <div class="mt-1 flex justify-between rounded-md bg-amber-50 px-2 py-1 text-[11px] dark:bg-amber-950/30">
+                                        <dt class="font-semibold text-amber-800 dark:text-amber-300">Kelebihan Bayar</dt>
+                                        <dd class="font-mono font-bold tabular-nums text-amber-700 dark:text-amber-300">{{ $fmt($lebihUm) }}</dd>
+                                    </div>
                                 @endif
                             @endif
                         </div>
@@ -1624,10 +1715,33 @@ new #[Title('Detail SPR')] class extends Component
                                 <dt class="font-bold">Total UM Cair</dt>
                                 <dd class="font-mono font-bold tabular-nums">{{ $fmt($totalUmDibayar) }}</dd>
                             </div>
+
+                            {{-- Rincian supaya jelas dasar hitungnya: UTJ ikut mengurangi kewajiban UM --}}
+                            <div class="mt-1 space-y-0.5 rounded-md bg-zinc-50 px-2 py-1.5 text-[11px] dark:bg-zinc-800/30">
+                                <div class="flex justify-between text-zinc-600 dark:text-zinc-400">
+                                    <dt>UTJ (booking fee)</dt>
+                                    <dd class="font-mono tabular-nums">{{ $fmt($utjDibayar) }}</dd>
+                                </div>
+                                <div class="flex justify-between border-t border-zinc-200 pt-0.5 font-semibold text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
+                                    <dt>Total masuk</dt>
+                                    <dd class="font-mono tabular-nums">{{ $fmt($totalDibayar) }}</dd>
+                                </div>
+                                <div class="flex justify-between text-zinc-500">
+                                    <dt>Kewajiban UM</dt>
+                                    <dd class="font-mono tabular-nums">{{ $fmt($spr->um_net) }}</dd>
+                                </div>
+                            </div>
+
                             @if ($kurangUm > 0)
                                 <div class="mt-1 flex items-center justify-between rounded-md bg-rose-50 px-2 py-1.5 dark:bg-rose-950/30">
                                     <dt class="font-bold text-rose-700 dark:text-rose-400">Sisa UM</dt>
                                     <dd class="font-mono font-bold tabular-nums text-rose-700 dark:text-rose-400">{{ $fmt($kurangUm) }}</dd>
+                                </div>
+                            @elseif ($lebihUm > 0)
+                                {{-- Kelebihan bayar = hak refund konsumen. Tidak boleh cuma ditulis "Lunas". --}}
+                                <div class="mt-1 flex items-center justify-between rounded-md bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                                    <dt class="font-bold text-amber-800 dark:text-amber-300">{{ __('Kelebihan Bayar') }}</dt>
+                                    <dd class="font-mono font-bold tabular-nums text-amber-800 dark:text-amber-300">{{ $fmt($lebihUm) }}</dd>
                                 </div>
                             @else
                                 <div class="mt-1 flex items-center justify-between rounded-md bg-emerald-50 px-2 py-1.5 dark:bg-emerald-950/30">
@@ -1789,6 +1903,40 @@ new #[Title('Detail SPR')] class extends Component
         @endif
 
         {{-- ============ MODAL: TAMBAH TRANSAKSI ============ --}}
+        {{-- MODAL TANDAI AKAD --}}
+        <flux:modal name="tandai-akad" class="md:w-md" focusable>
+            <div class="space-y-4">
+                <div>
+                    <flux:heading size="lg">{{ __('Tandai Sudah Akad') }}</flux:heading>
+                    <flux:subheading>
+                        {{ __('Tanggal akad terisi berarti SPR ini dianggap sudah akad, dan ikut terhitung sebagai realisasi di dashboard serta laporan.') }}
+                    </flux:subheading>
+                </div>
+
+                <flux:input type="date" wire:model="tglAkadInput" :label="__('Tanggal Akad')" />
+                @error('tglAkadInput') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
+
+                <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">
+                    {{ __('Untuk sementara ini satu tanggal saja. Pemisahan PPJB dan AJB menyusul kalau Rencana Akad sudah dipakai.') }}
+                </div>
+
+                <div class="flex items-center justify-between border-t border-zinc-200 pt-4 dark:border-zinc-700">
+                    <div>
+                        @if ($spr->tgl_akad)
+                            {{-- Untuk membetulkan salah input, bukan membatalkan akadnya --}}
+                            <flux:button size="sm" variant="ghost" wire:click="batalkanTandaAkad">
+                                {{ __('Batalkan penandaan') }}
+                            </flux:button>
+                        @endif
+                    </div>
+                    <div class="flex gap-2">
+                        <flux:modal.close><flux:button variant="ghost">{{ __('Batal') }}</flux:button></flux:modal.close>
+                        <flux:button variant="primary" wire:click="tandaiAkad">{{ __('Simpan') }}</flux:button>
+                    </div>
+                </div>
+            </div>
+        </flux:modal>
+
         <flux:modal name="tambah-transaksi" class="md:w-lg" focusable>
             <form wire:submit="saveTransaksi" class="space-y-5">
                 <div>
@@ -1799,9 +1947,12 @@ new #[Title('Detail SPR')] class extends Component
                 </div>
 
                 @if ($kurangUm <= 0)
-                    <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-4 text-center text-xs text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
+                    {{-- Tetap boleh mencatat meski lunas: kelebihan bayar itu kejadian nyata
+                         dan jadi hak refund konsumen. Kalau formnya ditutup, uang yang
+                         terlanjur masuk tidak punya tempat dicatat sama sekali. --}}
+                    <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
                         <flux:icon.check-circle class="-mt-0.5 mr-1 inline size-4" />
-                        {{ __('UM sudah lunas. Tidak ada sisa untuk dicatat.') }}
+                        {{ __('UM sudah lunas. Kalau masih ada uang masuk, tetap catat di sini — selisihnya akan tampil sebagai kelebihan bayar.') }}
                     </div>
                 @else
                     {{-- Info sisa UM --}}
@@ -1809,6 +1960,7 @@ new #[Title('Detail SPR')] class extends Component
                         <span class="font-semibold text-amber-800 dark:text-amber-200">{{ __('Sisa UM belum dibayar') }}</span>
                         <span class="font-mono font-bold text-amber-900 dark:text-amber-100">Rp {{ number_format($kurangUm, 0, ',', '.') }}</span>
                     </div>
+                @endif
 
                     <div class="grid grid-cols-2 gap-3">
                         <flux:field>
@@ -1820,17 +1972,23 @@ new #[Title('Detail SPR')] class extends Component
                         <flux:field>
                             <flux:label>{{ __('Jumlah') }} <span class="ms-1 text-red-500">*</span></flux:label>
                             <x-money-input wire="trxJumlah" required />
-                            <flux:description class="text-[10px]">Max: Rp {{ number_format($kurangUm, 0, ',', '.') }}</flux:description>
+                            @if ($kurangUm > 0)
+                                <flux:description class="text-[10px]">Sisa: Rp {{ number_format($kurangUm, 0, ',', '.') }}</flux:description>
+                            @else
+                                <flux:description class="text-[10px] text-amber-600">Melebihi kewajiban — akan tercatat sebagai kelebihan bayar</flux:description>
+                            @endif
                             <flux:error name="trxJumlah" />
                         </flux:field>
                     </div>
 
                     {{-- Preset: Lunas sisa --}}
+                    @if ($kurangUm > 0)
                     <button type="button" wire:click="prefillLunas"
                             class="w-full rounded-lg border-2 border-dashed border-emerald-300 bg-emerald-50/50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-300">
                         <flux:icon.check-badge class="-mt-0.5 mr-1 inline size-3.5" />
                         {{ __('Preset: Lunas Sisa') }} (Rp {{ number_format($kurangUm, 0, ',', '.') }})
                     </button>
+                    @endif
 
                     <div>
                         <flux:label class="mb-2 block">{{ __('Metode Pembayaran') }}</flux:label>
@@ -1858,17 +2016,14 @@ new #[Title('Detail SPR')] class extends Component
                         <flux:icon.information-circle class="-mt-0.5 mr-1 inline size-3" />
                         {{ __('Nomor kuitansi otomatis di-generate 5-digit sequential.') }}
                     </div>
-                @endif
 
                 <div class="flex justify-end gap-2">
                     <flux:modal.close>
                         <flux:button variant="ghost" type="button">{{ __('Batal') }}</flux:button>
                     </flux:modal.close>
-                    @if ($kurangUm > 0)
-                        <flux:button variant="primary" type="submit" icon="check">
-                            {{ __('Simpan') }}
-                        </flux:button>
-                    @endif
+                    <flux:button variant="primary" type="submit" icon="check">
+                        {{ __('Simpan') }}
+                    </flux:button>
                 </div>
             </form>
         </flux:modal>

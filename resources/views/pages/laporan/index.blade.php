@@ -1496,6 +1496,9 @@ public function setPeriod(string $p): void
                                     $totalBayar = $totalBf + $totalUm;
                                     $umNet = (float) $spr->um_net;
                                     $sisaUm = max(0, $umNet - $totalBayar);
+                                    // Kalau bayarnya lewat dari kewajiban, sisa jadi 0 dan selisihnya lenyap
+                                    // dari laporan. Padahal itu yang harus dikembalikan ke konsumen.
+                                    $lebihUm = $umNet > 0 ? max(0, $totalBayar - $umNet) : 0;
                                     $pct = $umNet > 0
                                         ? ($totalBayar > 0 ? max(1, (int) round($totalBayar / $umNet * 100)) : 0)
                                         : 0;
@@ -1512,7 +1515,14 @@ public function setPeriod(string $p): void
                                     <td class="px-2 py-2 text-right font-mono tabular-nums">{{ $fmt($spr->total_harga) }}</td>
                                     <td class="px-2 py-2 text-right font-mono tabular-nums">{{ $fmt($spr->utj_nominal) }}</td>
                                     <td class="px-2 py-2 text-right font-mono tabular-nums text-emerald-700">{{ $fmt($totalBayar) }}</td>
-                                    <td class="px-2 py-2 text-right font-mono tabular-nums text-amber-700">{{ $fmt($sisaUm) }}</td>
+                                    <td class="px-2 py-2 text-right font-mono tabular-nums text-amber-700">
+                                        {{ $fmt($sisaUm) }}
+                                        @if ($lebihUm > 0)
+                                            <div class="text-[10px] font-semibold text-amber-700 dark:text-amber-400" title="Kelebihan bayar — perlu dikembalikan ke konsumen">
+                                                lebih {{ $fmt($lebihUm) }}
+                                            </div>
+                                        @endif
+                                    </td>
                                     <td class="px-2 py-2 text-right tabular-nums font-semibold">{{ $pct }}%</td>
                                     <td class="px-2 py-2 text-right font-mono tabular-nums border-l border-amber-200 dark:border-amber-900/40 bg-amber-50/20 dark:bg-amber-950/10">{{ $btNominal > 0 ? $fmt($btNominal) : '-' }}</td>
                                     <td class="px-2 py-2 text-right font-mono tabular-nums text-emerald-700 bg-amber-50/20 dark:bg-amber-950/10">{{ $btTerbayar > 0 ? $fmt($btTerbayar) : '-' }}</td>
