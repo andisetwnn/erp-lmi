@@ -1,7 +1,11 @@
 <?php
 
+use App\Models\Master\Booking;
+use App\Models\Master\ProspectCustomer;
 use App\Models\Master\Proyek;
 use App\Models\Master\Rumah;
+use App\Models\Master\Sales;
+use App\Models\Master\Spr;
 use App\Models\Master\TipeRumah;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -108,7 +112,7 @@ it('menampilkan persentase dan penjelasan di layar', function () {
 
     expect($html)->toContain('Stok Kavling Awal')
         ->and($html)->toContain('100%')
-        ->and($html)->toContain('belum dipegang SPR aktif per 1 Januari');
+        ->and($html)->toContain('dikurangi akad tahun-tahun sebelum');
 });
 
 it('menaruh penjelasan di luar tabel yang bisa digeser menyamping', function () {
@@ -123,4 +127,113 @@ it('menaruh penjelasan di luar tabel yang bisa digeser menyamping', function () 
     $isiTabel = substr($potong, strpos($potong, 'overflow-x-auto'), strpos($potong, '</table>') - strpos($potong, 'overflow-x-auto'));
 
     expect(substr_count($isiTabel, 'aria-label="Info"'))->toBe(0);
+});
+
+/**
+ * Unit yang sudah akad. Nomor SPR & blok dibedakan lewat $urut supaya bisa
+ * dipanggil berkali-kali dalam satu tes.
+ */
+function buatSprAkadPersediaan(int $urut, ?string $tglAkad): void
+{
+    $proyek = test()->proyek;
+    $tipe = test()->tipe;
+
+    $sales = Sales::firstOrCreate(
+        ['kode' => 'SLS-PSD'],
+        ['nama' => 'Sales Persediaan', 'is_aktif' => true,
+            'dbos_username' => 'sales-psd', 'dbos_password' => 'rahasia123'],
+    );
+
+    $rumah = Rumah::create([
+        'proyek_id' => $proyek->id, 'tipe_rumah_id' => $tipe->id,
+        'blok' => 'AK', 'nomor_unit' => str_pad((string) $urut, 2, '0', STR_PAD_LEFT),
+        'status' => 'terjual',
+    ]);
+
+    $prospect = ProspectCustomer::create([
+        'sales_id' => $sales->id, 'proyek_id' => $proyek->id,
+        'nama_lengkap' => "AKAD $urut", 'nik' => str_pad((string) (32000000000000 + $urut), 16, '0'),
+        'hp' => '628100000'.$urut, 'sumber' => 'Walk-in', 'status' => 'finish',
+    ]);
+
+    $booking = Booking::create([
+        'sales_id' => $sales->id, 'proyek_id' => $proyek->id,
+        'prospect_customer_id' => $prospect->id, 'rumah_id' => $rumah->id,
+        'tanggal_booking' => now(), 'tanggal_expired' => now()->addDay(), 'status' => 'sukses',
+    ]);
+
+    Spr::create([
+        'booking_id' => $booking->id, 'sales_id' => $sales->id,
+        'prospect_customer_id' => $prospect->id, 'rumah_id' => $rumah->id,
+        'kategori' => $tipe->kategori, 'nomor_spr' => 'SPR/2026/09/'.str_pad((string) (900 + $urut), 5, '0', STR_PAD_LEFT),
+        'tanggal_spr' => now()->subYear(), 'harga_jual' => 198_000_000, 'total_harga' => 198_000_000,
+        'um_net' => 15_000_000, 'utj_nominal' => 0, 'jenis_pembayaran' => 'kpr',
+        'status' => 'akad', 'tgl_akad' => $tglAkad,
+    ]);
+}
+
+it('menghitung stok berjalan dari akad, bukan dari status unit', function () {
+    // Unit ditandai terjual begitu SPR disetujui, jadi menghitung yang berstatus
+    // available membuat angkanya nol walau banyak unit belum diakadkan.
+    buatRumah(5);
+    buatSprAkadPersediaan(1, now()->toDateString());
+    buatSprAkadPersediaan(2, now()->toDateString());
+
+    $p = persediaan();
+    $total = (int) collect($p['metrics'])->firstWhere('key', 'total_kavling')['values'][test()->proyek->id];
+    $berjalan = (int) collect($p['metrics'])->firstWhere('key', 'stok_berjalan')['values'][test()->proyek->id];
+
+    // 5 unit polos + 2 unit berakad = 7 total, dikurangi 2 akad.
+    expect($total)->toBe(7)->and($berjalan)->toBe(5);
+});
+
+it('mengurangi stok awal hanya dengan akad tahun-tahun sebelumnya', function () {
+    buatRumah(5);
+    buatSprAkadPersediaan(1, '2025-06-10');   // tahun lalu — mengurangi stok awal
+    buatSprAkadPersediaan(2, '2026-03-04');   // tahun berjalan — tidak mengurangi
+
+    $stokAwal = (int) collect(persediaan()['metrics'])
+        ->firstWhere('key', 'stok_awal')['values'][test()->proyek->id];
+
+    // 7 kavling, satu sudah diakadkan sebelum 2026.
+    expect($stokAwal)->toBe(6);
+});
+
+it('tidak mengurangi stok awal dengan SPR yang baru disetujui', function () {
+    // Sebelumnya semua SPR aktif ikut dikurangkan, sehingga unit yang baru
+    // disetujui tapi belum akad terhitung sudah lepas dari stok.
+    buatRumah(3);
+
+    $sales = Sales::firstOrCreate(
+        ['kode' => 'SLS-PSD2'],
+        ['nama' => 'Sales Dua', 'is_aktif' => true,
+            'dbos_username' => 'sales-psd2', 'dbos_password' => 'rahasia123'],
+    );
+    $rumah = Rumah::create([
+        'proyek_id' => test()->proyek->id, 'tipe_rumah_id' => test()->tipe->id,
+        'blok' => 'AP', 'nomor_unit' => '01', 'status' => 'terjual',
+    ]);
+    $prospect = ProspectCustomer::create([
+        'sales_id' => $sales->id, 'proyek_id' => test()->proyek->id,
+        'nama_lengkap' => 'BELUM AKAD', 'nik' => '3200000000009999',
+        'hp' => '628100009999', 'sumber' => 'Walk-in', 'status' => 'finish',
+    ]);
+    $booking = Booking::create([
+        'sales_id' => $sales->id, 'proyek_id' => test()->proyek->id,
+        'prospect_customer_id' => $prospect->id, 'rumah_id' => $rumah->id,
+        'tanggal_booking' => now()->subYear(), 'tanggal_expired' => now()->subYear()->addDay(), 'status' => 'sukses',
+    ]);
+    Spr::create([
+        'booking_id' => $booking->id, 'sales_id' => $sales->id,
+        'prospect_customer_id' => $prospect->id, 'rumah_id' => $rumah->id,
+        'kategori' => test()->tipe->kategori, 'nomor_spr' => 'SPR/2025/12/00999',
+        'tanggal_spr' => '2025-12-20', 'harga_jual' => 198_000_000, 'total_harga' => 198_000_000,
+        'um_net' => 15_000_000, 'utj_nominal' => 0, 'jenis_pembayaran' => 'kpr',
+        'status' => 'approved',
+    ]);
+
+    $stokAwal = (int) collect(persediaan()['metrics'])
+        ->firstWhere('key', 'stok_awal')['values'][test()->proyek->id];
+
+    expect($stokAwal)->toBe(4);
 });

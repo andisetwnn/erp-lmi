@@ -222,7 +222,6 @@ new #[Title('Dashboard')] class extends Component
             ->pluck(DB::raw('COUNT(*)'), 'proyek_id');
 
         $totalKavling = $countByProyek();
-        $rumahAvailable = $countByProyek(fn ($q) => $q->where('status', 'available'));
         $rumahBooking = $countByProyek(fn ($q) => $q->where('status', 'booking'));
         $rumahTerjual = $countByProyek(fn ($q) => $q->where('status', 'terjual'));
         $rumahSelesai = $countByProyek(fn ($q) => $q->where('progres_fisik', 100));
@@ -241,20 +240,40 @@ new #[Title('Dashboard')] class extends Component
             ->groupBy('rumah.proyek_id')
             ->pluck(DB::raw('COUNT(*)'), 'rumah.proyek_id');
 
-        // Stok kavling di awal tahun terpilih — kavling yang belum dipegang SPR aktif
-        // sebelum 1 Januari. Jadi patokan berapa banyak yang tersedia untuk dijual
-        // sepanjang tahun itu.
+        // Stok kavling di awal tahun terpilih: total kavling dikurangi akad tahun-tahun
+        // sebelumnya. Acuannya AKAD, bukan SPR — unit yang SPR-nya sudah disetujui tapi
+        // belum akad masih terhitung stok menurut manajemen.
+        //
+        // Patokannya tanggal akad, bukan tanggal SPR dibuat. Keduanya bisa terpaut
+        // bulanan, dan SPR yang dibuat Desember lalu akad Februari termasuk penjualan
+        // tahun berikutnya.
         $awalTahun = CarbonImmutable::create($this->selectedTahun, 1, 1);
-        $lakuSebelumTahunIni = Spr::query()
+        $akadSebelumTahunIni = Spr::query()
             ->join('rumah', 'rumah.id', '=', 'spr.rumah_id')
-            ->whereNotIn('spr.status', ['cancelled', 'rejected', 'draft'])
-            ->where('spr.tanggal_spr', '<', $awalTahun)
+            ->where('spr.status', 'akad')
+            ->whereNotNull('spr.tgl_akad')
+            ->where('spr.tgl_akad', '<', $awalTahun->toDateString())
             ->groupBy('rumah.proyek_id')
-            ->pluck(DB::raw('COUNT(DISTINCT spr.rumah_id)'), 'rumah.proyek_id');
+            // Hitungannya diberi alias, bukan dioper mentah ke pluck(): pluck memotong
+            // nama kolom di titik terakhir, sehingga COUNT(DISTINCT spr.rumah_id)
+            // terbaca sebagai properti "rumah_id)" dan meledak begitu hasilnya tidak kosong.
+            ->selectRaw('rumah.proyek_id, COUNT(DISTINCT spr.rumah_id) as jml')
+            ->pluck('jml', 'proyek_id');
 
+        // Stok kavling berjalan: total kavling dikurangi seluruh akad — bukan jumlah
+        // unit berstatus "available". Unit ditandai terjual begitu SPR-nya disetujui,
+        // padahal menurut manajemen selama belum akad ia masih terhitung stok. Memakai
+        // status rumah membuat angkanya nol walau ratusan unit belum diakadkan.
+        //
+        // Panel ini bertajuk "proyek to date", jadi yang dikurangkan seluruh akad sejak
+        // proyek berdiri, bukan akad tahun berjalan saja.
+        $stokBerjalan = collect();
+        foreach ($proyekList as $p) {
+            $stokBerjalan[$p->id] = max(0, (int) ($totalKavling[$p->id] ?? 0) - (int) ($akadCount[$p->id] ?? 0));
+        }
         $stokAwal = collect();
         foreach ($proyekList as $p) {
-            $stokAwal[$p->id] = (int) ($totalKavling[$p->id] ?? 0) - (int) ($lakuSebelumTahunIni[$p->id] ?? 0);
+            $stokAwal[$p->id] = max(0, (int) ($totalKavling[$p->id] ?? 0) - (int) ($akadSebelumTahunIni[$p->id] ?? 0));
         }
 
         $metrics = [
@@ -272,18 +291,23 @@ new #[Title('Dashboard')] class extends Component
             ],
             [
                 'key' => 'stok_awal', 'label' => 'Stok Kavling Awal '.$this->selectedTahun, 'icon' => 'calendar', 'color' => 'violet', 'values' => $stokAwal, 'persen' => true,
-                'info' => 'Kavling yang belum dipegang SPR aktif per 1 Januari '.$this->selectedTahun.'. Menunjukkan berapa banyak yang tersedia untuk dijual sepanjang tahun itu.',
+                'info' => 'Total kavling dikurangi akad tahun-tahun sebelum '.$this->selectedTahun.'. Menunjukkan berapa banyak yang tersisa untuk dijual saat tahun itu dimulai.',
             ],
             [
-                'key' => 'stok_berjalan', 'label' => 'Stok Kavling Berjalan', 'icon' => 'squares-2x2', 'color' => 'indigo', 'values' => $rumahAvailable,
-                'info' => 'Unit yang statusnya masih tersedia saat ini — belum dipegang SPR mana pun. Angka nol berarti seluruh kavling sudah laku.',
+                'key' => 'stok_berjalan', 'label' => 'Stok Kavling Berjalan', 'icon' => 'squares-2x2', 'color' => 'indigo', 'values' => $stokBerjalan,
+                'info' => 'Total kavling dikurangi seluruh akad sejak proyek berdiri. Unit yang SPR-nya sudah disetujui tapi belum akad masih terhitung stok di sini.',
             ],
+            // Dua baris berikut sengaja disembunyikan dulu: angkanya bersandar pada
+            // progres fisik yang belum diisi lengkap oleh admin teknik, jadi belum
+            // layak dibaca direksi. Hapus 'sembunyi' untuk menampilkannya lagi.
             [
                 'key' => 'rumah_selesai', 'label' => 'Stok Rumah', 'icon' => 'home', 'color' => 'rose', 'values' => $rumahSelesai,
+                'sembunyi' => true,
                 'info' => 'Unit yang progres fisik bangunannya sudah 100 persen, terlepas dari sudah laku atau belum.',
             ],
             [
                 'key' => 'rumah_proses', 'label' => 'Rumah Proses Bangun', 'icon' => 'wrench', 'color' => 'orange', 'values' => $rumahProses,
+                'sembunyi' => true,
                 'info' => 'Unit yang progres fisiknya antara 1 sampai 99 persen — sedang dikerjakan. Diperbarui admin teknik lewat menu Teknik.',
             ],
         ];
@@ -419,16 +443,6 @@ new #[Title('Dashboard')] class extends Component
             @php
                 $metrikList = [
                     [
-                        'judul' => 'Akad progress',
-                        'label' => 'Akad YTD',
-                        'target' => $marketing['akadTarget'],
-                        'real' => $marketing['akadReal'],
-                        'targetBulan' => $marketing['akadTargetBulan'],
-                        'realBulan' => $marketing['akadRealBulan'],
-                        'kelasBadge' => 'bg-emerald-600',
-                        'kelasLabel' => 'text-emerald-700 dark:text-emerald-400',
-                    ],
-                    [
                         'judul' => 'Penjualan progress',
                         'label' => 'Penjualan YTD',
                         'target' => $marketing['penjualanTarget'],
@@ -437,6 +451,16 @@ new #[Title('Dashboard')] class extends Component
                         'realBulan' => $marketing['penjualanRealBulan'],
                         'kelasBadge' => 'bg-blue-600',
                         'kelasLabel' => 'text-blue-700 dark:text-blue-400',
+                    ],
+                    [
+                        'judul' => 'Akad progress',
+                        'label' => 'Akad YTD',
+                        'target' => $marketing['akadTarget'],
+                        'real' => $marketing['akadReal'],
+                        'targetBulan' => $marketing['akadTargetBulan'],
+                        'realBulan' => $marketing['akadRealBulan'],
+                        'kelasBadge' => 'bg-emerald-600',
+                        'kelasLabel' => 'text-emerald-700 dark:text-emerald-400',
                     ],
                 ];
             @endphp
@@ -665,6 +689,7 @@ new #[Title('Dashboard')] class extends Component
                     <p class="mb-3">Arti tiap baris, supaya angka yang mirip tidak tertukar:</p>
                     <dl class="space-y-2.5">
                         @foreach ($persediaan['metrics'] as $m)
+                            @continue($m['sembunyi'] ?? false)
                             <div>
                                 <dt class="font-semibold text-zinc-900 dark:text-zinc-100">{{ $m['label'] }}</dt>
                                 <dd class="text-zinc-600 dark:text-zinc-400">{{ $m['info'] }}</dd>
@@ -689,6 +714,7 @@ new #[Title('Dashboard')] class extends Component
                     </thead>
                     <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
                         @foreach ($persediaan['metrics'] as $m)
+                            @continue($m['sembunyi'] ?? false)
                             @php
                                 $totalRow = collect($m['values'])->sum();
                                 // Persentase terhadap total kavling, seperti laporan lama.
