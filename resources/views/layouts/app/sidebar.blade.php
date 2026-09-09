@@ -203,6 +203,22 @@
                     </flux:sidebar.group>
                 @endcanany
 
+                @canany(['matrix.lihat', 'matrix.kelola'])
+                    <flux:sidebar.group :heading="__('Matrix')" icon="table-cells" expandable
+                                        :expanded="request()->routeIs('matrix.*')">
+                        <flux:sidebar.item icon="chart-bar" :href="route('matrix.monitoring-akad')"
+                                           :current="request()->routeIs('matrix.monitoring-akad')" wire:navigate>
+                            {{ __('Laporan') }}
+                        </flux:sidebar.item>
+                        @can('matrix.kelola')
+                            <flux:sidebar.item icon="arrow-up-tray" :href="route('matrix.upload')"
+                                               :current="request()->routeIs('matrix.upload')" wire:navigate>
+                                {{ __('Unggah') }}
+                            </flux:sidebar.item>
+                        @endcan
+                    </flux:sidebar.group>
+                @endcanany
+
                 @can('teknik.rumah.lihat')
                     <flux:sidebar.group :heading="__('Teknik')" icon="wrench-screwdriver" expandable
                                         :expanded="request()->routeIs('teknik.*')">

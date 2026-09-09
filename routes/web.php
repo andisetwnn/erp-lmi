@@ -159,6 +159,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::livewire('input', 'pages::pemberkasan.input')->name('input.index');
     });
 
+    // MATRIX — laporan Mikro/Makro/Non Lot dari berkas Excel yang diunggah.
+    // Sementara sampai datanya bisa dirangkai langsung dari transaksi di sistem.
+    Route::prefix('matrix')->name('matrix.')->group(function () {
+        Route::middleware('permission:matrix.kelola')->group(function () {
+            Route::livewire('unggah', 'pages::matrix.upload')->name('upload');
+        });
+        Route::middleware('permission:matrix.lihat|matrix.kelola')->group(function () {
+            Route::livewire('monitoring-akad', 'pages::matrix.monitoring-akad')->name('monitoring-akad');
+        });
+    });
+
     // TEKNIK — Admin Teknik input progres fisik + LOT rumah (view tanpa harga)
     Route::middleware('permission:teknik.rumah.lihat')->prefix('teknik')->name('teknik.')->group(function () {
         Route::livewire('rumah', 'pages::teknik.rumah')->name('rumah.index');

@@ -45,6 +45,8 @@ class RolePermissionSeeder extends Seeder
             'biayatambahan.kelola', // Input realisasi biaya tambahan unit + refund (Finance & Admin Sales)
             'pemberkasan.kelola',  // Input tahapan pemberkasan KPR (BM, WCR, SP3K, LPA, Rencana Akad) — Admin KPR
             'pemberkasan.lihat',   // View-only pemberkasan (direktur, PM, finance)
+            'matrix.kelola',       // Unggah berkas Matrix — sengaja hanya super-admin
+            'matrix.lihat',        // Lihat Laporan Mikro / Makro / Non Lot
 
             // ─── TEKNIK (progres fisik bangunan) ───
             'teknik.rumah.lihat',   // Lihat menu teknik/rumah (Admin Teknik, PM, Direktur)
@@ -92,6 +94,7 @@ class RolePermissionSeeder extends Seeder
 
             // Direktur: view-only (SPR, akunting, laporan, log, monitor) + kelola target
             'direktur' => [
+                'matrix.lihat',
                 'target.kelola',
                 'spr.lihat',
                 'spr.cetak',
@@ -113,6 +116,7 @@ class RolePermissionSeeder extends Seeder
 
             // Project Manager: approve SPR + kelola master proyek/tipe/rumah (untuk buka blok)
             'project-manager' => [
+                'matrix.lihat',
                 'master.subcon.kelola',
                 'master.proyek.kelola',
                 'master.tipe.kelola',
@@ -131,6 +135,7 @@ class RolePermissionSeeder extends Seeder
 
             // Finance: full akunting + pembayaran + master keuangan (notaris/VA/COA)
             'finance' => [
+                'matrix.lihat',
                 'master.subcon.kelola',
                 'master.notaris.kelola',
                 'master.va.kelola',
@@ -162,6 +167,7 @@ class RolePermissionSeeder extends Seeder
 
             // Admin KPR: kelola customer + proses pembatalan SPR + pemberkasan KPR + laporan
             'admin-kpr' => [
+                'matrix.lihat',
                 'master.customer.kelola',
                 'spr.lihat',
                 'spr.batal',
@@ -173,6 +179,7 @@ class RolePermissionSeeder extends Seeder
 
             // Admin Sales: kelola realisasi biaya tambahan unit + lihat SPR
             'admin-sales' => [
+                'matrix.lihat',
                 'spr.akad',
                 'spr.lihat',
                 'spr.cetak',
