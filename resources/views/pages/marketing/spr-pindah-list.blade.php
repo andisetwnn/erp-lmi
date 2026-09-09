@@ -435,20 +435,23 @@ new #[Title('Pindah Kavling')] class extends Component
                     @if ($pindahRumahBaruId)
                         @php
                             $rumahTujuan = $rumahAvailable->firstWhere('id', (int) $pindahRumahBaruId);
-                            $hargaBaru = (float) ($rumahTujuan?->tipeRumah?->harga_jual ?? 0);
-                            $hargaLama = (float) ($sprPilih->total_harga ?? 0);
-                            $selisih = $hargaBaru - $hargaLama;
+                            $hargaDaftarTujuan = (float) ($rumahTujuan?->tipeRumah?->harga_jual ?? 0);
+                            $hargaDipakai = (float) ($sprPilih->total_harga ?? 0);
                         @endphp
                         <div class="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs dark:border-blue-900 dark:bg-blue-950/30">
-                            <div class="flex justify-between"><span>Harga lama</span><span class="font-mono">Rp {{ number_format($hargaLama, 0, ',', '.') }}</span></div>
-                            <div class="flex justify-between"><span>Harga baru</span><span class="font-mono">Rp {{ number_format($hargaBaru, 0, ',', '.') }}</span></div>
+                            <div class="flex justify-between text-zinc-500">
+                                <span>{{ __('Harga daftar unit tujuan') }}</span>
+                                <span class="font-mono line-through">Rp {{ number_format($hargaDaftarTujuan, 0, ',', '.') }}</span>
+                            </div>
                             <div class="mt-1 flex justify-between border-t border-blue-200 pt-1 font-bold dark:border-blue-800">
-                                <span>Selisih</span>
-                                <span class="font-mono {{ $selisih >= 0 ? 'text-amber-700' : 'text-emerald-700' }}">
-                                    {{ $selisih >= 0 ? '+' : '' }}Rp {{ number_format($selisih, 0, ',', '.') }}
-                                    <span class="text-[10px] font-normal">({{ $selisih >= 0 ? 'tambah UM' : 'refund' }})</span>
+                                <span>{{ __('Harga yang dipakai') }}</span>
+                                <span class="font-mono text-emerald-700 dark:text-emerald-400">
+                                    Rp {{ number_format($hargaDipakai, 0, ',', '.') }}
                                 </span>
                             </div>
+                            <p class="mt-1.5 text-[11px] leading-relaxed text-blue-800 dark:text-blue-300">
+                                {{ __('Konsumen tetap memakai harga kesepakatannya. Uang muka, KPR, dan cicilan tidak berubah, jadi tidak ada tagihan tambahan maupun uang kembali.') }}
+                            </p>
                         </div>
                     @endif
                 @endif
@@ -614,8 +617,8 @@ new #[Title('Pindah Kavling')] class extends Component
                 </div>
                 <ul class="list-disc space-y-1 pl-5 text-xs text-emerald-900 dark:text-emerald-200">
                     <li>Realisasi UTJ dan UM yang sudah cair otomatis <b>berpindah</b> ke SPR baru (kwitansi tetap tercatat).</li>
-                    <li>Kalau unit baru <b>lebih murah</b> dan UM sudah melebihi kebutuhan → tercatat <b>refund kelebihan</b> otomatis (status pending, menunggu proses keuangan).</li>
-                    <li>Kalau unit baru <b>lebih mahal</b> → sisa UM otomatis dibagi ke termin baru.</li>
+                    <li><b>Harga ikut konsumen</b>, bukan unitnya. Harga jual, KPR, uang muka, SBUM, dan jadwal cicilan dibawa apa adanya dari SPR lama.</li>
+                    <li>Karena harganya tidak berubah, <b>tidak ada tagihan tambahan</b> maupun uang yang dikembalikan — walau unit tujuan daftarnya lebih mahal atau lebih murah.</li>
                     <li>Setiap perpindahan mendapat <b>nomor transaksi</b> (format PK/YYYY/MM/XXXX) sebagai referensi audit.</li>
                     <li>Status unit lama dikembalikan ke <b>tersedia</b>, unit baru berubah ke <b>booking</b> atau <b>terjual</b>.</li>
                 </ul>

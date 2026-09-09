@@ -22,10 +22,10 @@ use Illuminate\Validation\ValidationException;
  * - Setiap pindah unit → SPR lama VOIDED (status=cancelled, alasan=Pindah Kavling)
  * - SPR baru diterbitkan dgn nomor SPR baru, ter-link ke SPR lama via switched_from_spr_id
  * - Realisasi UTJ+UM lama di-repoint ke SPR baru (foreign key spr_id update)
- * - Selisih harga di-handle:
- *   - Unit baru LEBIH mahal → tambah termin UM baru di SPR baru
- *   - Unit baru LEBIH murah → buat realisasi refund_pindah (pending refund)
- *   - Total UM sudah > kebutuhan baru → auto-refund kelebihan
+ * - Harga TIDAK dihitung ulang dari unit tujuan. Konsumen sudah sepakat di satu
+ *   angka, jadi harga jual, KPR, uang muka, dan SBUM dibawa apa adanya. Pindah ke
+ *   unit yang daftarnya lebih mahal maupun lebih murah sama-sama tidak mengubah
+ *   tagihan, sehingga tidak ada selisih yang perlu ditagih atau dikembalikan.
  *
  * Constraint:
  * - Cross-kategori (subsidi ↔ komersial) TIDAK boleh
@@ -65,7 +65,6 @@ class SprSwitchingService
             $this->pindahRealisasi($sprLama, $sprBaru, $switching->id);
             $this->pindahBiayaTambahanRealisasi($sprLama, $sprBaru);
             $this->recalculateTerminUm($sprBaru);
-            $this->handleSelisihHarga($sprBaru, $switching->id);
             $this->releaseRumahLama($sprLama->rumah);
             $this->lockRumahBaru($rumahBaru, $sprBaru);
 
@@ -127,11 +126,10 @@ class SprSwitchingService
             $this->pindahBiayaTambahanRealisasi($sprA, $sprBaruA);
             $this->pindahBiayaTambahanRealisasi($sprB, $sprBaruB);
 
-            // Recalculate termin + selisih untuk masing2
+            // Termin dibangun ulang, tapi hasilnya sama saja: nilai UM dan UTJ ikut
+            // terbawa, jadi jadwal cicilannya persis seperti sebelum bertukar.
             $this->recalculateTerminUm($sprBaruA);
             $this->recalculateTerminUm($sprBaruB);
-            $this->handleSelisihHarga($sprBaruA, $switching->id);
-            $this->handleSelisihHarga($sprBaruB, $switching->id);
 
             // Status rumah — release+lock silang
             // Rumah asal A → sekarang punya SPR baru B
@@ -195,37 +193,34 @@ class SprSwitchingService
 
     // ============ CORE OPERATIONS ============
 
-    /** Buat SPR baru dgn snapshot data + harga dari tipe rumah baru. */
+    /**
+     * Buat SPR baru: unitnya berganti, harganya tidak.
+     *
+     * Konsumen sudah sepakat di satu harga, dan pindah unit bukan pembelian baru —
+     * jadi seluruh angka dibawa apa adanya dari SPR lama: harga jual, diskon, PPN,
+     * KPR, uang muka, sampai SBUM. Harga daftar unit tujuan sengaja tidak dipakai.
+     *
+     * Unit 150 juta yang pindah ke unit berdaftar 160 juta tetap ditagih 150 juta,
+     * dan sebaliknya pindah ke yang lebih murah tidak melahirkan uang kembali. Unit
+     * yang ditinggalkan kembali tersedia dengan harganya sendiri.
+     */
     private function createSprBaruDariSprLama(Spr $sprLama, Rumah $rumahBaru, int $userId): Spr
     {
-        $tipe = $rumahBaru->tipeRumah;
-        $kategori = $tipe?->kategori ?? $sprLama->kategori;
-        $hargaJual = (float) ($tipe?->harga_jual ?? 0);
-        // Biaya tambahan SPR = cuma biaya_administrasi dari tipe.
-        // rumah.biaya_tambahan (hook/view) TIDAK masuk SPR — dikelola terpisah via
-        // BiayaTambahanRealisasi (transfer ke unit baru di bawah).
-        $biayaTambahan = (float) ($tipe?->biaya_administrasi ?? 0);
-        $diskon = (float) ($rumahBaru->discount ?? 0);
-        $ppn = (float) ($rumahBaru->ppn ?? 0);
-        $totalHarga = max(0, $hargaJual + $biayaTambahan + $ppn - $diskon);
+        // Kategori ikut SPR lama — guardKategoriSama() sudah memastikan unit tujuan
+        // sekategori, jadi keduanya pasti sama.
+        $kategori = $sprLama->kategori;
+        $hargaJual = (float) $sprLama->harga_jual;
+        $biayaTambahan = (float) $sprLama->biaya_tambahan;
+        $diskon = (float) $sprLama->diskon;
+        $ppn = (float) $sprLama->ppn;
+        $totalHarga = (float) $sprLama->total_harga;
 
-        // Recalc KPR / UM / SBUM tergantung kategori
-        if ($kategori === 'komersial') {
-            $sbum = 0;
-            $dpNominal = 0;
-            $umNet = 0;
-            $nilaiKpr = $totalHarga;
-            $jenisPembayaran = 'kpr';
-        } else {
-            $sbum = (float) ($tipe?->sbum ?? 0);
-            $plafonKpr = (float) ($tipe?->plafon_kpr ?? 0);
-            $jenisPembayaran = $sprLama->jenis_pembayaran ?: 'kpr';
-            $nilaiKpr = $jenisPembayaran === 'kpr' ? $plafonKpr : 0;
-            $dpNominal = $jenisPembayaran === 'kpr' ? max(0, $totalHarga - $plafonKpr) : $totalHarga;
-            $umNet = max(0, $dpNominal - $sbum);
-        }
-
-        $dpPersen = $totalHarga > 0 ? round(($dpNominal / $totalHarga) * 100, 2) : 0;
+        $jenisPembayaran = $sprLama->jenis_pembayaran ?: 'kpr';
+        $nilaiKpr = (float) $sprLama->nilai_kpr;
+        $dpNominal = (float) $sprLama->dp_nominal;
+        $sbum = (float) $sprLama->sbum;
+        $umNet = (float) $sprLama->um_net;
+        $dpPersen = (float) $sprLama->dp_persen;
 
         $now = Carbon::now();
 
@@ -252,8 +247,8 @@ class SprSwitchingService
             'diskon' => $diskon,
             'biaya_tambahan' => $biayaTambahan,
             'ppn' => $ppn,
-            'kelebihan_tanah_m2' => 0,
-            'harga_per_m2' => 0,
+            'kelebihan_tanah_m2' => (float) $sprLama->kelebihan_tanah_m2,
+            'harga_per_m2' => (float) $sprLama->harga_per_m2,
             'total_harga' => $totalHarga,
             'jenis_pembayaran' => $jenisPembayaran,
             'bank_kpr_id' => $sprLama->bank_kpr_id,
@@ -397,38 +392,6 @@ class SprSwitchingService
                 'input_by_user_id' => null,
             ]);
         }
-    }
-
-    /**
-     * Hitung selisih total realisasi UM (yg sudah cair) vs UM baru.
-     * - Kalau selisih > 0 (customer overpaid) → buat realisasi refund_pindah pending
-     * - Kalau selisih < 0 (customer masih kurang) → nothing (termin UM baru sudah cover)
-     */
-    private function handleSelisihHarga(Spr $sprBaru, int $switchingId): void
-    {
-        $totalUmDibayar = (float) SprRealisasiPembayaran::where('spr_id', $sprBaru->id)
-            ->whereIn('jenis', ['um'])
-            ->sum('jumlah');
-
-        $umNet = (float) $sprBaru->um_net;
-
-        // Overpaid: customer sudah bayar UM lebih dari kebutuhan unit baru → refund kelebihan
-        if ($totalUmDibayar > $umNet && $totalUmDibayar > 0) {
-            $kelebihan = $totalUmDibayar - $umNet;
-
-            SprRealisasiPembayaran::create([
-                'spr_id' => $sprBaru->id,
-                'switching_id' => $switchingId,
-                'jenis' => 'refund_pindah',
-                'tanggal_bayar' => Carbon::now()->toDateString(),
-                'jumlah' => $kelebihan,
-                'nomor_kwitansi' => null, // di-generate saat keuangan proses refund
-                'metode' => 'transfer',
-                'keterangan' => 'Refund kelebihan UM akibat pindah kavling ke unit lebih murah.',
-                'input_by_user_id' => null,
-            ]);
-        }
-        // Underpaid: selisih ditutup lewat termin UM sisa → nothing to do
     }
 
     private function releaseRumahLama(?Rumah $rumahLama): void

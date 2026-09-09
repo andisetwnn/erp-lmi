@@ -33,11 +33,12 @@ use Illuminate\Support\Facades\DB;
  *   - 4 unit sisa (O-02, O-04, P-03, P-05) di-set status "available" siap jadi
  *     unit tujuan Pindah Kavling.
  *
- * Skenario yg bisa dites:
- *   [Pindah Unit lebih murah] Rizki (O-05, UM cair 16.5jt) → O-02 (um_net 7jt)
- *     → OVERPAID 9.5jt, realisasi refund_pindah auto-dibuat (pending).
- *   [Pindah Unit lebih mahal] Siti (O-03, UM cair 3jt) → O-04 (um_net 17jt)
- *     → sisa UM 14jt otomatis re-split ke 4 termin baru.
+ * Skenario yg bisa dites (harga TIDAK berubah saat pindah — konsumen membawa
+ * harga kesepakatannya, jadi tidak ada tagihan tambahan maupun refund):
+ *   [Pindah ke unit berdaftar lebih murah] Rizki (O-05) → O-02
+ *     → total harga, UM, dan termin tetap seperti SPR lama.
+ *   [Pindah ke unit berdaftar lebih mahal] Siti (O-03) → O-04
+ *     → sama, tidak ada tambahan yang ditagih.
  *   [Swap 2 SPR subsidi]      Rizki ↔ Siti — silang unit + realisasi UM ikut pindah.
  *   [Pindah Unit komersial]   Dedi (P-02) → P-05 (nilai KPR beda).
  *   [Swap 2 SPR komersial]    Dedi ↔ Wati.

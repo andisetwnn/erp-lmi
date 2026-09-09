@@ -6,6 +6,7 @@ use App\Models\Master\Proyek;
 use App\Models\Master\Rumah;
 use App\Models\Master\Sales;
 use App\Models\Master\Spr;
+use App\Models\Master\SprRealisasiPembayaran;
 use App\Models\Master\TipeRumah;
 use App\Models\User;
 use App\Services\SprSwitchingService;
@@ -45,6 +46,30 @@ function unitKosong(string $blok, string $nomor = '01'): Rumah
         'proyek_id' => test()->proyek->id,
         'tipe_rumah_id' => test()->tipe->id,
         'blok' => $blok, 'nomor_unit' => $nomor, 'status' => 'available',
+    ]);
+}
+
+/**
+ * Unit kosong bertipe lain dengan harga daftar berbeda — dipakai untuk memastikan
+ * harga daftar unit tujuan memang tidak ikut terpakai saat pindah.
+ */
+function unitHargaDaftar(string $blok, float $hargaJual, float $plafonKpr = 0): Rumah
+{
+    $tipe = TipeRumah::create([
+        'proyek_id' => test()->proyek->id,
+        'tipe' => 'TIPE '.$blok,
+        'nama_tipe' => 'Tipe '.$blok,
+        'kategori' => test()->tipe->kategori,
+        'harga_jual' => $hargaJual,
+        'plafon_kpr' => $plafonKpr,
+        'biaya_administrasi' => 9_000_000,
+        'sbum' => 1_000_000,
+    ]);
+
+    return Rumah::create([
+        'proyek_id' => test()->proyek->id,
+        'tipe_rumah_id' => $tipe->id,
+        'blok' => $blok, 'nomor_unit' => '01', 'status' => 'available',
     ]);
 }
 
@@ -191,4 +216,65 @@ it('menampilkan pemilih SPR yang bisa dicari di halaman pembatalan', function ()
 
     expect($html)->toContain('pilihCariCmp')
         ->and($html)->toContain('Konsumen I');
+});
+
+it('membawa harga konsumen ke unit tujuan yang lebih murah', function () {
+    // Kasus Bu Tiara: sepakat 198 juta, pindah ke unit berdaftar 185 juta.
+    // Yang ditagih tetap 198 juta, dan tidak ada uang yang dikembalikan.
+    $lama = sprSelesai(unitKosong('CD', '09'), 'MURAH');
+    $tujuan = unitHargaDaftar('DC', 185_000_000, 172_000_000);
+
+    $baru = $this->svc->pindahUnit($lama, $tujuan->id, 'Konsumen minta pindah', $this->pm->id);
+
+    expect((float) $baru->total_harga)->toBe(198000000.0)
+        ->and((float) $baru->harga_jual)->toBe(198000000.0)
+        ->and((float) $baru->um_net)->toBe(15000000.0)
+        ->and($baru->rumah_id)->toBe($tujuan->id);
+
+    // Tidak ada refund yang dijadwalkan gara-gara selisih harga.
+    expect(SprRealisasiPembayaran::where('spr_id', $baru->id)
+        ->where('jenis', 'refund_pindah')->count())->toBe(0);
+});
+
+it('membawa harga konsumen ke unit tujuan yang lebih mahal', function () {
+    // Kebalikannya: unit tujuan daftarnya lebih tinggi, konsumen tetap di harganya.
+    $lama = sprSelesai(unitKosong('CD', '10'), 'MAHAL');
+    $tujuan = unitHargaDaftar('DD', 260_000_000, 240_000_000);
+
+    $baru = $this->svc->pindahUnit($lama, $tujuan->id, 'Konsumen minta pindah', $this->pm->id);
+
+    expect((float) $baru->total_harga)->toBe(198000000.0)
+        ->and((float) $baru->um_net)->toBe(15000000.0);
+});
+
+it('mengembalikan unit lama ke tersedia tanpa mengubah harganya', function () {
+    $rumahLama = unitKosong('CD', '11');
+    $lama = sprSelesai($rumahLama, 'AVAIL');
+    $tujuan = unitHargaDaftar('DE', 185_000_000, 172_000_000);
+    $hargaDaftarLama = (float) $rumahLama->tipeRumah->harga_jual;
+
+    $this->svc->pindahUnit($lama, $tujuan->id, 'Konsumen minta pindah', $this->pm->id);
+
+    expect($rumahLama->fresh()->status)->toBe('available')
+        ->and((float) $rumahLama->fresh()->tipeRumah->harga_jual)->toBe($hargaDaftarLama);
+});
+
+it('membuat kedua peserta swap tetap di harganya masing-masing', function () {
+    $rumahA = unitKosong('CE', '01');
+    $rumahB = unitKosong('CE', '02');
+    $sprA = sprSelesai($rumahA, 'SWAPA');
+    $sprB = sprSelesai($rumahB, 'SWAPB');
+
+    // Harga berbeda supaya ketahuan kalau tertukar.
+    $sprA->update(['total_harga' => 198_000_000, 'harga_jual' => 198_000_000, 'um_net' => 15_000_000]);
+    $sprB->update(['total_harga' => 185_000_000, 'harga_jual' => 185_000_000, 'um_net' => 12_000_000]);
+
+    [$baruA, $baruB] = array_values($this->svc->swapSpr($sprA->fresh(), $sprB->fresh(), 'Tukar kavling', $this->pm->id));
+
+    expect((float) $baruA->total_harga)->toBe(198000000.0)
+        ->and((float) $baruA->um_net)->toBe(15000000.0)
+        ->and($baruA->rumah_id)->toBe($rumahB->id)
+        ->and((float) $baruB->total_harga)->toBe(185000000.0)
+        ->and((float) $baruB->um_net)->toBe(12000000.0)
+        ->and($baruB->rumah_id)->toBe($rumahA->id);
 });
