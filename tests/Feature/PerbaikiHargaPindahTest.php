@@ -168,3 +168,21 @@ it('tidak menyentuh SPR biasa yang bukan hasil pindah', function () {
     expect((float) $baru->refresh()->total_harga)->toBe(185000000.0)
         ->and((float) $asal->refresh()->total_harga)->toBe(198000000.0);
 });
+
+it('ikut mengembalikan skema pembayaran, bukan cuma angkanya', function () {
+    // Konsumen yang aslinya membeli tunai pernah jadi KPR di SPR pindahannya.
+    // Kalau cuma nominalnya yang disalin, hasilnya janggal: tertulis KPR tapi
+    // nilai KPR-nya nol.
+    [, $baru] = buatSprPindah(
+        array_merge(hargaLama(), ['jenis_pembayaran' => 'cash', 'nilai_kpr' => 0, 'sbum' => 0, 'um_net' => 198_000_000]),
+        array_merge(hargaUnitTujuan(), ['jenis_pembayaran' => 'kpr']),
+    );
+
+    $this->artisan('spr:perbaiki-harga-pindah', ['--commit' => true])->assertExitCode(0);
+
+    $baru->refresh();
+
+    expect($baru->jenis_pembayaran)->toBe('cash')
+        ->and((float) $baru->nilai_kpr)->toBe(0.0)
+        ->and((float) $baru->um_net)->toBe(198000000.0);
+});

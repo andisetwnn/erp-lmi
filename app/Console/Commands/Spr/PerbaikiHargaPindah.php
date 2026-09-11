@@ -40,6 +40,15 @@ class PerbaikiHargaPindah extends Command
         'nilai_kpr', 'dp_persen', 'dp_nominal', 'sbum', 'um_net',
     ];
 
+    /**
+     * Skema pembayaran ikut pindah juga.
+     *
+     * Tanpa ini SPR bisa berakhir janggal: tertulis KPR padahal nilai KPR-nya nol
+     * karena konsumen aslinya membeli tunai. SprSwitchingService mewariskan
+     * keduanya, jadi perbaikan ini harus menyamainya.
+     */
+    private const KOLOM_SKEMA = ['jenis_pembayaran', 'bank_kpr_id'];
+
     public function handle(): int
     {
         $query = Spr::query()->whereNotNull('switched_from_spr_id');
@@ -71,7 +80,13 @@ class PerbaikiHargaPindah extends Command
 
             foreach (self::KOLOM_HARGA as $kolom) {
                 if ($this->berbeda($spr->{$kolom}, $asal->{$kolom})) {
-                    $beda[$kolom] = [(float) $spr->{$kolom}, (float) $asal->{$kolom}];
+                    $beda[$kolom] = [$this->rupiah($spr->{$kolom}), $this->rupiah($asal->{$kolom})];
+                }
+            }
+
+            foreach (self::KOLOM_SKEMA as $kolom) {
+                if ($spr->{$kolom} != $asal->{$kolom}) {
+                    $beda[$kolom] = [(string) ($spr->{$kolom} ?? '—'), (string) ($asal->{$kolom} ?? '—')];
                 }
             }
 
@@ -103,7 +118,7 @@ class PerbaikiHargaPindah extends Command
             foreach ($perluDiperbaiki as $item) {
                 $nilai = [];
 
-                foreach (self::KOLOM_HARGA as $kolom) {
+                foreach ([...self::KOLOM_HARGA, ...self::KOLOM_SKEMA] as $kolom) {
                     $nilai[$kolom] = $item['asal']->{$kolom};
                 }
 
@@ -130,6 +145,11 @@ class PerbaikiHargaPindah extends Command
         return self::SUCCESS;
     }
 
+    private function rupiah(mixed $v): string
+    {
+        return number_format((float) $v, 0, ',', '.');
+    }
+
     /** Kolom uang DECIMAL(15,2) — dibandingkan dalam satuan sen supaya tidak kena galat pembulatan. */
     private function berbeda(mixed $a, mixed $b): bool
     {
@@ -141,8 +161,6 @@ class PerbaikiHargaPindah extends Command
      */
     private function laporkan(int $jumlahDiperiksa, array $perlu): void
     {
-        $rp = fn (float $v) => number_format($v, 0, ',', '.');
-
         $this->newLine();
         $this->line("  SPR pindahan diperiksa : $jumlahDiperiksa");
         $this->line('  Perlu diperbaiki       : '.count($perlu));
@@ -164,19 +182,14 @@ class PerbaikiHargaPindah extends Command
             ));
 
             foreach ($item['beda'] as $kolom => [$sekarang, $seharusnya]) {
-                $this->line(sprintf(
-                    '     %-20s %18s  ->  %18s',
-                    $kolom,
-                    $rp($sekarang),
-                    $rp($seharusnya),
-                ));
+                $this->line(sprintf('     %-20s %18s  ->  %18s', $kolom, $sekarang, $seharusnya));
             }
 
             foreach ($item['refund'] as $r) {
                 $sudahCair = $r->nomor_kwitansi !== null;
                 $this->line(sprintf(
                     '     refund_pindah %s %s',
-                    $rp((float) $r->jumlah),
+                    $this->rupiah($r->jumlah),
                     $sudahCair
                         ? '— SUDAH dibayarkan, tidak dihapus. Selesaikan manual.'
                         : '— belum cair, akan dihapus.',
