@@ -8,6 +8,7 @@ use App\Models\Master\Sales;
 use App\Models\Master\Spr;
 use App\Models\Master\SprRealisasiPembayaran;
 use App\Models\Master\TipeRumah;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -185,4 +186,57 @@ it('ikut mengembalikan skema pembayaran, bukan cuma angkanya', function () {
     expect($baru->jenis_pembayaran)->toBe('cash')
         ->and((float) $baru->nilai_kpr)->toBe(0.0)
         ->and((float) $baru->um_net)->toBe(198000000.0);
+});
+
+it('menolak menyalin dari SPR asal yang blok pembayarannya bolong', function () {
+    // Di produksi ada SPR bertanda KPR tapi nilai KPR-nya nol dan seluruh harga
+    // ditaruh sebagai uang muka. Menyalinnya justru menimpa angka SPR pindahan
+    // yang sudah benar dengan angka yang bolong.
+    [, $baru] = buatSprPindah(
+        array_merge(hargaLama(), ['nilai_kpr' => 0, 'sbum' => 0, 'dp_nominal' => 198_000_000, 'um_net' => 198_000_000]),
+        hargaUnitTujuan(),
+    );
+
+    $this->artisan('spr:perbaiki-harga-pindah', ['--commit' => true])->assertExitCode(0);
+
+    $baru->refresh();
+
+    expect((float) $baru->total_harga)->toBe(185000000.0)
+        ->and((float) $baru->nilai_kpr)->toBe(179000000.0);
+});
+
+it('mengembalikan jejak persetujuan yang tidak ikut terbawa', function () {
+    // SPR pindahan lama tersangkut di antrean PM: antreannya menyaring
+    // status=approved yang pm_approved_at-nya kosong.
+    $pm = User::factory()->create();
+
+    [$asal, $baru] = buatSprPindah(hargaLama(), hargaUnitTujuan());
+
+    $asal->update([
+        'approved_by_user_id' => $pm->id, 'approved_at' => now()->subMonth(),
+        'pm_approved_by_user_id' => $pm->id, 'pm_approved_at' => now()->subMonth(),
+        'pm_catatan' => 'Disetujui saat unit lama.',
+    ]);
+
+    expect($baru->pm_approved_at)->toBeNull();
+
+    $this->artisan('spr:perbaiki-harga-pindah', ['--commit' => true])->assertExitCode(0);
+
+    $baru->refresh();
+
+    expect($baru->pm_approved_at)->not->toBeNull()
+        ->and($baru->pm_approved_by_user_id)->toBe($pm->id)
+        ->and($baru->pm_catatan)->toBe('Disetujui saat unit lama.')
+        // Status TIDAK ikut disalin — SPR asal sekarang sudah cancelled.
+        ->and($baru->status)->toBe('approved');
+});
+
+it('tidak menyentuh persetujuan kalau SPR asalnya memang belum disetujui PM', function () {
+    [, $baru] = buatSprPindah(hargaLama(), hargaUnitTujuan());
+
+    $this->artisan('spr:perbaiki-harga-pindah', ['--commit' => true])->assertExitCode(0);
+
+    // Harganya tetap diperbaiki, tapi tetap menunggu PM seperti seharusnya.
+    expect((float) $baru->refresh()->total_harga)->toBe(198000000.0)
+        ->and($baru->pm_approved_at)->toBeNull();
 });

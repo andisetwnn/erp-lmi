@@ -49,6 +49,19 @@ class PerbaikiHargaPindah extends Command
      */
     private const KOLOM_SKEMA = ['jenis_pembayaran', 'bank_kpr_id'];
 
+    /**
+     * Jejak persetujuan ikut pindah — SPR pindahan bukan penjualan baru.
+     *
+     * `status` sengaja TIDAK ikut disalin. Saat pindah kavling berlangsung, SPR
+     * lama masih berstatus approved lalu dibatalkan sesudahnya; kalau disalin
+     * sekarang yang terbawa justru "cancelled".
+     */
+    private const KOLOM_PERSETUJUAN = [
+        'approved_by_user_id', 'approved_at',
+        'pm_approved_by_user_id', 'pm_approved_at', 'pm_catatan',
+        'ttd_sales_path', 'ttd_finance_path', 'ttd_pm_path',
+    ];
+
     public function handle(): int
     {
         $query = Spr::query()->whereNotNull('switched_from_spr_id');
@@ -76,6 +89,12 @@ class PerbaikiHargaPindah extends Command
                 continue;
             }
 
+            if ($alasan = $this->dataAsalMeragukan($asal)) {
+                $this->warn("  {$spr->nomor_spr}: SPR asalnya ({$asal->nomor_spr}) $alasan — dilewati, perbaiki manual.");
+
+                continue;
+            }
+
             $beda = [];
 
             foreach (self::KOLOM_HARGA as $kolom) {
@@ -90,15 +109,22 @@ class PerbaikiHargaPindah extends Command
                 }
             }
 
+            // Antrean PM menyaring status=approved yang pm_approved_at-nya kosong.
+            // SPR pindahan yang lahir sebelum perbaikan tersangkut di situ.
+            $persetujuanKurang = $asal->pm_approved_at !== null && $spr->pm_approved_at === null;
+
             $refund = SprRealisasiPembayaran::where('spr_id', $spr->id)
                 ->where('jenis', 'refund_pindah')
                 ->get();
 
-            if ($beda === [] && $refund->isEmpty()) {
+            if ($beda === [] && $refund->isEmpty() && ! $persetujuanKurang) {
                 continue;
             }
 
-            $perluDiperbaiki[] = ['spr' => $spr, 'asal' => $asal, 'beda' => $beda, 'refund' => $refund];
+            $perluDiperbaiki[] = [
+                'spr' => $spr, 'asal' => $asal, 'beda' => $beda,
+                'refund' => $refund, 'persetujuan' => $persetujuanKurang,
+            ];
         }
 
         $this->laporkan($daftar->count(), $perluDiperbaiki);
@@ -122,6 +148,12 @@ class PerbaikiHargaPindah extends Command
                     $nilai[$kolom] = $item['asal']->{$kolom};
                 }
 
+                if ($item['persetujuan']) {
+                    foreach (self::KOLOM_PERSETUJUAN as $kolom) {
+                        $nilai[$kolom] = $item['asal']->{$kolom};
+                    }
+                }
+
                 $item['spr']->update($nilai);
 
                 // Refund yang lahir dari selisih harga tidak pernah benar-benar ada
@@ -143,6 +175,26 @@ class PerbaikiHargaPindah extends Command
         $this->info(count($perluDiperbaiki).' SPR diperbaiki.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * SPR asal yang blok pembayarannya belum lengkap tidak boleh jadi acuan.
+     *
+     * Di produksi ada SPR bertanda KPR tapi nilai KPR-nya nol dan seluruh harga
+     * ditaruh sebagai uang muka — isian yang tidak pernah dirampungkan. Menyalinnya
+     * justru menimpa angka SPR pindahan yang sudah benar dengan angka yang bolong.
+     */
+    private function dataAsalMeragukan(Spr $asal): ?string
+    {
+        if ($asal->jenis_pembayaran === 'kpr' && (float) $asal->nilai_kpr <= 0.0) {
+            return 'bertanda KPR tapi nilai KPR-nya nol';
+        }
+
+        if ((float) $asal->total_harga <= 0.0) {
+            return 'total harganya nol';
+        }
+
+        return null;
     }
 
     private function rupiah(mixed $v): string
@@ -183,6 +235,15 @@ class PerbaikiHargaPindah extends Command
 
             foreach ($item['beda'] as $kolom => [$sekarang, $seharusnya]) {
                 $this->line(sprintf('     %-20s %18s  ->  %18s', $kolom, $sekarang, $seharusnya));
+            }
+
+            if ($item['persetujuan']) {
+                $this->line(sprintf(
+                    '     %-20s %18s  ->  %18s',
+                    'persetujuan PM',
+                    'belum ada',
+                    $item['asal']->pm_approved_at->format('d/m/Y'),
+                ));
             }
 
             foreach ($item['refund'] as $r) {
