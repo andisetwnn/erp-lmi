@@ -325,7 +325,10 @@ class ImportSprBatalCommand extends Command
             'hp' => $b['telepon'],
             'alamat' => $b['alamat'] !== '' ? $b['alamat'] : null,
             'sumber' => 'Walk-in',
-            'status' => 'batal',
+            // Perjalanan prospect-nya memang tuntas sampai SPR terbit;
+            // pembatalannya dicatat di SPR, bukan di sini. Sama dengan yang
+            // dipakai import SOP — dan "batal" bukan nilai sah kolom ini.
+            'status' => 'finish',
         ]);
 
         $booking = Booking::create([

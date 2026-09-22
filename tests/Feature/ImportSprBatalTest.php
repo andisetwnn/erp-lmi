@@ -173,6 +173,26 @@ it('membuat SPR batal beserta realisasi UTJ-nya', function () {
         ->and($realisasi->tanggal_bayar->toDateString())->toBe('2026-04-12');
 });
 
+it('memakai nilai status yang diterima kolomnya', function () {
+    // SQLite tidak menegakkan enum, MySQL menegakkan. Tanpa dipatok di sini,
+    // nilai yang salah baru ketahuan waktu impor dijalankan di produksi.
+    buatUnit('ZZ', '01');
+    tulisBerkasBatal([[]]);
+
+    jalankanImportBatal(['--commit' => true])->assertExitCode(0);
+
+    $spr = Spr::where('status', 'cancelled')->first();
+
+    expect($spr->prospectCustomer->status)->toBeIn(['cold', 'warm', 'hot', 'finish', 'archive'])
+        ->and($spr->booking->status)->toBeIn(['aktif', 'sukses', 'batal', 'akad'])
+        ->and($spr->refund_status)->toBeIn(['pending', 'tidak_ada_refund', 'partial', 'full'])
+        ->and($spr->utj_metode)->toBeIn(['transfer', 'tunai'])
+        ->and($spr->kategori)->toBeIn(['subsidi', 'komersial'])
+        ->and($spr->jenis_pembayaran)->toBeIn(['cash', 'cash_bertahap', 'kpr'])
+        ->and(SprRealisasiPembayaran::where('spr_id', $spr->id)->value('jenis'))
+        ->toBeIn(['bf', 'um', 'sbum', 'kpr']);
+});
+
 it('memakai nomor terakhir saja, sisanya jadi catatan', function () {
     // "00038/00160/00165" bukan tiga penjualan — satu penjualan yang nomornya
     // berganti dua kali. Membuat SPR untuk tiap nomor akan melipatgandakannya.
