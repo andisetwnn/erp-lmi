@@ -70,6 +70,10 @@ new #[Title('Tanda Tangan SPR'), Layout('layouts.public')] class extends Compone
         }
 
         $this->nikVerified = true;
+        // Simpan flag verifikasi di session agar route preview SPR ikut ter-gate
+        // (tanpa flag ini, pemegang token bisa buka dokumen SPR lengkap
+        // tanpa pernah membuktikan mereka pemilik KTP tersebut).
+        session()->put('spr-sign-nik-ok:'.$this->token, true);
     }
 
     public function saveSignature(): void

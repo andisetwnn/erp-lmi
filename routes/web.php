@@ -31,6 +31,11 @@ Route::get('spr/preview/{token}', function (string $token) {
 
     abort_if(! $spr->konsumen_signing_link_expires_at || $spr->konsumen_signing_link_expires_at->isPast(), 410, 'Link kedaluwarsa.');
 
+    // Gate: NIK wajib sudah diverifikasi di halaman tanda tangan sebelum bisa
+    // membuka preview. Tanpa gate ini siapapun yang memegang token bisa
+    // membaca dokumen SPR lengkap (nama, NIK, harga, alamat, dsb.).
+    abort_unless(session()->get('spr-sign-nik-ok:'.$token) === true, 403, 'Verifikasi NIK dulu di halaman tanda tangan sebelum membuka dokumen.');
+
     return view('exports.spr-print', ['spr' => $spr, 'isPreview' => true]);
 })->name('spr.preview');
 Route::get('spr/download/{token}/file', function (string $token) {

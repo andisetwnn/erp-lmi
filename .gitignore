@@ -73,5 +73,8 @@ desktop.ini
 # Local DB backups from demo:zero-out command (never commit)
 /storage/backups
 
+# Import artifacts (KTP maps, NIK lists dari proses import — SENSITIF)
+/storage/import-artifacts
+
 # Arsip lokal command import v1 — isinya sudah tersimpan di riwayat git
 /storage/archived-commands
