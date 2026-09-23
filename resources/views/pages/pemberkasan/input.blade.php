@@ -56,6 +56,8 @@ new #[Title('Input Pemberkasan')] class extends Component
 
     public ?string $val_wcr_tanggal = null;
 
+    public ?string $val_wcr_catatan = null;
+
     public ?string $val_sp3k_tanggal = null;
 
     public ?string $val_sp3k_nomor = null;
@@ -140,7 +142,10 @@ new #[Title('Input Pemberkasan')] class extends Component
                 $this->val_bm_tanggal = $p?->bm_tanggal?->toDateString(),
                 $this->existingFileName = $p?->bm_file_original_name,
             ],
-            'wcr' => $this->val_wcr_tanggal = $p?->wcr_tanggal?->toDateString(),
+            'wcr' => [
+                $this->val_wcr_tanggal = $p?->wcr_tanggal?->toDateString(),
+                $this->val_wcr_catatan = $p?->wcr_catatan,
+            ],
             'sp3k' => [
                 $this->val_sp3k_tanggal = $p?->sp3k_tanggal?->toDateString(),
                 $this->val_sp3k_nomor = $p?->sp3k_nomor,
@@ -165,7 +170,10 @@ new #[Title('Input Pemberkasan')] class extends Component
         $rules = match ($this->editingField) {
             'bank' => ['val_bank_kode' => ['required', 'in:CBN,BSN,NBU,BCA']],
             'bm' => ['val_bm_tanggal' => ['required', 'date'], 'uploadFile' => ['nullable', 'file', 'max:5120', 'mimes:pdf,jpg,jpeg,png']],
-            'wcr' => ['val_wcr_tanggal' => ['required', 'date']],
+            'wcr' => [
+                'val_wcr_tanggal' => ['required', 'date'],
+                'val_wcr_catatan' => ['nullable', 'string', 'max:255'],
+            ],
             'sp3k' => [
                 'val_sp3k_tanggal' => ['required', 'date'],
                 'val_sp3k_nomor' => ['nullable', 'string', 'max:50'],
@@ -189,7 +197,11 @@ new #[Title('Input Pemberkasan')] class extends Component
                 $this->uploadFile ? ($data['bm_file_path'] = $this->uploadFile->store($dir, 'private'))
                     && ($data['bm_file_original_name'] = $this->uploadFile->getClientOriginalName()) : null,
             ],
-            'wcr' => $data['wcr_tanggal'] = $this->val_wcr_tanggal,
+            'wcr' => [
+                $data['wcr_tanggal'] = $this->val_wcr_tanggal,
+                // Dikosongkan berarti catatannya dihapus, bukan dibiarkan yang lama.
+                $data['wcr_catatan'] = trim((string) $this->val_wcr_catatan) ?: null,
+            ],
             'sp3k' => [
                 $data['sp3k_tanggal'] = $this->val_sp3k_tanggal,
                 $data['sp3k_nomor'] = $this->val_sp3k_nomor,
@@ -230,7 +242,7 @@ new #[Title('Input Pemberkasan')] class extends Component
     {
         $this->reset([
             'editSprId', 'editPemberkasanId', 'editingField', 'editingSprLabel',
-            'val_bank_kode', 'val_bm_tanggal', 'val_wcr_tanggal',
+            'val_bank_kode', 'val_bm_tanggal', 'val_wcr_tanggal', 'val_wcr_catatan',
             'val_sp3k_tanggal', 'val_sp3k_nomor', 'val_sp3k_expired', 'val_sp3k_nominal',
             'val_lpa_tanggal',
             'uploadFile', 'existingFileName',
@@ -590,8 +602,15 @@ new #[Title('Input Pemberkasan')] class extends Component
                                     <td @class(['whitespace-nowrap px-3 py-2', $editableCell => $canEdit])
                                         @if ($canEdit) wire:click="openField({{ $s->id }}, 'wcr')" title="Klik untuk input Wawancara" @endif>
                                         @if ($p?->wcr_tanggal)
-                                            {{ $p->wcr_tanggal->format('d/m/y') }}
-                                            @if ($canEdit) {!! $editPencil !!} @endif
+                                            <div>
+                                                {{ $p->wcr_tanggal->format('d/m/y') }}
+                                                @if ($canEdit) {!! $editPencil !!} @endif
+                                            </div>
+                                            @if ($p->wcr_catatan)
+                                                {{-- Dipotong supaya kolom tidak melebar; teks penuhnya muncul saat ditunjuk. --}}
+                                                <div class="max-w-36 truncate text-[10px] leading-tight text-zinc-500 dark:text-zinc-400"
+                                                    title="{{ $p->wcr_catatan }}">{{ $p->wcr_catatan }}</div>
+                                            @endif
                                         @else
                                             <span class="text-zinc-400">—</span>
                                             @if ($canEdit) {!! $editPencil !!} @endif
@@ -708,6 +727,13 @@ new #[Title('Input Pemberkasan')] class extends Component
             @if ($editingField === 'wcr')
                 <flux:input type="date" wire:model="val_wcr_tanggal" label="Tanggal Wawancara" required />
                 @error('val_wcr_tanggal') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
+                <flux:input
+                    wire:model="val_wcr_catatan"
+                    label="Catatan Wawancara"
+                    placeholder="opsional"
+                    maxlength="255"
+                    description="Tampil di bawah tanggal pada tabel. Mis. wawancara ulang, diwakilkan pasangan." />
+                @error('val_wcr_catatan') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
             @endif
 
             {{-- SP3K (tanpa upload — cuma tanggal + nomor + expired + nominal) --}}

@@ -14,7 +14,7 @@ class SprPemberkasan extends Model
         'spr_id',
         'bank_kode',
         'bm_tanggal', 'bm_file_path', 'bm_file_original_name',
-        'wcr_tanggal',
+        'wcr_tanggal', 'wcr_catatan',
         'sp3k_tanggal', 'sp3k_nomor', 'sp3k_expired', 'sp3k_nominal',
         'lpa_tanggal',
         'rencana_akad_tanggal',
