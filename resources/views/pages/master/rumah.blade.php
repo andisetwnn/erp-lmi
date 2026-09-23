@@ -62,6 +62,11 @@ new #[Title('Master Rumah')] class extends Component {
 
     public string $nomor_sampai = '';
 
+    /** @var array<int, int> id unit yang dicentang untuk dipindah tipenya */
+    public array $terpilih = [];
+
+    public ?int $pindah_tipe_id = null;
+
     public ?int $deleteId = null;
 
     public ?string $deleteNama = null;
@@ -119,6 +124,8 @@ new #[Title('Master Rumah')] class extends Component {
         $this->resetPage();
         $this->search = '';
         $this->filterStatus = '';
+        // Unit yang tercentang milik proyek sebelumnya — tidak ada artinya di sini.
+        $this->terpilih = [];
     }
 
     protected function rules(): array
@@ -258,7 +265,9 @@ new #[Title('Master Rumah')] class extends Component {
 
         $tipeOptions = $this->selectedProyekId
             ? TipeRumah::where('proyek_id', $this->selectedProyekId)
-                ->orderBy('tipe')->get(['id', 'tipe', 'nama_tipe'])
+                // harga_jual ikut diambil supaya pilihan tipe tujuan pada Pindah
+                // Tipe menampilkan harga sebenarnya, bukan nol.
+                ->orderBy('tipe')->get(['id', 'tipe', 'nama_tipe', 'harga_jual'])
             : collect();
 
         $blokOptions = $this->selectedProyekId
@@ -320,6 +329,87 @@ new #[Title('Master Rumah')] class extends Component {
         }
 
         return true;
+    }
+
+    /**
+     * Unit yang boleh dipindah tipenya: hanya yang masih available.
+     *
+     * Unit yang sudah booking atau terjual punya SPR yang harga, uang muka, dan
+     * plafon KPR-nya diturunkan dari tipe ini. Memindahkannya berarti mengubah
+     * dasar perjanjian yang sudah ditandatangani tanpa jejak apa pun.
+     */
+    protected function bolehPindah(): \Illuminate\Database\Eloquent\Builder
+    {
+        return Rumah::where('proyek_id', $this->selectedProyekId)->where('status', 'available');
+    }
+
+    public function bersihkanPilihan(): void
+    {
+        $this->terpilih = [];
+    }
+
+    /** Centang semua unit available yang sedang tampil di halaman ini. */
+    public function pilihSemuaHalaman(array $ids): void
+    {
+        $this->terpilih = array_values(array_unique(array_merge($this->terpilih, $ids)));
+    }
+
+    public function openPindahTipe(): void
+    {
+        if (! $this->terpilih) {
+            Flux::toast(variant: 'warning', text: 'Belum ada unit yang dipilih.');
+
+            return;
+        }
+
+        $this->pindah_tipe_id = null;
+        $this->resetErrorBag();
+        Flux::modal('pindah-tipe')->show();
+    }
+
+    /**
+     * Pindahkan beberapa unit sekaligus ke tipe lain.
+     *
+     * Status dicek ulang di sini, bukan sekadar disembunyikan dari tampilan —
+     * daftar centang hidup di sisi pengguna dan bisa memuat unit yang statusnya
+     * sudah berubah sejak halaman dibuka.
+     */
+    public function simpanPindahTipe(): void
+    {
+        $this->validate([
+            'pindah_tipe_id' => ['required', 'exists:tipe_rumah,id'],
+        ], [], ['pindah_tipe_id' => 'tipe tujuan']);
+
+        $tipe = TipeRumah::findOrFail($this->pindah_tipe_id);
+
+        if ($tipe->proyek_id !== (int) $this->selectedProyekId) {
+            $this->addError('pindah_tipe_id', 'Tipe tujuan bukan milik proyek ini.');
+
+            return;
+        }
+
+        $daftar = (clone $this->bolehPindah())->whereIn('id', $this->terpilih)->get();
+        $ditolak = count($this->terpilih) - $daftar->count();
+
+        if ($daftar->isEmpty()) {
+            Flux::toast(variant: 'warning', text: 'Tidak ada unit available yang bisa dipindah.');
+
+            return;
+        }
+
+        DB::transaction(fn () => $daftar->each->update([
+            'tipe_rumah_id' => $tipe->id,
+            'updated_by_user_id' => Auth::id(),
+        ]));
+
+        Flux::modal('pindah-tipe')->close();
+        Flux::toast(
+            variant: $ditolak ? 'warning' : 'success',
+            text: $daftar->count()." unit dipindah ke {$tipe->tipe}."
+                .($ditolak ? " $ditolak unit dilewati karena sudah tidak available." : ''),
+        );
+
+        $this->reset(['terpilih', 'pindah_tipe_id']);
     }
 
     public function edit(int $id): void
@@ -637,11 +727,39 @@ new #[Title('Master Rumah')] class extends Component {
                 </div>
             @endif
 
+            @php
+                // Hanya unit available yang boleh dipindah tipenya — yang sudah
+                // booking atau terjual dasar harganya terlanjur dipakai SPR.
+                $idsBisaPindah = $rumahs->where('status', 'available')->pluck('id')->all();
+            @endphp
+
+            @if ($terpilih)
+                <div class="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 dark:border-indigo-900/40 dark:bg-indigo-950/30">
+                    <span class="text-sm font-semibold text-indigo-900 dark:text-indigo-200">
+                        {{ count($terpilih) }} {{ __('unit dipilih') }}
+                    </span>
+                    <flux:button size="sm" variant="primary" icon="arrows-right-left" wire:click="openPindahTipe">
+                        {{ __('Pindah Tipe') }}
+                    </flux:button>
+                    <flux:button size="sm" variant="ghost" icon="x-mark" wire:click="bersihkanPilihan">
+                        {{ __('Batalkan pilihan') }}
+                    </flux:button>
+                </div>
+            @endif
+
             {{-- TABLE --}}
             <div class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900">
                 <div class="overflow-x-auto">
                     <flux:table class="px-4">
                         <flux:table.columns class="bg-zinc-50 dark:bg-zinc-800/50">
+                            <flux:table.column class="w-10">
+                                @if ($idsBisaPindah)
+                                    <input type="checkbox" title="{{ __('Pilih semua unit available di halaman ini') }}"
+                                           wire:click="pilihSemuaHalaman({{ json_encode($idsBisaPindah) }})"
+                                           @checked(! array_diff($idsBisaPindah, $terpilih))
+                                           class="size-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600" />
+                                @endif
+                            </flux:table.column>
                             <flux:table.column class="w-12">{{ __('No') }}</flux:table.column>
                             <x-sortable-column field="blok" :sort-by="$sortBy" :sort-dir="$sortDir">{{ __('Kavling') }}</x-sortable-column>
                             <flux:table.column>{{ __('Tipe') }}</flux:table.column>
@@ -659,6 +777,15 @@ new #[Title('Master Rumah')] class extends Component {
                         <flux:table.rows>
                             @forelse ($rumahs as $row)
                                 <flux:table.row :key="'row-'.$row->id">
+                                    <flux:table.cell>
+                                        @if ($row->status === 'available')
+                                            <input type="checkbox" value="{{ $row->id }}" wire:model.live="terpilih"
+                                                   class="size-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600" />
+                                        @else
+                                            {{-- Sengaja tanpa centang: tipenya sudah jadi dasar harga di SPR. --}}
+                                            <span class="block size-4" title="{{ __('Hanya unit available yang bisa dipindah tipenya') }}"></span>
+                                        @endif
+                                    </flux:table.cell>
                                     <flux:table.cell class="text-zinc-500">{{ $loop->index + ($rumahs->firstItem() ?? 1) }}</flux:table.cell>
                                     <flux:table.cell variant="strong" class="whitespace-nowrap font-mono">{{ $row->kode_unit }}</flux:table.cell>
                                     <flux:table.cell class="whitespace-nowrap">
@@ -728,7 +855,7 @@ new #[Title('Master Rumah')] class extends Component {
                                 </flux:table.row>
                             @empty
                                 <flux:table.row>
-                                    <flux:table.cell colspan="12" class="py-8 text-center text-zinc-500">
+                                    <flux:table.cell colspan="13" class="py-8 text-center text-zinc-500">
                                         @if ($search || $filterStatus)
                                             {{ __('Tidak ada unit yang cocok dengan filter.') }}
                                         @else
@@ -769,6 +896,39 @@ new #[Title('Master Rumah')] class extends Component {
                     </flux:button>
                 </div>
             </div>
+        </flux:modal>
+
+        {{-- PINDAH TIPE --}}
+        <flux:modal name="pindah-tipe" class="md:w-lg" focusable>
+            <form wire:submit="simpanPindahTipe" class="space-y-5">
+                <div>
+                    <flux:heading size="lg">{{ __('Pindah Tipe Rumah') }}</flux:heading>
+                    <flux:subheading>
+                        {{ __(':jumlah unit akan memakai tipe baru. Harga, luas, dan skema uang mukanya ikut tipe tujuan.', ['jumlah' => count($terpilih)]) }}
+                    </flux:subheading>
+                </div>
+
+                <flux:field>
+                    <flux:label>{{ __('Tipe tujuan') }}</flux:label>
+                    <flux:select wire:model="pindah_tipe_id" :placeholder="__('Pilih tipe')">
+                        @foreach ($tipeOptions as $t)
+                            <flux:select.option value="{{ $t->id }}">
+                                {{ $t->tipe }} — {{ $t->nama_tipe }} (Rp {{ number_format($t->harga_jual, 0, ',', '.') }})
+                            </flux:select.option>
+                        @endforeach
+                    </flux:select>
+                    @error('pindah_tipe_id') <flux:error :message="$message" /> @enderror
+                </flux:field>
+
+                <div class="flex justify-end gap-2">
+                    <flux:modal.close>
+                        <flux:button variant="filled" type="button">{{ __('Batal') }}</flux:button>
+                    </flux:modal.close>
+                    <flux:button variant="primary" type="submit" icon="arrows-right-left">
+                        {{ __('Pindahkan') }}
+                    </flux:button>
+                </div>
+            </form>
         </flux:modal>
 
         {{-- FORM MODAL --}}
