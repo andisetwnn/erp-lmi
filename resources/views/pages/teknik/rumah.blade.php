@@ -633,11 +633,36 @@ new #[Title('Data Rumah — Teknik')] class extends Component
             </div>
 
             <div>
-                <label class="mb-2 block text-sm font-medium">Progres Fisik: <span class="font-mono text-cyan-700">{{ $val_progres }}%</span></label>
-                <input type="range" min="0" max="100" step="5" wire:model.live="val_progres" class="w-full accent-cyan-600" />
-                <div class="mt-1 flex justify-between text-[10px] text-zinc-400">
+                <label class="mb-2 block text-sm font-medium">Progres Fisik</label>
+
+                {{-- Geser untuk perkiraan cepat, ketik kalau angkanya sudah pasti.
+                     Langkahnya 1, bukan 5: progres dari Matrix bernilai ganjil seperti
+                     43% atau 94%, dan dengan langkah 5 angka itu langsung hilang
+                     begitu slidernya tersenggol. --}}
+                <div class="flex items-center gap-3">
+                    <input type="range" min="0" max="100" step="1" wire:model.live="val_progres"
+                           class="min-w-0 flex-1 accent-cyan-600" />
+                    <div class="flex shrink-0 items-center gap-1">
+                        <input type="number" min="0" max="100" step="1" wire:model.live="val_progres"
+                               class="w-20 rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-right font-mono text-sm tabular-nums focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-zinc-600 dark:bg-zinc-800" />
+                        <span class="text-sm font-medium text-zinc-500">%</span>
+                    </div>
+                </div>
+
+                <div class="mt-1 flex justify-between pr-24 text-[10px] text-zinc-400">
                     <span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
                 </div>
+
+                <div class="mt-2 flex flex-wrap gap-1">
+                    @foreach ([0, 25, 50, 75, 100] as $preset)
+                        <flux:button size="xs"
+                                     :variant="(int) $val_progres === $preset ? 'primary' : 'outline'"
+                                     wire:click="$set('val_progres', {{ $preset }})">
+                            {{ $preset }}%
+                        </flux:button>
+                    @endforeach
+                </div>
+
                 @error('val_progres') <div class="mt-1 text-xs text-rose-600">{{ $message }}</div> @enderror
             </div>
 
