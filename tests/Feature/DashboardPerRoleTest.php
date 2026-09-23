@@ -65,14 +65,31 @@ it('tidak menampilkan saldo kas maupun piutang di dashboard sales', function () 
         ->and($html)->toContain('Biaya Tambahan');
 });
 
-it('menampilkan berkas yang perlu ditindaklanjuti di dashboard KPR', function () {
+it('menampilkan posisi berkas per tahap di dashboard KPR', function () {
     $this->actingAs(userDenganRole('admin-kpr'));
 
     $html = Livewire::test('pages::dashboard.kpr')->html();
 
+    // Tiap tahap punya kartunya sendiri supaya kelihatan berkas menumpuk di mana.
     expect($html)->toContain('Belum Ada Berkas')
-        ->and($html)->toContain('SP3K Lewat Tanggal')
-        ->and($html)->toContain('Jatuh Tempo 30 Hari');
+        ->and($html)->toContain('Menunggu Wawancara')
+        ->and($html)->toContain('Menunggu SP3K')
+        ->and($html)->toContain('SP3K Terbit')
+        ->and($html)->toContain('Jatuh Tempo 30 Hari')
+        ->and($html)->toContain('Lewat Tanggal');
+});
+
+it('menampilkan lama tempuh tiap tahap di dashboard KPR', function () {
+    $this->actingAs(userDenganRole('admin-kpr'));
+
+    $html = Livewire::test('pages::dashboard.kpr')->html();
+
+    expect($html)->toContain('Kinerja Pemberkasan')
+        ->and($html)->toContain('Berkas → Wawancara')
+        ->and($html)->toContain('Wawancara → SP3K')
+        // Tanpa data, angkanya tidak boleh muncul sebagai nol — nol terbaca
+        // sebagai "selesai hari itu juga", padahal datanya memang belum ada.
+        ->and($html)->toContain('Belum ada datanya');
 });
 
 it('membedakan progres belum dicatat dari unit yang belum dibangun', function () {
