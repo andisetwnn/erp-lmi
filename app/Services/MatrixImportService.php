@@ -92,6 +92,17 @@ class MatrixImportService
     private const BUKAN_TAHAP = ['NOTED', 'NOTE', 'CATATAN', 'KETERANGAN'];
 
     /**
+     * Terjemahan kode subcon ke nama aslinya, dibaca dari kepala berkas.
+     *
+     * Kolom subcon di Matrix diisi singkatan ("MSM") semata karena nama panjangnya
+     * tidak muat di sel. Nama lengkapnya didaftarkan di pojok kiri atas tiap sheet,
+     * di kolom F sebelah label SUBKON.
+     *
+     * @var array<string, string>
+     */
+    private array $legendaSubcon = [];
+
+    /**
      * Baca berkas lalu simpan. Unggahan lama tidak dihapus — laporan selalu
      * memakai yang terbaru, dan yang lama tetap bisa ditengok kalau angkanya
      * dipertanyakan.
@@ -100,6 +111,7 @@ class MatrixImportService
     {
         $spreadsheet = $this->baca($path);
         $meta = $this->bacaMeta($this->cariSheet($spreadsheet, ['MIKRO']));
+        $this->legendaSubcon = $this->bacaLegendaSubcon($spreadsheet);
 
         return DB::transaction(function () use ($spreadsheet, $namaFile, $userId, $meta) {
             $import = MatrixImport::create([
@@ -178,6 +190,33 @@ class MatrixImportService
      *
      * @return array{proyek: ?string, minggu_ke: ?string, periode: ?string}
      */
+    /**
+     * Kode subcon dan kepanjangannya, mis. "MSM : MUATIARA S MIZAN".
+     *
+     * Hanya kolom F yang dibaca. Kolom K dan P memakai bentuk yang sama untuk
+     * kode bank dan pekerjaan teknik, dan itu bukan subcon.
+     *
+     * @return array<string, string>
+     */
+    private function bacaLegendaSubcon(Spreadsheet $spreadsheet): array
+    {
+        $legenda = [];
+
+        foreach ($spreadsheet->getAllSheets() as $sheet) {
+            for ($r = 1; $r <= 8; $r++) {
+                $isi = trim((string) $this->nilai($sheet->getCell("F$r")));
+
+                if ($isi === '' || ! preg_match('/^([A-Z]{2,4})\s*:\s*(.+)$/u', $isi, $cocok)) {
+                    continue;
+                }
+
+                $legenda[strtoupper($cocok[1])] = trim($cocok[2]);
+            }
+        }
+
+        return $legenda;
+    }
+
     private function bacaMeta(?Worksheet $mikro): array
     {
         if (! $mikro instanceof Worksheet) {
@@ -259,6 +298,7 @@ class MatrixImportService
                 in_array($field, self::KOLOM_TANGGAL, true) => $this->keTanggal($mentah),
                 in_array($field, self::KOLOM_UANG, true) => $this->keUang($mentah),
                 in_array($field, self::KOLOM_ANGKA, true) => $this->keBulat($mentah),
+                $field === 'subcon' => $this->keSubcon($mentah),
                 $field === 'progres' => $this->kePersen($mentah),
                 $field === 'persen_um' => $this->kePecahan($mentah),
                 default => $this->keTeks($mentah),
@@ -297,6 +337,21 @@ class MatrixImportService
     private function bersihkanSeksi(string $teks): string
     {
         return trim(rtrim(trim($teks), ':'));
+    }
+
+    /**
+     * Kode subcon diganti nama aslinya. Kode yang tidak ada di legenda dibiarkan
+     * apa adanya — lebih baik tampil sebagai singkatan daripada jadi nama karangan.
+     */
+    private function keSubcon(mixed $v): ?string
+    {
+        $kode = $this->keTeks($v);
+
+        if ($kode === null) {
+            return null;
+        }
+
+        return $this->legendaSubcon[strtoupper($kode)] ?? $kode;
     }
 
     private function keTeks(mixed $v): ?string
