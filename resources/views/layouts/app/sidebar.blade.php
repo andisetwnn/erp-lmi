@@ -54,7 +54,15 @@
             </flux:sidebar.header>
 
             @auth
-                @canany(['master.kelola', 'master.proyek.kelola', 'spr.lihat', 'pembayaran.kelola', 'spr.approve'])
+                {{-- Semua izin yang membuka halaman ber-lingkup proyek harus ada di sini.
+                     Kalau ada yang terlewat, pemiliknya kehilangan picker sementara
+                     halamannya sendiri menuntut proyek dipilih dulu — buntu total. --}}
+                @canany([
+                    'master.kelola', 'master.proyek.kelola', 'master.tipe.kelola', 'master.rumah.kelola',
+                    'spr.lihat', 'spr.approve', 'pembayaran.kelola',
+                    'pemberkasan.kelola', 'pemberkasan.lihat',
+                    'matrix.lihat', 'teknik.rumah.lihat', 'laporan.lihat',
+                ])
                     <livewire:active-proyek />
                 @endcanany
             @endauth
