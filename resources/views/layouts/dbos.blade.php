@@ -2,6 +2,7 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
         @include('partials.head')
+        @include('partials.dbos-head')
     </head>
     <body class="min-h-screen bg-zinc-100 pb-20 dark:bg-zinc-950">
 

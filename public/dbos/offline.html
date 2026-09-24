@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tidak ada koneksi — DBOS</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            background: linear-gradient(135deg, #ea580c, #f97316 55%, #f59e0b);
+            font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+            color: #fff;
+        }
+        .kartu {
+            width: 100%;
+            max-width: 22rem;
+            text-align: center;
+            background: rgba(255, 255, 255, .12);
+            border: 1px solid rgba(255, 255, 255, .25);
+            border-radius: 1rem;
+            padding: 2rem 1.5rem;
+            backdrop-filter: blur(8px);
+        }
+        img { width: 4.5rem; height: 4.5rem; border-radius: .75rem; }
+        h1 { margin: 1.25rem 0 .5rem; font-size: 1.25rem; }
+        p { margin: 0; font-size: .875rem; line-height: 1.6; color: rgba(255, 255, 255, .85); }
+        button {
+            margin-top: 1.5rem;
+            width: 100%;
+            padding: .75rem 1rem;
+            font: inherit;
+            font-weight: 600;
+            color: #c2410c;
+            background: #fff;
+            border: 0;
+            border-radius: .625rem;
+            cursor: pointer;
+        }
+        button:active { transform: translateY(1px); }
+    </style>
+</head>
+<body>
+    <div class="kartu">
+        <img src="/dbos/icon-192.png" alt="DBOS">
+        <h1>Tidak ada koneksi</h1>
+        <p>
+            Halaman ini butuh internet. Periksa sinyal atau paket data, lalu coba lagi.
+            Data yang sudah kamu kirim sebelumnya tetap tersimpan di server.
+        </p>
+        <button type="button" onclick="location.reload()">Coba lagi</button>
+    </div>
+</body>
+</html>

@@ -2,6 +2,7 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
         @include('partials.head')
+        @include('partials.dbos-head')
     </head>
     <body class="relative min-h-screen overflow-x-hidden bg-linear-to-br from-orange-600 via-orange-500 to-amber-500">
         {{-- Decorative blobs --}}
