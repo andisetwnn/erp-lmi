@@ -11,8 +11,8 @@
  * ulang dari jaringan.
  */
 const VERSI = 'dbos-v1';
-const HALAMAN_OFFLINE = '/dbos/offline.html';
-const BEKAL = [HALAMAN_OFFLINE, '/dbos/icon-192.png'];
+const HALAMAN_OFFLINE = '/dbos-app/offline.html';
+const BEKAL = [HALAMAN_OFFLINE, '/dbos-app/icon-192.png'];
 
 self.addEventListener('install', (event) => {
     event.waitUntil(
