@@ -1159,7 +1159,7 @@ new #[Title('Master Sales')] class extends Component {
 
                 <div class="space-y-4">
                     <flux:heading size="sm" class="text-zinc-500 uppercase tracking-wider">{{ __('Akun DBOS') }}</flux:heading>
-                    <flux:subheading class="text-xs">{{ __('Kredensial login untuk aplikasi DBOS (Data Booking Order Sales). Bisa di-set sekarang atau belakangan.') }}</flux:subheading>
+                    <flux:subheading class="text-xs">{{ __('Kredensial login untuk aplikasi DBOS (Database Booking Online System). Bisa di-set sekarang atau belakangan.') }}</flux:subheading>
 
                     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <flux:field>

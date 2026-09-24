@@ -72,7 +72,7 @@ new #[Title('Masuk DBOS'), Layout('layouts.dbos-guest')] class extends Component
              role="img" aria-label="LMI">
         </div>
         <h1 class="mt-5 text-4xl font-extrabold tracking-tight text-white drop-shadow-sm">DBOS</h1>
-        <p class="mt-1 text-sm font-medium text-white/85">{{ __('Data Booking Order Sales') }}</p>
+        <p class="mt-1 text-sm font-medium text-white/85">{{ __('Database Booking Online System') }}</p>
         <div class="mx-auto mt-3 h-0.5 w-12 rounded-full bg-white/40"></div>
     </div>
 
