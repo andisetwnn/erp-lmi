@@ -91,6 +91,8 @@ new #[Title('Pengguna Sistem')] class extends Component
         'master.customer.kelola'    => 'Kelola Master Customer',
         'master.sales.kelola'       => 'Kelola Master Sales',
         'master.notaris.kelola'     => 'Kelola Master Notaris',
+        'master.subcon.kelola'      => 'Kelola Master Subcon',
+        'master.bankkpr.kelola'     => 'Kelola Master Bank KPR',
         'master.va.kelola'          => 'Kelola Master Virtual Account',
         'master.coa.kelola'         => 'Kelola Master COA',
         // SPR
@@ -99,9 +101,18 @@ new #[Title('Pengguna Sistem')] class extends Component
         'spr.batal'                 => 'Pembatalan SPR',
         'spr.pindah-unit'           => 'Pindah Kavling',
         'spr.cetak'                 => 'Cetak PDF SPR',
+        'spr.akad'                  => 'Tandai SPR Sudah Akad',
         'biayatambahan.kelola'      => 'Kelola Biaya Tambahan Unit',
         'pemberkasan.kelola'        => 'Kelola Pemberkasan KPR',
         'pemberkasan.lihat'         => 'Lihat Pemberkasan KPR',
+        // Rencana Akad
+        'rencanaakad.kelola'        => 'Susun Rencana Akad',
+        'rencanaakad.mengetahui'    => 'Mengetahui Rencana Akad (PM)',
+        'rencanaakad.approve'       => 'Setujui Rencana Akad (Direksi)',
+        'rencanaakad.lihat'         => 'Lihat Rencana Akad',
+        // Matrix
+        'matrix.kelola'             => 'Unggah Berkas Matrix',
+        'matrix.lihat'              => 'Lihat Laporan Matrix',
         // Teknik
         'teknik.rumah.lihat'        => 'Lihat Data Rumah Teknik',
         'teknik.rumah.update'       => 'Update Progres Fisik Rumah',
@@ -146,6 +157,8 @@ new #[Title('Pengguna Sistem')] class extends Component
         'master.customer.kelola'    => 'Menambah / mengubah data customer (KTP, NPWP, alamat). Admin KPR biasanya butuh ini.',
         'master.sales.kelola'       => 'Menambah / mengubah data sales lapangan beserta akun DBOS-nya.',
         'master.notaris.kelola'     => 'Menambah / mengubah data notaris beserta biaya jasa. Finance biasanya butuh ini.',
+        'master.subcon.kelola'      => 'Menambah / mengubah data subkontraktor beserta dokumen dan rekeningnya.',
+        'master.bankkpr.kelola'     => 'Menambah / mengubah bank tempat berkas KPR diurus beserta biaya proses akad per unitnya. Tarifnya berubah mengikuti kabar dari bank — Admin KPR dan Finance sama-sama boleh memperbaruinya.',
         'master.va.kelola'          => 'Menambah / mengubah virtual account bank untuk penerimaan konsumen.',
         'master.coa.kelola'         => 'Menambah / mengubah Chart of Accounts (COA) beserta struktur hierarkinya. Finance biasanya butuh ini.',
         // SPR
@@ -157,6 +170,15 @@ new #[Title('Pengguna Sistem')] class extends Component
         'biayatambahan.kelola'      => 'Input realisasi pembayaran biaya tambahan unit (kavling hook, view, dll) beserta refund saat SPR dibatalkan. Diproses terpisah dari SPR — tidak memengaruhi total harga SPR / cicilan.',
         'pemberkasan.kelola'        => 'Kelola tahapan pemberkasan KPR untuk Admin KPR: input tanggal Berkas Masuk, Wawancara, SP3K, LPA (khusus BTN), Rencana Akad + upload file berkas customer. Sumber data untuk tracking approval bank sebelum akad.',
         'pemberkasan.lihat'         => 'View-only tabel pemberkasan KPR — tidak bisa input/edit. Cocok untuk direktur, PM, dan Finance yg butuh visibility progress berkas ke bank.',
+        'spr.akad'                  => 'Menandai SPR sudah akad beserta tanggalnya. Sementara dipegang Admin Sales; pindah ke Admin KPR begitu modul Rencana Akad dipakai penuh.',
+        // Rencana Akad
+        'rencanaakad.kelola'        => 'Menyusun rencana akad berjamaah: menentukan tanggal, bank, notaris, melampirkan unit, mengisi biaya sesi, lalu mengajukannya untuk disetujui. Admin KPR biasanya butuh ini.',
+        'rencanaakad.mengetahui'    => 'Menyetujui pengajuan rencana akad sebagai "Diketahui" — tahap Project Manager sebelum naik ke Direksi. Bisa juga menolak beserta alasannya.',
+        'rencanaakad.approve'       => 'Persetujuan terakhir dari Direksi sekaligus mengunci tanggal akadnya. Setelah ini unit terkunci dan tanggalnya mengalir ke pemberkasan.',
+        'rencanaakad.lihat'         => 'View-only rencana akad — tidak bisa menyusun atau menyetujui. Cocok untuk Finance yang butuh melihat jadwal akad dan biayanya.',
+        // Matrix
+        'matrix.kelola'             => 'Mengunggah berkas Matrix dari Admin KPR. Sengaja dibatasi karena unggahan bisa memperbarui data teknik dan pemberkasan sekaligus.',
+        'matrix.lihat'              => 'Melihat Laporan Monitoring Akad hasil unggahan Matrix (Mikro, Makro, Non Lot, Akad).',
         'teknik.rumah.lihat'        => 'Akses menu Teknik → Data Rumah. Lihat daftar unit dengan progres fisik, LOT, dan status bangunan (tanpa data harga/finansial). Cocok untuk Admin Teknik, PM, Direktur.',
         'teknik.rumah.update'       => 'Update persentase progres fisik pembangunan unit (0-100%) + nomor LOT sertifikat. Setiap perubahan otomatis tercatat di log audit trail.',
         'target.kelola'             => 'Input & edit target penjualan/akad per proyek per tahun (RAB tahunan). Angka target akan tampil di matrix Marketing Performance dashboard direksi. Biasanya diinput oleh Direktur di awal tahun.',
@@ -194,6 +216,11 @@ new #[Title('Pengguna Sistem')] class extends Component
         'neracasaldo' => 'akunting',
         'aruskas'     => 'akunting',
         'aktivatetap' => 'akunting',
+        // Awalan yang satu kata tapi dua suku — tanpa ini judulnya terbaca
+        // "RENCANAAKAD", nama teknis yang tidak pernah dipakai orang.
+        'rencanaakad' => 'rencana akad',
+        'biayatambahan' => 'biaya tambahan',
+        'notifikasi'  => 'monitoring',
     ];
 
     protected function defaultSortBy(): ?string
