@@ -56,12 +56,16 @@ new #[Title('Monitoring')] class extends Component
         'utj.verified'      => ['UTJ Diverifikasi', 'banknotes', 'purple', 'keuangan'],
         'realisasi.created' => ['Realisasi Pembayaran', 'currency-dollar', 'purple', 'keuangan'],
         'realisasi.updated' => ['Realisasi Dikoreksi', 'pencil-square', 'amber', 'keuangan'],
+        'realisasi.deleted' => ['Realisasi Dihapus', 'trash', 'rose', 'keuangan'],
         'refund.processed'  => ['Refund Diproses', 'arrow-uturn-left', 'amber', 'keuangan'],
         'materai.stamped'   => ['e-Materai Ditempel', 'document-check', 'purple', 'keuangan'],
         // Unit
         'unit.created' => ['Unit Baru', 'plus-circle', 'blue', 'unit'],
         'unit.updated' => ['Unit Diubah', 'pencil-square', 'blue', 'unit'],
         'unit.status_changed' => ['Status Unit Berubah', 'arrow-path', 'cyan', 'unit'],
+        'tipe.created' => ['Tipe Rumah Baru', 'cube', 'blue', 'unit'],
+        'tipe.updated' => ['Tipe Rumah Diubah', 'pencil-square', 'blue', 'unit'],
+        'tipe.deleted' => ['Tipe Rumah Dihapus', 'trash', 'rose', 'unit'],
     ];
 
     /** Deskripsi tooltip per event — dijelaskan supaya user paham. */
@@ -78,11 +82,15 @@ new #[Title('Monitoring')] class extends Component
         'utj.verified'      => 'Keuangan verifikasi bukti transfer UTJ cocok dengan mutasi bank. Status SPR jadi Diproses.',
         'realisasi.created' => 'Pembayaran termin UM dari customer diterima & dicatat Keuangan.',
         'realisasi.updated' => 'Data realisasi pembayaran dikoreksi (tanggal / jumlah / metode / keterangan). Nomor kwitansi tetap.',
+        'realisasi.deleted' => 'Pembayaran yang salah catat dihapus Keuangan. Sisa uang muka customer kembali seperti sebelum dicatat.',
         'refund.processed'  => 'Refund dana ke customer diproses (setelah SPR dibatalkan).',
         'materai.stamped'   => 'e-Materai ditempel di dokumen SPR final (langkah terakhir). SPR sekarang sah bermaterai.',
         'unit.created'         => 'Unit rumah baru ditambahkan ke master data.',
         'unit.updated'         => 'Data unit rumah diubah (blok, tipe, harga, dll).',
         'unit.status_changed'  => 'Status unit berubah antara Tersedia / Booking / Terjual.',
+        'tipe.created'         => 'Tipe rumah baru ditambahkan (luas, harga, skema uang muka).',
+        'tipe.updated'         => 'Data tipe rumah diubah — harga dan skema uang muka unit baru mengikuti perubahan ini.',
+        'tipe.deleted'         => 'Tipe rumah dihapus dari master data.',
     ];
 
     public function setCategory(string $c): void
