@@ -33,19 +33,23 @@ class SprPemberkasan extends Model
         'sp3k_nominal' => 'decimal:2',
     ];
 
-    /** 5 bank yg dipakai admin KPR. Kunci = kode singkat, value = label. */
-    public const BANK_OPTIONS = [
-        'CBN' => 'BTN KC Cibinong',
-        'BSY' => 'BTN Syariah',
-        'BSN' => 'BSN KCP Warung Jambu',
-        'NBU' => 'Bank Nobu',
-        'BCA' => 'Bank BCA',
-    ];
+    /**
+     * Pilihan bank KPR — kunci kode, nilai nama.
+     *
+     * Dulu daftarnya konstanta di kelas ini, sehingga menambah bank berarti
+     * mengubah kode dan deploy ulang. Sekarang dari master `bank_kpr`.
+     *
+     * @return array<string, string>
+     */
+    public static function pilihanBank(): array
+    {
+        return BankKpr::pilihan();
+    }
 
-    /** LPA hanya wajib untuk bank BTN (CBN konvensional + BSY syariah). */
+    /** LPA hanya diurus untuk bank yang mensyaratkannya — ditandai di master. */
     public function lpaRequired(): bool
     {
-        return in_array($this->bank_kode, ['CBN', 'BSY'], true);
+        return BankKpr::wajibLpa($this->bank_kode);
     }
 
     /** Hitung berapa tahap sudah lengkap (dari total 5). LPA cuma dihitung kalau bank = CBN. */
@@ -71,6 +75,32 @@ class SprPemberkasan extends Model
         }
 
         return $count;
+    }
+
+    /**
+     * Tahap terjauh yang tanggalnya sudah tercatat. Null kalau belum satu pun.
+     *
+     * Dibaca dari belakang: yang paling jauh menentukan posisi berkasnya,
+     * bukan yang paling awal. Tahap yang terlewat tidak menggugurkan — data
+     * historis memang banyak yang hanya punya tanggal SP3K.
+     */
+    public function tahapTerakhir(): ?string
+    {
+        $tahap = [
+            'Rencana Akad' => $this->rencana_akad_tanggal,
+            'LPA' => $this->lpa_tanggal,
+            'SP3K' => $this->sp3k_tanggal,
+            'Wawancara' => $this->wcr_tanggal,
+            'Berkas Lengkap' => $this->bm_tanggal,
+        ];
+
+        foreach ($tahap as $nama => $tanggal) {
+            if ($tanggal) {
+                return $nama;
+            }
+        }
+
+        return null;
     }
 
     /** Total tahap wajib (5 kalau BTN, 4 kalau selain BTN). */

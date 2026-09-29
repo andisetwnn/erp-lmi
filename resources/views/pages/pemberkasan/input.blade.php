@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Master\BankKpr;
 use App\Models\Master\Proyek;
 use App\Models\Master\Spr;
 use App\Models\Master\SprPemberkasan;
@@ -122,7 +123,7 @@ new #[Title('Input Pemberkasan')] class extends Component
         $p = $spr->pemberkasan;
 
         // Guard: LPA cuma untuk BTN (CBN konvensional + BSY syariah)
-        if ($field === 'lpa' && ! in_array($p?->bank_kode, ['CBN', 'BSY'], true)) {
+        if ($field === 'lpa' && ! BankKpr::wajibLpa($p?->bank_kode)) {
             Flux::toast(variant: 'warning', text: 'LPA hanya wajib untuk Bank BTN (CBN / BSY). Pilih bank BTN dulu.');
 
             return;
@@ -168,7 +169,7 @@ new #[Title('Input Pemberkasan')] class extends Component
 
         // Validate per field. Upload berkas hanya untuk BM (Berkas Masuk).
         $rules = match ($this->editingField) {
-            'bank' => ['val_bank_kode' => ['required', 'in:CBN,BSN,NBU,BCA']],
+            'bank' => ['val_bank_kode' => ['required', 'exists:bank_kpr,kode']],
             'bm' => ['val_bm_tanggal' => ['required', 'date'], 'uploadFile' => ['nullable', 'file', 'max:5120', 'mimes:pdf,jpg,jpeg,png']],
             'wcr' => [
                 'val_wcr_tanggal' => ['required', 'date'],
@@ -345,7 +346,7 @@ new #[Title('Input Pemberkasan')] class extends Component
                 ->whereBetween('sp3k_expired', [now(), now()->addDays(30)])),
             'sp3k_expired' => $q->whereHas('pemberkasan', fn ($p) => $p->whereNotNull('sp3k_expired')
                 ->where('sp3k_expired', '<', now())),
-            'lpa_wajib' => $q->whereHas('pemberkasan', fn ($p) => $p->whereIn('bank_kode', ['CBN', 'BSY'])
+            'lpa_wajib' => $q->whereHas('pemberkasan', fn ($p) => $p->whereIn('bank_kode', BankKpr::kodeWajibLpa())
                 ->whereNotNull('sp3k_tanggal')->whereNull('lpa_tanggal')),
             'akad_diset' => $q->whereHas('pemberkasan', fn ($p) => $p->whereNotNull('rencana_akad_tanggal')),
             default => null,
@@ -406,7 +407,7 @@ new #[Title('Input Pemberkasan')] class extends Component
                     <flux:select wire:model.live="filterBank" placeholder="Semua Bank" size="sm">
                         <flux:select.option value="">Semua Bank</flux:select.option>
                         <flux:select.option value="__EMPTY__">— (Belum di-set)</flux:select.option>
-                        @foreach (\App\Models\Master\SprPemberkasan::BANK_OPTIONS as $kode => $label)
+                        @foreach (\App\Models\Master\SprPemberkasan::pilihanBank() as $kode => $label)
                             <flux:select.option value="{{ $kode }}">{{ $kode }} — {{ $label }}</flux:select.option>
                         @endforeach
                     </flux:select>
@@ -639,9 +640,9 @@ new #[Title('Input Pemberkasan')] class extends Component
                                     </td>
 
                                     {{-- LPA — cuma untuk CBN (editable) --}}
-                                    <td @class(['whitespace-nowrap px-3 py-2', $editableCell => $canEdit && in_array($p?->bank_kode, ['CBN', 'BSY'], true)])
-                                        @if ($canEdit && in_array($p?->bank_kode, ['CBN', 'BSY'], true)) wire:click="openField({{ $s->id }}, 'lpa')" title="Klik untuk input LPA" @endif>
-                                        @if (in_array($p?->bank_kode, ['CBN', 'BSY'], true))
+                                    <td @class(['whitespace-nowrap px-3 py-2', $editableCell => $canEdit && BankKpr::wajibLpa($p?->bank_kode)])
+                                        @if ($canEdit && BankKpr::wajibLpa($p?->bank_kode)) wire:click="openField({{ $s->id }}, 'lpa')" title="Klik untuk input LPA" @endif>
+                                        @if (BankKpr::wajibLpa($p?->bank_kode))
                                             @if ($p->lpa_tanggal)
                                                 {{ $p->lpa_tanggal->format('d/m/y') }}
                                             @else
@@ -700,7 +701,7 @@ new #[Title('Input Pemberkasan')] class extends Component
             @if ($editingField === 'bank')
                 <flux:select wire:model="val_bank_kode" label="Bank KPR" required>
                     <flux:select.option value="">-- Pilih Bank --</flux:select.option>
-                    @foreach (\App\Models\Master\SprPemberkasan::BANK_OPTIONS as $kode => $label)
+                    @foreach (\App\Models\Master\SprPemberkasan::pilihanBank() as $kode => $label)
                         <flux:select.option value="{{ $kode }}">{{ $kode }} — {{ $label }}</flux:select.option>
                     @endforeach
                 </flux:select>

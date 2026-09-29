@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Master\BankKpr;
 use App\Models\Master\Spr;
 use App\Models\Master\SprPemberkasan;
 use App\Models\Matrix\MatrixImport;
@@ -31,9 +32,6 @@ class MatrixSinkronPemberkasan
         'lpa' => 'lpa_tanggal',
         'rencana_akad' => 'rencana_akad_tanggal',
     ];
-
-    /** Bank yang dikenali kolom bank_kode. Selain ini diabaikan. */
-    private const BANK_SAH = ['CBN', 'BSN', 'NBU', 'BCA'];
 
     private const MASA_BERLAKU_SP3K_HARI = 90;
 
@@ -145,7 +143,10 @@ class MatrixSinkronPemberkasan
         foreach ([$u->bank_ko, $u->bank_fl, $u->bank_ta] as $kode) {
             $kode = strtoupper(trim((string) $kode));
 
-            if (in_array($kode, self::BANK_SAH, true)) {
+            // Daftar yang sah datang dari master, bukan ditulis ulang di sini —
+            // daftar yang dulu ada di sini tertinggal saat BTN Syariah
+            // ditambahkan, sehingga berkas BSY diam-diam tidak ikut tersalin.
+            if ($kode !== '' && BankKpr::terindeks()->has($kode)) {
                 return $kode;
             }
         }
