@@ -3,6 +3,8 @@
 use App\Http\Controllers\BukuBesarPdfController;
 use App\Http\Controllers\JurnalLampiranController;
 use App\Http\Controllers\LaporanAkuntingPdfController;
+use App\Http\Controllers\PersetujuanDireksiController;
+use App\Http\Controllers\RencanaAkadCetakController;
 use App\Models\Master\Perusahaan;
 use App\Models\Master\Sales;
 use App\Models\Master\Spr;
@@ -15,6 +17,21 @@ Route::redirect('/', '/login')->name('home');
 // ============ FITUR #6: Public TTD Konsumen (no auth, akses via hash unik) ============
 Route::livewire('spr/sign/{token}', 'pages::public.spr-sign')->name('spr.sign');
 Route::livewire('spr/download/{token}', 'pages::public.spr-download')->name('spr.download.page');
+
+// Persetujuan Direksi (magic link universal) — signed URL, tanpa auth.
+// URL cukup bawa rencana_id; Direksi (Haryanto/Julianto Boentaran) gambar TTD
+// langsung di halaman.
+Route::middleware('signed')->group(function () {
+    Route::get('persetujuan/rencana-akad/{rencanaId}', [PersetujuanDireksiController::class, 'show'])
+        ->name('public.persetujuan-direksi.show')
+        ->where('rencanaId', '[0-9]+');
+    Route::get('persetujuan/rencana-akad/{rencanaId}/pdf', [PersetujuanDireksiController::class, 'pdf'])
+        ->name('public.persetujuan-direksi.pdf')
+        ->where('rencanaId', '[0-9]+');
+    Route::post('persetujuan/rencana-akad/{rencanaId}', [PersetujuanDireksiController::class, 'setuju'])
+        ->name('public.persetujuan-direksi.setuju')
+        ->where('rencanaId', '[0-9]+');
+});
 Route::get('spr/preview/{token}', function (string $token) {
     // Preview dokumen SPR untuk konsumen sebelum tanda tangan.
     // Diakses via link sign yang sama (belum kadaluwarsa & belum di-sign).
@@ -166,6 +183,28 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('permission:pemberkasan.lihat|pemberkasan.kelola')->prefix('pemberkasan')->name('pemberkasan.')->group(function () {
         Route::livewire('input', 'pages::pemberkasan.input')->name('input.index');
     });
+
+    // RENCANA AKAD — penjadwalan akad berjamaah, lanjutan dari pemberkasan
+    Route::middleware('permission:rencanaakad.lihat|rencanaakad.kelola|rencanaakad.mengetahui|rencanaakad.approve')
+        ->prefix('pemberkasan')->name('pemberkasan.')->group(function () {
+            Route::livewire('rencana-akad', 'pages::pemberkasan.rencana-akad')->name('rencana-akad.index');
+            Route::livewire('rencana-akad/blok', 'pages::pemberkasan.rencana-akad-blok')->name('rencana-akad.blok');
+
+            // Halaman approval khusus PM (menyetujui rencana akad jadi "Diketahui").
+            // Middleware permission diletakkan di Livewire component (mount) supaya
+            // pola Route::livewire() tetap konsisten dengan halaman lain.
+            Route::livewire('approval-rencana-akad', 'pages::pemberkasan.approval-rencana-akad')
+                ->name('approval-rencana-akad.index');
+
+            Route::livewire('rencana-akad/{id}', 'pages::pemberkasan.rencana-akad-show')
+                ->name('rencana-akad.show')->where('id', '[0-9]+');
+
+            // Cetak & export per rencana
+            Route::get('rencana-akad/{id}/cetak/aju-dana', [RencanaAkadCetakController::class, 'ajuDana'])
+                ->name('rencana-akad.cetak.aju-dana')->where('id', '[0-9]+');
+            Route::get('rencana-akad/{id}/export/xlsx', [RencanaAkadCetakController::class, 'xlsx'])
+                ->name('rencana-akad.export.xlsx')->where('id', '[0-9]+');
+        });
 
     // MATRIX — laporan Mikro/Makro/Non Lot dari berkas Excel yang diunggah.
     // Sementara sampai datanya bisa dirangkai langsung dari transaksi di sistem.

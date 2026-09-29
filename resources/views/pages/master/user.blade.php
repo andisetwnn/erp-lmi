@@ -38,6 +38,8 @@ new #[Title('Pengguna Sistem')] class extends Component
 
     public string $email = '';
 
+    public string $hp = '';
+
     public string $password = '';
 
     public string $selectedRole = '';
@@ -397,7 +399,7 @@ new #[Title('Pengguna Sistem')] class extends Component
     // =========== CRUD ===========
     public function openCreate(): void
     {
-        $this->reset(['editId', 'name', 'username', 'email', 'password', 'selectedRole', 'isAktif']);
+        $this->reset(['editId', 'name', 'username', 'email', 'hp', 'password', 'selectedRole', 'isAktif']);
         $this->isAktif = true;
         $this->resetErrorBag();
         Flux::modal('user-form')->show();
@@ -410,6 +412,7 @@ new #[Title('Pengguna Sistem')] class extends Component
         $this->name = $u->name;
         $this->username = (string) ($u->username ?? '');
         $this->email = $u->email;
+        $this->hp = (string) ($u->hp ?? '');
         $this->password = '';
         $this->selectedRole = (string) ($u->roles()->pluck('name')->first() ?? '');
         $this->isAktif = (bool) $u->is_aktif;
@@ -429,18 +432,23 @@ new #[Title('Pengguna Sistem')] class extends Component
             'email' => ['required', 'email', 'max:255',
                 \Illuminate\Validation\Rule::unique('users', 'email')->ignore($this->editId),
             ],
+            // Nomor HP bebas format (0812…/+62812…/62812…); dinormalisasi ke +62
+            // saat build link wa.me di fitur Persetujuan Direksi.
+            'hp' => ['nullable', 'string', 'max:20', 'regex:/^[0-9+\-\s()]{6,20}$/'],
             'password' => $this->editId ? ['nullable', 'string', 'min:8'] : ['required', 'string', 'min:8'],
             'selectedRole' => ['required', 'string', 'exists:roles,name'],
             'isAktif' => ['boolean'],
         ], [], [
             'selectedRole' => 'role',
             'isAktif' => 'status aktif',
+            'hp' => 'nomor HP',
         ]);
 
         $data = [
             'name' => $validated['name'],
             'username' => $validated['username'],
             'email' => $validated['email'],
+            'hp' => $validated['hp'] ?: null,
             'is_aktif' => $validated['isAktif'],
         ];
 
@@ -465,7 +473,7 @@ new #[Title('Pengguna Sistem')] class extends Component
             ? "User {$user->name} berhasil diperbarui."
             : "User {$user->name} berhasil dibuat.");
 
-        $this->reset(['editId', 'name', 'username', 'email', 'password', 'selectedRole']);
+        $this->reset(['editId', 'name', 'username', 'email', 'hp', 'password', 'selectedRole']);
     }
 
     public function toggleAktif(int $id): void
@@ -1089,6 +1097,15 @@ new #[Title('Pengguna Sistem')] class extends Component
                     <flux:error name="email" />
                 </flux:field>
             </div>
+
+            <flux:field>
+                <flux:label>{{ __('Nomor HP / WA') }}</flux:label>
+                <flux:input wire:model="hp" placeholder="08123456789" />
+                <flux:description class="text-[10px]">
+                    {{ __('Dipakai untuk kirim link persetujuan Direksi via WhatsApp. Boleh dikosongkan.') }}
+                </flux:description>
+                <flux:error name="hp" />
+            </flux:field>
 
             <flux:field>
                 <flux:label>

@@ -183,25 +183,53 @@
                     </flux:sidebar.group>
                 @endif
 
-                @can('spr.approve')
+                @canany(['spr.approve', 'rencanaakad.mengetahui'])
                     @php
-                        $countApprovePending = \App\Models\Master\Spr::where('status', 'approved')
-                            ->whereNull('pm_approved_at')
-                            ->count();
+                        $countApprovePending = 0;
+                        $pendingApprovalAkad = 0;
+                        $user = auth()->user();
+
+                        if ($user?->can('spr.approve')) {
+                            $countApprovePending = \App\Models\Master\Spr::where('status', 'approved')
+                                ->whereNull('pm_approved_at')
+                                ->count();
+                        }
+
+                        if ($user?->can('rencanaakad.mengetahui')) {
+                            // Jumlah rencana menunggu PM. Cache 60 detik supaya sidebar tidak
+                            // hit query setiap halaman dimuat kalau volumenya nanti besar.
+                            $pendingApprovalAkad = \Illuminate\Support\Facades\Cache::remember(
+                                'sidebar:pending-approval-rencana-akad',
+                                60,
+                                fn () => \App\Models\Master\RencanaAkad::query()
+                                    ->where('status', 'diajukan')->count(),
+                            );
+                        }
                     @endphp
                     <flux:sidebar.group :heading="__('Approval')" icon="check-badge" expandable
-                                        :expanded="request()->routeIs('approval.*')">
-                        <flux:sidebar.item icon="clipboard-document-check" :href="route('approval.spr.index')"
-                                           :current="request()->routeIs('approval.spr.*')"
-                                           :badge="$countApprovePending > 0 ? $countApprovePending : null"
-                                           badge-color="rose"
-                                           wire:navigate>
-                            {{ __('Persetujuan SPR') }}
-                        </flux:sidebar.item>
+                                        :expanded="request()->routeIs('approval.*') || request()->routeIs('pemberkasan.approval-rencana-akad.*')">
+                        @can('spr.approve')
+                            <flux:sidebar.item icon="clipboard-document-check" :href="route('approval.spr.index')"
+                                               :current="request()->routeIs('approval.spr.*')"
+                                               :badge="$countApprovePending > 0 ? $countApprovePending : null"
+                                               badge-color="rose"
+                                               wire:navigate>
+                                {{ __('Persetujuan SPR') }}
+                            </flux:sidebar.item>
+                        @endcan
+                        @can('rencanaakad.mengetahui')
+                            <flux:sidebar.item icon="calendar-days" :href="route('pemberkasan.approval-rencana-akad.index')"
+                                               :current="request()->routeIs('pemberkasan.approval-rencana-akad.*')"
+                                               :badge="$pendingApprovalAkad > 0 ? $pendingApprovalAkad : null"
+                                               badge-color="violet"
+                                               wire:navigate>
+                                {{ __('Persetujuan Rencana Akad') }}
+                            </flux:sidebar.item>
+                        @endcan
                     </flux:sidebar.group>
-                @endcan
+                @endcanany
 
-                @canany(['pemberkasan.kelola', 'pemberkasan.lihat', 'master.bankkpr.kelola'])
+                @canany(['pemberkasan.kelola', 'pemberkasan.lihat', 'rencanaakad.lihat', 'rencanaakad.kelola', 'rencanaakad.approve', 'master.bankkpr.kelola'])
                     {{-- Bank KPR ikut di sini, bukan di Master: yang memakainya
                          sehari-hari Admin KPR, dan tarifnya berubah mengikuti
                          kabar dari bank — bukan data yang diatur sekali di awal. --}}
@@ -211,6 +239,12 @@
                             <flux:sidebar.item icon="clipboard-document-list" :href="route('pemberkasan.input.index')"
                                                :current="request()->routeIs('pemberkasan.input.*')" wire:navigate>
                                 {{ __('Input Pemberkasan') }}
+                            </flux:sidebar.item>
+                        @endcanany
+                        @canany(['rencanaakad.lihat', 'rencanaakad.kelola', 'rencanaakad.mengetahui', 'rencanaakad.approve'])
+                            <flux:sidebar.item icon="calendar-days" :href="route('pemberkasan.rencana-akad.index')"
+                                               :current="request()->routeIs('pemberkasan.rencana-akad.*')" wire:navigate>
+                                {{ __('Rencana Akad') }}
                             </flux:sidebar.item>
                         @endcanany
                         @canany(['master.kelola', 'master.bankkpr.kelola'])

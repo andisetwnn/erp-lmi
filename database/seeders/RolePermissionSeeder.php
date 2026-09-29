@@ -42,10 +42,16 @@ class RolePermissionSeeder extends Seeder
             'spr.batal',          // Proses pembatalan SPR + refund
             'spr.pindah-unit',    // Pindah kavling / swap SPR
             'spr.cetak',          // Cetak PDF SPR final
-            'spr.akad',           // Tandai SPR sudah akad + isi tanggalnya. Sementara di Admin Sales.
+            'spr.akad',           // Tandai SPR sudah akad + isi tanggalnya.
+            // Sementara di Admin Sales; pindah ke Admin KPR
+            // begitu modul Rencana Akad dipakai.
             'biayatambahan.kelola', // Input realisasi biaya tambahan unit + refund (Finance & Admin Sales)
             'pemberkasan.kelola',  // Input tahapan pemberkasan KPR (BM, WCR, SP3K, LPA, Rencana Akad) — Admin KPR
             'pemberkasan.lihat',   // View-only pemberkasan (direktur, PM, finance)
+            'rencanaakad.kelola',    // Susun rencana akad, lampirkan unit, ajukan — Admin KPR
+            'rencanaakad.mengetahui', // Setujui pengajuan sebagai "Diketahui" — Project Manager
+            'rencanaakad.approve',   // Setujui final & kunci tanggal fix — Direktur
+            'rencanaakad.lihat',     // View-only rencana akad (finance)
             'matrix.kelola',       // Unggah berkas Matrix — sengaja hanya super-admin
             'matrix.lihat',        // Lihat Laporan Mikro / Makro / Non Lot
 
@@ -96,6 +102,8 @@ class RolePermissionSeeder extends Seeder
             // Direktur: view-only (SPR, akunting, laporan, log, monitor) + kelola target
             'direktur' => [
                 'matrix.lihat',
+                'rencanaakad.approve',
+                'rencanaakad.lihat',
                 'target.kelola',
                 'spr.lihat',
                 'spr.cetak',
@@ -119,6 +127,8 @@ class RolePermissionSeeder extends Seeder
             'project-manager' => [
                 'matrix.lihat',
                 'master.subcon.kelola',
+                'rencanaakad.mengetahui',
+                'rencanaakad.lihat',
                 'master.proyek.kelola',
                 'master.tipe.kelola',
                 'master.rumah.kelola',
@@ -138,6 +148,7 @@ class RolePermissionSeeder extends Seeder
             'finance' => [
                 'matrix.lihat',
                 'master.subcon.kelola',
+                'rencanaakad.lihat',
                 'master.bankkpr.kelola',
                 'master.notaris.kelola',
                 'master.va.kelola',
@@ -170,6 +181,8 @@ class RolePermissionSeeder extends Seeder
             // Admin KPR: kelola customer + proses pembatalan SPR + pemberkasan KPR + laporan
             'admin-kpr' => [
                 'matrix.lihat',
+                'rencanaakad.kelola',
+                'rencanaakad.lihat',
                 // Tarif biaya proses akad datang dari bank dan berubah dari
                 // waktu ke waktu — Admin KPR yang pertama tahu, jadi ia yang
                 // memperbaruinya, bukan menunggu giliran orang lain.

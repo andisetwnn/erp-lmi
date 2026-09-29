@@ -301,6 +301,19 @@ class Spr extends Model
         return $this->hasOne(SprPemberkasan::class);
     }
 
+    /**
+     * Baris di rencana akad yang masih aktif untuk SPR ini.
+     * "Aktif" = statusnya belum batal. Kalau SPR pernah dijadwalkan lalu dibatalkan
+     * dan dijadwalkan ulang, hanya baris terbaru yang aktif — sinkron dengan
+     * aturan RencanaAkadService yang tidak membolehkan dua baris hidup sekaligus.
+     */
+    public function rencanaAkadUnit(): HasOne
+    {
+        return $this->hasOne(RencanaAkadUnit::class)
+            ->whereIn('status', ['draft', 'fix'])
+            ->latestOfMany();
+    }
+
     /** Total pembayaran yang sudah cair dari semua termin (BF + UM cair). */
     public function totalDibayar(): float
     {
