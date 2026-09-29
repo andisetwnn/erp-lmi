@@ -10,14 +10,18 @@ use Spatie\Permission\PermissionRegistrar;
 class RolePermissionSeeder extends Seeder
 {
     /**
-     * Role & Permission matrix untuk sistem pusat (guard `web`).
+     * Seluruh izin yang dikenal sistem pusat (guard `web`).
+     *
      * DBOS (guard `sales`) tidak pakai Spatie — pakai middleware sendiri.
+     *
+     * Dibuka sebagai method statis supaya perintah izin:lengkapi memakai daftar
+     * yang sama persis — satu sumber, bukan dua salinan yang bisa berbeda.
+     *
+     * @return list<string>
      */
-    public function run(): void
+    public static function daftarIzin(): array
     {
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
-
-        $permissions = [
+        return [
             // ─── SISTEM ───
             'user.kelola',        // Kelola user & role
             'ttd.kelola',         // Register / update tanda tangan sendiri
@@ -90,14 +94,18 @@ class RolePermissionSeeder extends Seeder
             'monitoring.lihat',    // Feed monitoring realtime + notifikasi (PM, Direktur)
             'notifikasi.keuangan', // Bell notif khusus event Keuangan
         ];
+    }
 
-        foreach ($permissions as $name) {
-            Permission::findOrCreate($name, 'web');
-        }
-
-        $roleMatrix = [
+    /**
+     * Izin yang seharusnya dimiliki tiap role.
+     *
+     * @return array<string, list<string>>
+     */
+    public static function matriksRole(): array
+    {
+        return [
             // Super admin: SEMUA permission
-            'super-admin' => $permissions,
+            'super-admin' => self::daftarIzin(),
 
             // Direktur: view-only (SPR, akunting, laporan, log, monitor) + kelola target
             'direktur' => [
@@ -213,6 +221,26 @@ class RolePermissionSeeder extends Seeder
                 'teknik.rumah.update',
             ],
         ];
+    }
+
+    /**
+     * Tegakkan matriks izin persis seperti di kode.
+     *
+     * Memakai syncPermissions, jadi izin yang diberikan manual di luar matriks
+     * ini akan dicabut. Untuk lingkungan berjalan yang isinya sudah disesuaikan
+     * tangan, pakai `php artisan izin:lengkapi` — ia hanya menambahkan.
+     */
+    public function run(): void
+    {
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $permissions = self::daftarIzin();
+
+        foreach ($permissions as $name) {
+            Permission::findOrCreate($name, 'web');
+        }
+
+        $roleMatrix = self::matriksRole();
 
         // Hapus role lama yang sudah tidak dipakai di web (sales-* di DBOS guard sendiri).
         Role::whereIn('name', ['sales-lapangan', 'sales-admin', 'fat'])
