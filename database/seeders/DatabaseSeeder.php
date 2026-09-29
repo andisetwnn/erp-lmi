@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
 
             // Master 6 yang wajib ada
             BankSeeder::class,
+            BankKprSeeder::class,
             CoaSeeder::class,
             ProyekSeeder::class,
             TipeRumahSeeder::class,

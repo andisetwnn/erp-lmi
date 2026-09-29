@@ -30,6 +30,7 @@ class RolePermissionSeeder extends Seeder
             'master.rumah.kelola',    // PM: kelola unit rumah (blok+nomor)
             'master.customer.kelola',
             'master.sales.kelola',
+            'master.bankkpr.kelola',
             'master.notaris.kelola',
             'master.subcon.kelola',
             'master.va.kelola',       // Virtual account
@@ -137,6 +138,7 @@ class RolePermissionSeeder extends Seeder
             'finance' => [
                 'matrix.lihat',
                 'master.subcon.kelola',
+                'master.bankkpr.kelola',
                 'master.notaris.kelola',
                 'master.va.kelola',
                 'master.coa.kelola',
@@ -168,6 +170,10 @@ class RolePermissionSeeder extends Seeder
             // Admin KPR: kelola customer + proses pembatalan SPR + pemberkasan KPR + laporan
             'admin-kpr' => [
                 'matrix.lihat',
+                // Tarif biaya proses akad datang dari bank dan berubah dari
+                // waktu ke waktu — Admin KPR yang pertama tahu, jadi ia yang
+                // memperbaruinya, bukan menunggu giliran orang lain.
+                'master.bankkpr.kelola',
                 'master.customer.kelola',
                 'spr.lihat',
                 'spr.batal',

@@ -124,6 +124,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::middleware('permission:master.kelola|master.va.kelola')->group(function () {
             Route::livewire('virtual-account', 'pages::master.virtual-account')->name('virtual-account.index');
         });
+        Route::middleware('permission:master.kelola|master.bankkpr.kelola')->group(function () {
+            Route::livewire('bank-kpr', 'pages::master.bank-kpr')->name('bank-kpr.index');
+        });
         Route::middleware('permission:master.kelola|master.customer.kelola')->group(function () {
             Route::livewire('customer', 'pages::master.customer')->name('customer.index');
             Route::livewire('prospect-customer', 'pages::master.prospect-customer')->name('prospect-customer.index');

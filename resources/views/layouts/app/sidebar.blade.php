@@ -201,13 +201,24 @@
                     </flux:sidebar.group>
                 @endcan
 
-                @canany(['pemberkasan.kelola', 'pemberkasan.lihat'])
+                @canany(['pemberkasan.kelola', 'pemberkasan.lihat', 'master.bankkpr.kelola'])
+                    {{-- Bank KPR ikut di sini, bukan di Master: yang memakainya
+                         sehari-hari Admin KPR, dan tarifnya berubah mengikuti
+                         kabar dari bank — bukan data yang diatur sekali di awal. --}}
                     <flux:sidebar.group :heading="__('Pemberkasan')" icon="folder-open" expandable
-                                        :expanded="request()->routeIs('pemberkasan.*')">
-                        <flux:sidebar.item icon="clipboard-document-list" :href="route('pemberkasan.input.index')"
-                                           :current="request()->routeIs('pemberkasan.input.*')" wire:navigate>
-                            {{ __('Input Pemberkasan') }}
-                        </flux:sidebar.item>
+                                        :expanded="request()->routeIs('pemberkasan.*') || request()->routeIs('master.bank-kpr.*')">
+                        @canany(['pemberkasan.kelola', 'pemberkasan.lihat'])
+                            <flux:sidebar.item icon="clipboard-document-list" :href="route('pemberkasan.input.index')"
+                                               :current="request()->routeIs('pemberkasan.input.*')" wire:navigate>
+                                {{ __('Input Pemberkasan') }}
+                            </flux:sidebar.item>
+                        @endcanany
+                        @canany(['master.kelola', 'master.bankkpr.kelola'])
+                            <flux:sidebar.item icon="building-library" :href="route('master.bank-kpr.index')"
+                                               :current="request()->routeIs('master.bank-kpr.*')" wire:navigate>
+                                {{ __('Bank KPR') }}
+                            </flux:sidebar.item>
+                        @endcanany
                     </flux:sidebar.group>
                 @endcanany
 
