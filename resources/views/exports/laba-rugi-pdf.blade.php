@@ -23,9 +23,10 @@
             border: 1px solid #999; padding: 3px 6px; font-size: 8.5px;
             overflow: hidden; word-wrap: break-word;
         }
-        .col-nama { width: 68%; }
-        .col-item { width: 16%; text-align: right; font-family: monospace; }
-        .col-total { width: 16%; text-align: right; font-family: monospace; }
+        .col-nama { width: 60%; }
+        .col-item { width: 20%; text-align: right; font-family: monospace; }
+        .col-total { width: 20%; text-align: right; font-family: monospace; }
+        .pct { color: #666; font-size: 7.5px; }
 
         thead th { text-align: left; font-weight: bold; padding: 4px 6px; font-size: 9.5px; }
         .section-pendapatan th { background: #d5f5e3; color: #145a32; }
@@ -71,85 +72,98 @@
     </table>
 </div>
 
+@php
+    $u = $data['uraian'];
+    $dasar = $u['dasar_persen'];
+
+    /**
+     * Nominal beserta persennya dalam satu sel: "14.093.000.000 (100,0%)".
+     * Bukan kolom tersendiri — persen di sini keterangan untuk nominal di
+     * sebelahnya, dan kolom tambahan cuma melebarkan tabel yang sudah panjang.
+     */
+    $nilaiPersen = function ($nilai) use ($dasar) {
+        return number_format((float) $nilai, 0, ',', '.')
+            .' <span class="pct">('.number_format(
+                \App\Services\LaporanAkuntingService::persen((float) $nilai, (float) $dasar), 1, ',', '.'
+            ).'%)</span>';
+    };
+
+    // Dua seksi di atas garis laba kotor, tiga di bawahnya. Tandanya membuat
+    // beban tampil negatif supaya penjumlahan ke bawah bisa diikuti mata.
+    $atas = [
+        ['Penjualan', $u['penjualan'], 1, 'section-pendapatan'],
+        ['Harga Pokok Penjualan', $u['hpp'], -1, 'section-beban'],
+    ];
+    $bawah = [
+        ['Biaya Usaha', $u['biaya'], -1, 'section-beban'],
+        ['Pendapatan Lain-lain', $u['pendapatan_lain'], 1, 'section-pendapatan'],
+        ['Pajak PPh Final', $u['pajak_final'], -1, 'section-beban'],
+    ];
+@endphp
+
 <table class="laporan">
-    {{-- PENDAPATAN --}}
-    <thead class="section-pendapatan">
-        <tr>
-            <th class="col-nama">Pendapatan</th>
-            <th class="col-item">Detail</th>
-            <th class="col-total">Sub Total</th>
-        </tr>
-    </thead>
-    <tbody>
-        @forelse ($data['pendapatan']['groups'] as $group)
-            <tr class="group-header">
-                <td class="col-nama">{{ $group['header']->kode }} — {{ $group['header']->nama }}</td>
-                <td class="col-item"></td>
-                <td class="col-total">{{ number_format($group['total'], 0, ',', '.') }}</td>
-            </tr>
-            @if ($rinci)
-            @foreach ($group['items'] as $item)
-                <tr class="item">
-                    <td class="col-nama">{{ $item['coa']->kode }} — {{ $item['coa']->nama }}</td>
-                    <td class="col-item">{{ number_format($item['saldo'], 0, ',', '.') }}</td>
-                    <td class="col-total"></td>
+    @foreach ([$atas, $bawah] as $i => $kelompok)
+        @foreach ($kelompok as [$judul, $seksi, $tanda, $kelas])
+            @continue(! $seksi['groups'])
+            <thead class="{{ $kelas }}">
+                <tr>
+                    <th class="col-nama">{{ $judul }}</th>
+                    <th class="col-item">Detail</th>
+                    <th class="col-total">Sub Total</th>
                 </tr>
-            @endforeach
-            @endif
-        @empty
-            <tr><td colspan="3" style="text-align:center; color:#999; padding: 8px;">Tidak ada pendapatan di periode ini.</td></tr>
-        @endforelse
-        <tr class="subtotal">
-            <td class="col-nama" colspan="2">TOTAL PENDAPATAN</td>
-            <td class="col-total">{{ number_format($data['pendapatan']['total'], 0, ',', '.') }}</td>
-        </tr>
-    </tbody>
-
-    {{-- BEBAN --}}
-    <thead class="section-beban">
-        <tr>
-            <th class="col-nama">Beban / HPP</th>
-            <th class="col-item">Detail</th>
-            <th class="col-total">Sub Total</th>
-        </tr>
-    </thead>
-    <tbody>
-        @forelse ($data['beban']['groups'] as $group)
-            <tr class="group-header">
-                <td class="col-nama">{{ $group['header']->kode }} — {{ $group['header']->nama }}</td>
-                <td class="col-item"></td>
-                <td class="col-total">{{ number_format($group['total'], 0, ',', '.') }}</td>
-            </tr>
-            @if ($rinci)
-            @foreach ($group['items'] as $item)
-                <tr class="item">
-                    <td class="col-nama">{{ $item['coa']->kode }} — {{ $item['coa']->nama }}</td>
-                    <td class="col-item">{{ number_format($item['saldo'], 0, ',', '.') }}</td>
-                    <td class="col-total"></td>
+            </thead>
+            <tbody>
+                @foreach ($seksi['groups'] as $group)
+                    <tr class="group-header">
+                        <td class="col-nama">{{ $group['header']->kode }} &mdash; {{ $group['header']->nama }}</td>
+                        <td class="col-item"></td>
+                        <td class="col-total">{!! $nilaiPersen($tanda * $group['total']) !!}</td>
+                    </tr>
+                    @if ($rinci)
+                        @foreach ($group['items'] as $item)
+                            <tr class="item">
+                                <td class="col-nama">{{ $item['coa']->kode }} &mdash; {{ $item['coa']->nama }}</td>
+                                <td class="col-item">{!! $nilaiPersen($tanda * $item['saldo']) !!}</td>
+                                <td class="col-total"></td>
+                            </tr>
+                        @endforeach
+                    @endif
+                @endforeach
+                <tr class="subtotal">
+                    <td class="col-nama" colspan="2">TOTAL {{ strtoupper($judul) }}</td>
+                    <td class="col-total">{!! $nilaiPersen($tanda * $seksi['total']) !!}</td>
                 </tr>
-            @endforeach
-            @endif
-        @empty
-            <tr><td colspan="3" style="text-align:center; color:#999; padding: 8px;">Tidak ada beban di periode ini.</td></tr>
-        @endforelse
-        <tr class="subtotal">
-            <td class="col-nama" colspan="2">TOTAL BEBAN</td>
-            <td class="col-total">{{ number_format($data['beban']['total'], 0, ',', '.') }}</td>
-        </tr>
-    </tbody>
+            </tbody>
+        @endforeach
 
-    {{-- LABA / RUGI BERSIH --}}
+        {{-- Garis laba kotor disisipkan tepat setelah seksi atas. --}}
+        @if ($i === 0)
+            <tbody>
+                <tr class="grand-total">
+                    <td class="col-nama" colspan="2">LABA KOTOR (GROSS PROFIT)</td>
+                    <td class="col-total {{ $u['gross_profit'] >= 0 ? 'laba' : 'rugi' }}">
+                        {!! $nilaiPersen($u['gross_profit']) !!}
+                    </td>
+                </tr>
+            </tbody>
+        @endif
+    @endforeach
+
     <tbody>
         <tr class="grand-total">
             <td class="col-nama" colspan="2">
-                {{ $data['laba_rugi'] >= 0 ? 'LABA BERSIH PERIODE BERJALAN' : 'RUGI BERSIH PERIODE BERJALAN' }}
+                {{ $u['net_profit'] >= 0 ? 'LABA BERSIH (NET PROFIT)' : 'RUGI BERSIH (NET PROFIT)' }}
             </td>
-            <td class="col-total {{ $data['laba_rugi'] >= 0 ? 'laba' : 'rugi' }}">
-                {{ number_format($data['laba_rugi'], 0, ',', '.') }}
+            <td class="col-total {{ $u['net_profit'] >= 0 ? 'laba' : 'rugi' }}">
+                {!! $nilaiPersen($u['net_profit']) !!}
             </td>
         </tr>
     </tbody>
 </table>
+
+<div class="footer-note" style="margin-top:6px; text-align:left;">
+    Persentase dihitung terhadap Penjualan. Pendapatan di luar usaha tidak ikut jadi penyebut.
+</div>
 
 <div class="footer-note">
     Dicetak {{ now()->translatedFormat('d F Y H:i') }} · ERP LMI

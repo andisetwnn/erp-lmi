@@ -28,6 +28,20 @@ class LaporanAkuntingService
      *   'from', 'to'
      * ]
      */
+    /**
+     * Awalan kode akun yang membentuk uraian laba rugi.
+     *
+     * Bagan akunnya memang sudah tersusun begitu: 4 penjualan, 5 harga pokok,
+     * 6 biaya usaha, 7 pendapatan di luar usaha, 8 pajak final. Dikenali dari
+     * kodenya, bukan dari namanya — nama kelompok bisa diubah orang lewat
+     * master COA, nomornya tidak.
+     */
+    private const AWALAN_PENJUALAN = '4';
+
+    private const AWALAN_HPP = '5';
+
+    private const AWALAN_PAJAK_FINAL = '8';
+
     public function labaRugi(int $perusahaanId, string $from, string $to): array
     {
         $pendapatanGroups = $this->groupSaldoByTipe($perusahaanId, 'pendapatan', $from, $to);
@@ -48,7 +62,79 @@ class LaporanAkuntingService
                 'total' => $totalBeban,
             ],
             'laba_rugi' => $totalPendapatan - $totalBeban,
+            'uraian' => $this->uraikanLabaRugi($pendapatanGroups, $bebanGroups),
         ];
+    }
+
+    /**
+     * Pecah pendapatan dan beban jadi lapisan laba kotor lalu laba bersih.
+     *
+     * Angkanya tidak berubah sedikit pun — ini penyusunan ulang. Yang didapat:
+     * jarak antara marjin kotor dan marjin bersih jadi terbaca, dan itu yang
+     * menunjukkan berapa banyak laba penjualan dimakan biaya usaha.
+     *
+     * Awalan yang tidak dikenal tidak dibuang: pendapatan jatuh ke "lain",
+     * beban jatuh ke "biaya". Lebih baik salah tempat tapi utuh daripada hilang
+     * diam-diam — dan `net_profit` yang selalu sama dengan `laba_rugi` dijaga
+     * tes, jadi kalau ada yang menguap ketahuan.
+     *
+     * @param  array<int, array{header: Coa, items: array, total: float}>  $pendapatanGroups
+     * @param  array<int, array{header: Coa, items: array, total: float}>  $bebanGroups
+     * @return array<string, mixed>
+     */
+    protected function uraikanLabaRugi(array $pendapatanGroups, array $bebanGroups): array
+    {
+        $pisah = function (array $groups, string $awalan): array {
+            $cocok = [];
+            $sisa = [];
+
+            foreach ($groups as $g) {
+                if (str_starts_with((string) $g['header']->kode, $awalan)) {
+                    $cocok[] = $g;
+                } else {
+                    $sisa[] = $g;
+                }
+            }
+
+            return [$cocok, $sisa];
+        };
+
+        [$penjualan, $pendapatanLain] = $pisah($pendapatanGroups, self::AWALAN_PENJUALAN);
+        [$hpp, $bebanSisa] = $pisah($bebanGroups, self::AWALAN_HPP);
+        [$pajakFinal, $biaya] = $pisah($bebanSisa, self::AWALAN_PAJAK_FINAL);
+
+        $totalPenjualan = $this->sumGroupTotal($penjualan);
+        $totalLain = $this->sumGroupTotal($pendapatanLain);
+        $totalHpp = $this->sumGroupTotal($hpp);
+        $totalBiaya = $this->sumGroupTotal($biaya);
+        $totalPajak = $this->sumGroupTotal($pajakFinal);
+
+        $grossProfit = $totalPenjualan - $totalHpp;
+
+        return [
+            'penjualan' => ['groups' => $penjualan, 'total' => $totalPenjualan],
+            'hpp' => ['groups' => $hpp, 'total' => $totalHpp],
+            'gross_profit' => $grossProfit,
+            'biaya' => ['groups' => $biaya, 'total' => $totalBiaya],
+            'pendapatan_lain' => ['groups' => $pendapatanLain, 'total' => $totalLain],
+            'pajak_final' => ['groups' => $pajakFinal, 'total' => $totalPajak],
+            'net_profit' => $grossProfit - $totalBiaya + $totalLain - $totalPajak,
+            // Penyebut persen: penjualan saja, bukan seluruh pendapatan.
+            // Pendapatan di luar usaha sifatnya insidental — kalau ikut jadi
+            // penyebut, marjinnya tidak lagi sebanding antar periode.
+            'dasar_persen' => $totalPenjualan,
+        ];
+    }
+
+    /**
+     * Persentase terhadap penjualan, dalam satuan persen.
+     *
+     * Penjualan nol mengembalikan nol, bukan pembagian dengan nol — periode yang
+     * belum ada penjualannya tetap boleh dibuka laporannya.
+     */
+    public static function persen(float $nilai, float $dasar): float
+    {
+        return $dasar == 0.0 ? 0.0 : $nilai / $dasar * 100;
     }
 
     /**
@@ -180,6 +266,96 @@ class LaporanAkuntingService
                 'per_bulan' => $labaPerBulan,
                 'total' => array_sum($labaPerBulan),
             ],
+            'uraian' => $this->uraikanLabaRugiTahunan($hasil['pendapatan']['baris'], $hasil['beban']['baris']),
+        ];
+    }
+
+    /**
+     * Uraian berlapis versi tahunan: tiap lapisan punya nilai per bulan.
+     *
+     * Lapisannya sama dengan versi per periode, hanya bentuknya deret dua belas
+     * bulan. Marjinnya dihitung per bulan juga — itu justru inti halaman ini:
+     * marjin kotor biasanya rata sepanjang tahun, sementara marjin bersih
+     * terbanting di bulan yang penjualannya tipis karena biaya usaha jalan terus.
+     * Pola itu tidak terlihat dari angka setahun penuh.
+     *
+     * @param  array<int, array{header: Coa, per_bulan: array<int, float>, total: float}>  $pendapatanBaris
+     * @param  array<int, array{header: Coa, per_bulan: array<int, float>, total: float}>  $bebanBaris
+     * @return array<string, mixed>
+     */
+    protected function uraikanLabaRugiTahunan(array $pendapatanBaris, array $bebanBaris): array
+    {
+        $pisah = function (array $baris, string $awalan): array {
+            $cocok = [];
+            $sisa = [];
+
+            foreach ($baris as $b) {
+                if (str_starts_with((string) $b['header']->kode, $awalan)) {
+                    $cocok[] = $b;
+                } else {
+                    $sisa[] = $b;
+                }
+            }
+
+            return [$cocok, $sisa];
+        };
+
+        /** Jumlahkan sederet baris jadi satu lapisan: per bulan plus totalnya. */
+        $lapis = function (array $baris): array {
+            $perBulan = array_fill(1, 12, 0.0);
+
+            foreach ($baris as $b) {
+                foreach (range(1, 12) as $m) {
+                    $perBulan[$m] += $b['per_bulan'][$m];
+                }
+            }
+
+            return ['baris' => $baris, 'per_bulan' => $perBulan, 'total' => array_sum($perBulan)];
+        };
+
+        [$penjualan, $pendapatanLain] = $pisah($pendapatanBaris, self::AWALAN_PENJUALAN);
+        [$hpp, $bebanSisa] = $pisah($bebanBaris, self::AWALAN_HPP);
+        [$pajakFinal, $biaya] = $pisah($bebanSisa, self::AWALAN_PAJAK_FINAL);
+
+        $u = [
+            'penjualan' => $lapis($penjualan),
+            'hpp' => $lapis($hpp),
+            'biaya' => $lapis($biaya),
+            'pendapatan_lain' => $lapis($pendapatanLain),
+            'pajak_final' => $lapis($pajakFinal),
+        ];
+
+        $gross = array_fill(1, 12, 0.0);
+        $net = array_fill(1, 12, 0.0);
+        $marjinKotor = array_fill(1, 12, 0.0);
+        $marjinBersih = array_fill(1, 12, 0.0);
+
+        foreach (range(1, 12) as $m) {
+            $jual = $u['penjualan']['per_bulan'][$m];
+
+            $gross[$m] = $jual - $u['hpp']['per_bulan'][$m];
+            $net[$m] = $gross[$m]
+                - $u['biaya']['per_bulan'][$m]
+                + $u['pendapatan_lain']['per_bulan'][$m]
+                - $u['pajak_final']['per_bulan'][$m];
+
+            $marjinKotor[$m] = self::persen($gross[$m], $jual);
+            $marjinBersih[$m] = self::persen($net[$m], $jual);
+        }
+
+        $totalJual = $u['penjualan']['total'];
+        $totalGross = array_sum($gross);
+        $totalNet = array_sum($net);
+
+        return $u + [
+            'gross_profit' => ['per_bulan' => $gross, 'total' => $totalGross],
+            'net_profit' => ['per_bulan' => $net, 'total' => $totalNet],
+            // Marjin setahun dihitung dari total, bukan dirata-ratakan dari dua
+            // belas marjin bulanan: bulan dengan penjualan 500 juta tidak boleh
+            // sama bobotnya dengan bulan 7 miliar.
+            'marjin_kotor' => ['per_bulan' => $marjinKotor, 'total' => self::persen($totalGross, $totalJual)],
+            'marjin_bersih' => ['per_bulan' => $marjinBersih, 'total' => self::persen($totalNet, $totalJual)],
+            'dasar_persen' => $totalJual,
         ];
     }
 
@@ -187,6 +363,7 @@ class LaporanAkuntingService
     private function kosongLabaRugiTahunan(int $tahun): array
     {
         $nol = array_fill(1, 12, 0.0);
+        $lapisKosong = ['baris' => [], 'per_bulan' => $nol, 'total' => 0.0];
 
         return [
             'tahun' => $tahun,
@@ -194,6 +371,18 @@ class LaporanAkuntingService
             'pendapatan' => ['baris' => [], 'per_bulan' => $nol, 'total' => 0.0],
             'beban' => ['baris' => [], 'per_bulan' => $nol, 'total' => 0.0],
             'laba_rugi' => ['per_bulan' => $nol, 'total' => 0.0],
+            'uraian' => [
+                'penjualan' => $lapisKosong,
+                'hpp' => $lapisKosong,
+                'biaya' => $lapisKosong,
+                'pendapatan_lain' => $lapisKosong,
+                'pajak_final' => $lapisKosong,
+                'gross_profit' => ['per_bulan' => $nol, 'total' => 0.0],
+                'net_profit' => ['per_bulan' => $nol, 'total' => 0.0],
+                'marjin_kotor' => ['per_bulan' => $nol, 'total' => 0.0],
+                'marjin_bersih' => ['per_bulan' => $nol, 'total' => 0.0],
+                'dasar_persen' => 0.0,
+            ],
         ];
     }
 

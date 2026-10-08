@@ -48,6 +48,24 @@ new #[Title('Laporan Laba Rugi')] class extends Component
     }
 }; ?>
 
+@php
+    /**
+     * Nominal beserta persennya dalam satu sel: "14.093.000.000 (100,0%)".
+     *
+     * Sengaja tidak dipecah jadi kolom sendiri — persen di sini bukan angka yang
+     * berdiri sendiri, melainkan keterangan untuk nominal di sebelahnya. Kolom
+     * terpisah melebarkan tabel yang sudah panjang tanpa menambah apa pun.
+     */
+    $nilaiPersen = function ($nilai, $dasar) {
+        $angka = number_format((float) $nilai, 0, ',', '.');
+        $pct = number_format(
+            \App\Services\LaporanAkuntingService::persen((float) $nilai, (float) $dasar), 1, ',', '.'
+        );
+
+        return [$angka, $pct.'%'];
+    };
+@endphp
+
 <section class="w-full">
     <div class="mx-auto max-w-screen-xl px-4 py-6 sm:px-6 lg:px-8">
 
@@ -131,118 +149,125 @@ new #[Title('Laporan Laba Rugi')] class extends Component
                     </div>
                 </div>
 
+                @php
+                    $u = $data['uraian'];
+                    $dasar = $u['dasar_persen'];
+
+                    // Urutannya yang membentuk laporan: dua seksi di atas garis
+                    // laba kotor, tiga di bawahnya. Tanda menentukan arah angka —
+                    // beban ditampilkan negatif supaya penjumlahannya ke bawah
+                    // bisa diikuti mata, bukan harus dikurangi dalam kepala.
+                    $atas = [
+                        ['Penjualan', $u['penjualan'], 1, 'emerald'],
+                        ['Harga Pokok Penjualan', $u['hpp'], -1, 'rose'],
+                    ];
+                    $bawah = [
+                        ['Biaya Usaha', $u['biaya'], -1, 'rose'],
+                        ['Pendapatan Lain-lain', $u['pendapatan_lain'], 1, 'emerald'],
+                        ['Pajak PPh Final', $u['pajak_final'], -1, 'rose'],
+                    ];
+
+                    // Kelas Tailwind harus utuh sebagai teks, tidak boleh dirangkai.
+                    $nada = [
+                        'emerald' => ['bg-emerald-50 dark:bg-emerald-950/30', 'bg-emerald-100 dark:bg-emerald-950/50'],
+                        'rose' => ['bg-rose-50 dark:bg-rose-950/30', 'bg-rose-100 dark:bg-rose-950/50'],
+                    ];
+                @endphp
+
                 <div class="overflow-x-auto">
                     <table class="w-full border-collapse text-sm">
-                        {{-- PENDAPATAN --}}
-                        <thead>
-                            <tr class="bg-emerald-50 dark:bg-emerald-950/30">
-                                <th colspan="3" class="border border-zinc-300 px-3 py-2 text-left text-xs font-bold uppercase dark:border-zinc-600">
-                                    Pendapatan
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse ($data['pendapatan']['groups'] as $group)
-                                <tr class="font-semibold text-zinc-700 dark:text-zinc-300">
-                                    <td class="border border-zinc-300 px-3 py-1.5 dark:border-zinc-600">
-                                        {{ $group['header']->kode }} - {{ $group['header']->nama }}
-                                    </td>
-                                    <td class="border border-zinc-300 px-3 py-1.5 dark:border-zinc-600"></td>
-                                    <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">
-                                        {{ number_format($group['total'], 0, ',', '.') }}
-                                    </td>
-                                </tr>
-                                @if ($rinci)
-                                    @foreach ($group['items'] as $item)
-                                        <tr class="text-xs text-zinc-600 dark:text-zinc-400">
-                                            <td class="border border-zinc-300 px-3 py-1 pl-8 dark:border-zinc-600">
-                                                {{ $item['coa']->kode }} - {{ $item['coa']->nama }}
-                                            </td>
-                                            <td class="border border-zinc-300 px-3 py-1 text-right font-mono tabular-nums dark:border-zinc-600">
-                                                {{ number_format($item['saldo'], 0, ',', '.') }}
-                                            </td>
-                                            <td class="border border-zinc-300 px-3 py-1 dark:border-zinc-600"></td>
-                                        </tr>
-                                    @endforeach
-                                @endif
-                            @empty
-                                <tr>
-                                    <td colspan="3" class="border border-zinc-300 px-3 py-4 text-center italic text-zinc-400 dark:border-zinc-600">
-                                        Tidak ada pendapatan di periode ini.
-                                    </td>
-                                </tr>
-                            @endforelse
-                            <tr class="bg-emerald-100 font-bold dark:bg-emerald-950/50">
-                                <td colspan="2" class="border border-zinc-300 px-3 py-2 dark:border-zinc-600">TOTAL PENDAPATAN</td>
-                                <td class="border border-zinc-300 px-3 py-2 text-right font-mono tabular-nums dark:border-zinc-600">
-                                    {{ number_format($data['pendapatan']['total'], 0, ',', '.') }}
-                                </td>
-                            </tr>
-                        </tbody>
+                        @foreach ([$atas, $bawah] as $i => $kelompok)
+                            @foreach ($kelompok as [$judul, $seksi, $tanda, $warna])
+                                @continue(! $seksi['groups'])
+                                @php [$latarJudul, $latarTotal] = $nada[$warna]; @endphp
 
-                        {{-- BEBAN --}}
-                        <thead>
-                            <tr class="bg-rose-50 dark:bg-rose-950/30">
-                                <th colspan="3" class="border border-zinc-300 px-3 py-2 text-left text-xs font-bold uppercase dark:border-zinc-600">
-                                    Beban / HPP
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse ($data['beban']['groups'] as $group)
-                                <tr class="font-semibold text-zinc-700 dark:text-zinc-300">
-                                    <td class="border border-zinc-300 px-3 py-1.5 dark:border-zinc-600">
-                                        {{ $group['header']->kode }} - {{ $group['header']->nama }}
-                                    </td>
-                                    <td class="border border-zinc-300 px-3 py-1.5 dark:border-zinc-600"></td>
-                                    <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">
-                                        {{ number_format($group['total'], 0, ',', '.') }}
-                                    </td>
-                                </tr>
-                                @if ($rinci)
-                                    @foreach ($group['items'] as $item)
-                                        <tr class="text-xs text-zinc-600 dark:text-zinc-400">
-                                            <td class="border border-zinc-300 px-3 py-1 pl-8 dark:border-zinc-600">
-                                                {{ $item['coa']->kode }} - {{ $item['coa']->nama }}
+                                <thead>
+                                    <tr class="{{ $latarJudul }}">
+                                        <th colspan="3" class="border border-zinc-300 px-3 py-2 text-left text-xs font-bold uppercase dark:border-zinc-600">
+                                            {{ $judul }}
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($seksi['groups'] as $group)
+                                        @php [$angka, $pct] = $nilaiPersen($tanda * $group['total'], $dasar); @endphp
+                                        <tr class="font-semibold text-zinc-700 dark:text-zinc-300">
+                                            <td class="border border-zinc-300 px-3 py-1.5 dark:border-zinc-600">
+                                                {{ $group['header']->kode }} - {{ $group['header']->nama }}
                                             </td>
-                                            <td class="border border-zinc-300 px-3 py-1 text-right font-mono tabular-nums dark:border-zinc-600">
-                                                {{ number_format($item['saldo'], 0, ',', '.') }}
+                                            <td class="border border-zinc-300 px-3 py-1.5 dark:border-zinc-600"></td>
+                                            <td class="whitespace-nowrap border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">
+                                                {{ $angka }}
+                                                <span class="ms-1 text-xs font-normal text-zinc-500">({{ $pct }})</span>
                                             </td>
-                                            <td class="border border-zinc-300 px-3 py-1 dark:border-zinc-600"></td>
                                         </tr>
+                                        @if ($rinci)
+                                            @foreach ($group['items'] as $item)
+                                                @php [$angkaItem, $pctItem] = $nilaiPersen($tanda * $item['saldo'], $dasar); @endphp
+                                                <tr class="text-xs text-zinc-600 dark:text-zinc-400">
+                                                    <td class="border border-zinc-300 px-3 py-1 pl-8 dark:border-zinc-600">
+                                                        {{ $item['coa']->kode }} - {{ $item['coa']->nama }}
+                                                    </td>
+                                                    <td class="whitespace-nowrap border border-zinc-300 px-3 py-1 text-right font-mono tabular-nums dark:border-zinc-600">
+                                                        {{ $angkaItem }}
+                                                        <span class="ms-1 text-zinc-400">({{ $pctItem }})</span>
+                                                    </td>
+                                                    <td class="border border-zinc-300 px-3 py-1 dark:border-zinc-600"></td>
+                                                </tr>
+                                            @endforeach
+                                        @endif
                                     @endforeach
-                                @endif
-                            @empty
-                                <tr>
-                                    <td colspan="3" class="border border-zinc-300 px-3 py-4 text-center italic text-zinc-400 dark:border-zinc-600">
-                                        Tidak ada beban di periode ini.
-                                    </td>
-                                </tr>
-                            @endforelse
-                            <tr class="bg-rose-100 font-bold dark:bg-rose-950/50">
-                                <td colspan="2" class="border border-zinc-300 px-3 py-2 dark:border-zinc-600">TOTAL BEBAN</td>
-                                <td class="border border-zinc-300 px-3 py-2 text-right font-mono tabular-nums dark:border-zinc-600">
-                                    {{ number_format($data['beban']['total'], 0, ',', '.') }}
-                                </td>
-                            </tr>
-                        </tbody>
+                                    @php [$angkaTotal, $pctTotal] = $nilaiPersen($tanda * $seksi['total'], $dasar); @endphp
+                                    <tr class="{{ $latarTotal }} font-bold">
+                                        <td colspan="2" class="border border-zinc-300 px-3 py-2 dark:border-zinc-600">
+                                            TOTAL {{ strtoupper($judul) }}
+                                        </td>
+                                        <td class="whitespace-nowrap border border-zinc-300 px-3 py-2 text-right font-mono tabular-nums dark:border-zinc-600">
+                                            {{ $angkaTotal }}
+                                            <span class="ms-1 text-xs font-normal text-zinc-500">({{ $pctTotal }})</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            @endforeach
 
-                        {{-- LABA / RUGI --}}
+                            {{-- Garis laba kotor disisipkan tepat setelah seksi atas. --}}
+                            @if ($i === 0)
+                                @php [$angkaKotor, $pctKotor] = $nilaiPersen($u['gross_profit'], $dasar); @endphp
+                                <tbody>
+                                    <tr class="border-t-2 bg-zinc-100 font-bold dark:bg-zinc-800">
+                                        <td colspan="2" class="border border-zinc-300 px-3 py-2.5 uppercase dark:border-zinc-600">
+                                            Laba Kotor <span class="font-normal normal-case text-zinc-500">(Gross Profit)</span>
+                                        </td>
+                                        <td class="whitespace-nowrap border border-zinc-300 px-3 py-2.5 text-right font-mono tabular-nums dark:border-zinc-600 {{ $u['gross_profit'] >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400' }}">
+                                            {{ $angkaKotor }}
+                                            <span class="ms-1 text-xs font-normal">({{ $pctKotor }})</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            @endif
+                        @endforeach
+
+                        {{-- LABA BERSIH --}}
+                        @php [$angkaBersih, $pctBersih] = $nilaiPersen($u['net_profit'], $dasar); @endphp
                         <tbody>
                             <tr class="border-t-4 border-double bg-zinc-100 dark:bg-zinc-800">
                                 <td colspan="2" class="border border-zinc-300 px-3 py-3 text-lg font-bold uppercase dark:border-zinc-600">
-                                    {{ $data['laba_rugi'] >= 0 ? 'Laba Bersih Periode Berjalan' : 'Rugi Bersih Periode Berjalan' }}
+                                    {{ $u['net_profit'] >= 0 ? 'Laba Bersih' : 'Rugi Bersih' }}
+                                    <span class="text-sm font-normal normal-case text-zinc-500">(Net Profit)</span>
                                 </td>
-                                <td class="border border-zinc-300 px-3 py-3 text-right font-mono tabular-nums text-lg font-bold dark:border-zinc-600 {{ $data['laba_rugi'] >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400' }}">
-                                    {{ number_format(abs($data['laba_rugi']), 0, ',', '.') }}
-                                    @if ($data['laba_rugi'] < 0)
-                                        <span class="text-xs">(rugi)</span>
-                                    @endif
+                                <td class="whitespace-nowrap border border-zinc-300 px-3 py-3 text-right font-mono text-lg font-bold tabular-nums dark:border-zinc-600 {{ $u['net_profit'] >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400' }}">
+                                    {{ $angkaBersih }}
+                                    <span class="ms-1 text-sm font-normal">({{ $pctBersih }})</span>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
+
+                <p class="mt-3 text-xs text-zinc-500">
+                    Persentase dihitung terhadap <strong>Penjualan</strong>. Pendapatan di luar usaha tidak
+                    ikut jadi penyebut supaya marjinnya tetap sebanding antar periode.
+                </p>
             </div>
         @endif
     </div>

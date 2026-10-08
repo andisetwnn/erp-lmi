@@ -115,8 +115,38 @@ new #[Title('Laba Rugi Tahunan')] class extends Component
                 </div>
 
                 @php
+                    $u = $data['uraian'];
+
                     // Angka ditampilkan dalam ribuan supaya 12 kolom muat tanpa digulir.
                     $ringkas = fn ($n) => $n == 0 ? '-' : number_format($n / 1000, 0, ',', '.');
+                    $marjin = fn ($n) => $n == 0.0 ? '-' : number_format($n, 1, ',', '.').'%';
+
+                    /**
+                     * Lapisan laporan, urut dari atas. Tandanya membuat beban tampil
+                     * negatif supaya penjumlahan ke bawah bisa diikuti mata.
+                     *
+                     * Persen sengaja TIDAK ditempel di tiap sel seperti di halaman per
+                     * periode: dua belas bulan kali tiga belas baris berarti ratusan
+                     * angka persen dalam satu layar. Di sini perbandingannya dipindah
+                     * ke dua baris marjin di bawah, dan itu justru yang dicari — marjin
+                     * kotor biasanya rata, marjin bersih yang terbanting saat
+                     * penjualan tipis.
+                     */
+                    $atas = [
+                        ['Penjualan', $u['penjualan'], 1, 'emerald'],
+                        ['Harga Pokok Penjualan', $u['hpp'], -1, 'rose'],
+                    ];
+                    $bawah = [
+                        ['Biaya Usaha', $u['biaya'], -1, 'rose'],
+                        ['Pendapatan Lain-lain', $u['pendapatan_lain'], 1, 'emerald'],
+                        ['Pajak PPh Final', $u['pajak_final'], -1, 'rose'],
+                    ];
+
+                    // Kelas Tailwind harus utuh sebagai teks, tidak boleh dirangkai.
+                    $nada = [
+                        'emerald' => ['bg-emerald-50 dark:bg-emerald-950/30', 'bg-emerald-100 dark:bg-emerald-950/50'],
+                        'rose' => ['bg-rose-50 dark:bg-rose-950/30', 'bg-rose-100 dark:bg-rose-950/50'],
+                    ];
                 @endphp
 
                 <div class="overflow-x-auto">
@@ -137,127 +167,126 @@ new #[Title('Laba Rugi Tahunan')] class extends Component
                             </tr>
                         </thead>
 
-                        {{-- PENDAPATAN --}}
-                        <tbody>
-                            <tr class="bg-emerald-50 dark:bg-emerald-950/30">
-                                <td colspan="14" class="border border-zinc-300 px-3 py-1.5 font-bold uppercase dark:border-zinc-600">
-                                    Pendapatan
-                                </td>
-                            </tr>
-                            @if ($rinci)
-                                @forelse ($data['pendapatan']['baris'] as $baris)
-                                    <tr>
-                                        <td class="sticky left-0 z-10 border border-zinc-300 bg-white px-3 py-1 dark:border-zinc-600 dark:bg-zinc-900">
-                                            {{ $baris['header']->kode }} - {{ $baris['header']->nama }}
+                        @foreach ([$atas, $bawah] as $i => $kelompok)
+                            @foreach ($kelompok as [$judul, $seksi, $tanda, $warna])
+                                @continue(! $seksi['baris'])
+                                @php [$latarJudul, $latarTotal] = $nada[$warna]; @endphp
+
+                                <tbody>
+                                    <tr class="{{ $latarJudul }}">
+                                        <td colspan="14" class="border border-zinc-300 px-3 py-1.5 font-bold uppercase dark:border-zinc-600">
+                                            {{ $judul }}
+                                        </td>
+                                    </tr>
+
+                                    @if ($rinci)
+                                        @foreach ($seksi['baris'] as $baris)
+                                            <tr>
+                                                <td class="sticky left-0 z-10 border border-zinc-300 bg-white px-3 py-1 dark:border-zinc-600 dark:bg-zinc-900">
+                                                    {{ $baris['header']->kode }} - {{ $baris['header']->nama }}
+                                                </td>
+                                                @foreach (range(1, 12) as $b)
+                                                    <td class="border border-zinc-300 px-2 py-1 text-right font-mono tabular-nums dark:border-zinc-600">
+                                                        {{ $ringkas($tanda * $baris['per_bulan'][$b]) }}
+                                                    </td>
+                                                @endforeach
+                                                <td class="border border-zinc-300 bg-zinc-50 px-3 py-1 text-right font-mono font-semibold tabular-nums dark:border-zinc-600 dark:bg-zinc-800">
+                                                    {{ $ringkas($tanda * $baris['total']) }}
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    @endif
+
+                                    <tr class="{{ $latarTotal }} font-bold">
+                                        <td class="sticky left-0 z-10 border border-zinc-300 px-3 py-1.5 dark:border-zinc-600 {{ $latarTotal }}">
+                                            Total {{ $judul }}
                                         </td>
                                         @foreach (range(1, 12) as $b)
-                                            <td class="border border-zinc-300 px-2 py-1 text-right font-mono tabular-nums dark:border-zinc-600">
-                                                {{ $ringkas($baris['per_bulan'][$b]) }}
+                                            <td class="border border-zinc-300 px-2 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">
+                                                {{ $ringkas($tanda * $seksi['per_bulan'][$b]) }}
                                             </td>
                                         @endforeach
-                                        <td class="border border-zinc-300 bg-zinc-50 px-3 py-1 text-right font-mono tabular-nums font-semibold dark:border-zinc-600 dark:bg-zinc-800">
-                                            {{ $ringkas($baris['total']) }}
+                                        <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">
+                                            {{ $ringkas($tanda * $seksi['total']) }}
                                         </td>
                                     </tr>
-                                @empty
-                                    <tr>
-                                        <td colspan="14" class="border border-zinc-300 px-3 py-3 text-center italic text-zinc-400 dark:border-zinc-600">
-                                            Tidak ada pendapatan di tahun ini.
-                                        </td>
-                                    </tr>
-                                @endforelse
-                            @endif
-                            <tr class="bg-emerald-100 font-bold dark:bg-emerald-950/50">
-                                <td class="sticky left-0 z-10 border border-zinc-300 bg-emerald-100 px-3 py-1.5 dark:border-zinc-600 dark:bg-emerald-950/50">
-                                    Total Pendapatan
-                                </td>
-                                @foreach (range(1, 12) as $b)
-                                    <td class="border border-zinc-300 px-2 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">
-                                        {{ $ringkas($data['pendapatan']['per_bulan'][$b]) }}
-                                    </td>
-                                @endforeach
-                                <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">
-                                    {{ $ringkas($data['pendapatan']['total']) }}
-                                </td>
-                            </tr>
-                        </tbody>
+                                </tbody>
+                            @endforeach
 
-                        {{-- BEBAN --}}
-                        <tbody>
-                            <tr class="bg-rose-50 dark:bg-rose-950/30">
-                                <td colspan="14" class="border border-zinc-300 px-3 py-1.5 font-bold uppercase dark:border-zinc-600">
-                                    Beban / HPP
-                                </td>
-                            </tr>
-                            @if ($rinci)
-                                @forelse ($data['beban']['baris'] as $baris)
-                                    <tr>
-                                        <td class="sticky left-0 z-10 border border-zinc-300 bg-white px-3 py-1 dark:border-zinc-600 dark:bg-zinc-900">
-                                            {{ $baris['header']->kode }} - {{ $baris['header']->nama }}
+                            {{-- Garis laba kotor disisipkan tepat setelah seksi atas. --}}
+                            @if ($i === 0)
+                                <tbody>
+                                    <tr class="border-t-2 bg-zinc-100 font-bold dark:bg-zinc-800">
+                                        <td class="sticky left-0 z-10 border border-zinc-300 bg-zinc-100 px-3 py-2 uppercase dark:border-zinc-600 dark:bg-zinc-800">
+                                            Laba Kotor
                                         </td>
                                         @foreach (range(1, 12) as $b)
-                                            <td class="border border-zinc-300 px-2 py-1 text-right font-mono tabular-nums dark:border-zinc-600">
-                                                {{ $ringkas($baris['per_bulan'][$b]) }}
-                                            </td>
+                                            @php($nilai = $u['gross_profit']['per_bulan'][$b])
+                                            <td @class([
+                                                'border border-zinc-300 px-2 py-2 text-right font-mono tabular-nums dark:border-zinc-600',
+                                                'text-rose-700 dark:text-rose-400' => $nilai < 0,
+                                                'text-emerald-700 dark:text-emerald-400' => $nilai > 0,
+                                            ])>{{ $ringkas($nilai) }}</td>
                                         @endforeach
-                                        <td class="border border-zinc-300 bg-zinc-50 px-3 py-1 text-right font-mono tabular-nums font-semibold dark:border-zinc-600 dark:bg-zinc-800">
-                                            {{ $ringkas($baris['total']) }}
+                                        <td class="border border-zinc-300 px-3 py-2 text-right font-mono tabular-nums dark:border-zinc-600">
+                                            {{ $ringkas($u['gross_profit']['total']) }}
                                         </td>
                                     </tr>
-                                @empty
-                                    <tr>
-                                        <td colspan="14" class="border border-zinc-300 px-3 py-3 text-center italic text-zinc-400 dark:border-zinc-600">
-                                            Tidak ada beban di tahun ini.
-                                        </td>
-                                    </tr>
-                                @endforelse
+                                </tbody>
                             @endif
-                            <tr class="bg-rose-100 font-bold dark:bg-rose-950/50">
-                                <td class="sticky left-0 z-10 border border-zinc-300 bg-rose-100 px-3 py-1.5 dark:border-zinc-600 dark:bg-rose-950/50">
-                                    Total Beban
-                                </td>
-                                @foreach (range(1, 12) as $b)
-                                    <td class="border border-zinc-300 px-2 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">
-                                        {{ $ringkas($data['beban']['per_bulan'][$b]) }}
-                                    </td>
-                                @endforeach
-                                <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600">
-                                    {{ $ringkas($data['beban']['total']) }}
-                                </td>
-                            </tr>
-                        </tbody>
+                        @endforeach
 
-                        {{-- LABA / RUGI --}}
                         <tfoot>
+                            {{-- LABA BERSIH --}}
                             <tr class="border-t-4 border-double bg-zinc-100 font-bold dark:bg-zinc-800">
                                 <td class="sticky left-0 z-10 border border-zinc-300 bg-zinc-100 px-3 py-2 uppercase dark:border-zinc-600 dark:bg-zinc-800">
                                     Laba / Rugi Bersih
                                 </td>
                                 @foreach (range(1, 12) as $b)
-                                    @php($nilai = $data['laba_rugi']['per_bulan'][$b])
+                                    @php($nilai = $u['net_profit']['per_bulan'][$b])
                                     <td @class([
                                         'border border-zinc-300 px-2 py-2 text-right font-mono tabular-nums dark:border-zinc-600',
                                         'text-rose-700 dark:text-rose-400' => $nilai < 0,
                                         'text-emerald-700 dark:text-emerald-400' => $nilai > 0,
-                                    ])>
-                                        {{ $ringkas($nilai) }}
-                                    </td>
+                                    ])>{{ $ringkas($nilai) }}</td>
                                 @endforeach
-                                @php($total = $data['laba_rugi']['total'])
+                                @php($total = $u['net_profit']['total'])
                                 <td @class([
-                                    'border border-zinc-300 px-3 py-2 text-right font-mono tabular-nums text-sm dark:border-zinc-600',
+                                    'border border-zinc-300 px-3 py-2 text-right font-mono text-sm tabular-nums dark:border-zinc-600',
                                     'text-rose-700 dark:text-rose-400' => $total < 0,
                                     'text-emerald-700 dark:text-emerald-400' => $total > 0,
-                                ])>
-                                    {{ $ringkas($total) }}
-                                </td>
+                                ])>{{ $ringkas($total) }}</td>
                             </tr>
+
+                            {{-- MARJIN — di sinilah persennya, sebagai perbandingan
+                                 antar bulan, bukan keterangan per sel. --}}
+                            @foreach ([['Marjin Kotor', 'marjin_kotor'], ['Marjin Bersih', 'marjin_bersih']] as [$labelMarjin, $kunci])
+                                <tr class="bg-zinc-50 dark:bg-zinc-800/60">
+                                    <td class="sticky left-0 z-10 border border-zinc-300 bg-zinc-50 px-3 py-1.5 font-semibold dark:border-zinc-600 dark:bg-zinc-800">
+                                        {{ $labelMarjin }}
+                                    </td>
+                                    @foreach (range(1, 12) as $b)
+                                        @php($nilai = $u[$kunci]['per_bulan'][$b])
+                                        <td @class([
+                                            'border border-zinc-300 px-2 py-1.5 text-right font-mono tabular-nums dark:border-zinc-600',
+                                            'text-rose-700 dark:text-rose-400' => $nilai < 0,
+                                            'text-zinc-600 dark:text-zinc-300' => $nilai >= 0,
+                                        ])>{{ $marjin($nilai) }}</td>
+                                    @endforeach
+                                    <td class="border border-zinc-300 px-3 py-1.5 text-right font-mono font-semibold tabular-nums dark:border-zinc-600">
+                                        {{ $marjin($u[$kunci]['total']) }}
+                                    </td>
+                                </tr>
+                            @endforeach
                         </tfoot>
                     </table>
                 </div>
 
                 <p class="mt-3 text-xs text-zinc-500">
-                    Semua angka dalam <strong>ribuan rupiah</strong>. Angka negatif berarti rugi.
+                    Nominal dalam <strong>ribuan rupiah</strong>; beban ditampilkan negatif. Marjin dihitung
+                    terhadap <strong>penjualan bulan itu</strong> — bulan tanpa penjualan ditulis
+                    &ldquo;&ndash;&rdquo;, bukan nol. Marjin setahun dihitung dari totalnya, bukan dirata-ratakan
+                    dari dua belas marjin bulanan.
                 </p>
             </div>
         @endif
