@@ -30,17 +30,43 @@ new #[Title('Unggah Matrix')] class extends Component {
 
     public ?int $hapusId = null;
 
+    /**
+     * Minggu dan periode laporan dalam satu pilihan, mis. "25|2026-10".
+     *
+     * Tidak lagi dibaca dari judul berkas — judul itu diketik tangan dan kerap
+     * lupa diganti. Bawaannya minggu yang sedang berjalan, jadi biasanya cukup
+     * dibiarkan.
+     */
+    public string $pilihan = '';
+
+    public function mount(): void
+    {
+        $this->isiUsulan();
+    }
+
+    private function isiUsulan(): void
+    {
+        $this->pilihan = MatrixImportService::mingguIni();
+    }
+
     public function unggah(): void
     {
+        $sah = array_column(MatrixImportService::pilihanMinggu(), 'kunci');
+
         $this->validate([
             'berkas' => ['required', 'file', 'mimes:xlsx,xls', 'max:20480'],
-        ], [], ['berkas' => 'berkas Matrix']);
+            'pilihan' => ['required', 'in:'.implode(',', $sah)],
+        ], [], ['berkas' => 'berkas Matrix', 'pilihan' => 'minggu']);
+
+        [$minggu, $bulan] = explode('|', $this->pilihan);
 
         try {
             $import = app(MatrixImportService::class)->impor(
                 $this->berkas->getRealPath(),
                 $this->berkas->getClientOriginalName(),
                 Auth::id(),
+                MatrixImportService::teksMinggu((int) $minggu),
+                MatrixImportService::teksPeriode($bulan),
             );
         } catch (\Throwable $e) {
             Flux::toast(variant: 'danger', heading: __('Gagal dibaca'), text: $e->getMessage());
@@ -49,6 +75,7 @@ new #[Title('Unggah Matrix')] class extends Component {
         }
 
         $this->reset('berkas');
+        $this->isiUsulan();
 
         $pesan = __(':jumlah unit terbaca dari :file.', [
             'jumlah' => number_format($import->jumlah_baris, 0, ',', '.'),
@@ -115,6 +142,7 @@ new #[Title('Unggah Matrix')] class extends Component {
         $terakhir = MatrixImport::with('uploadedBy')->latest('id')->first();
 
         return [
+            'pilihanMinggu' => MatrixImportService::pilihanMinggu(),
             'terakhir' => $terakhir,
             'rincian' => $terakhir
                 ? MatrixUnit::where('matrix_import_id', $terakhir->id)
@@ -211,6 +239,20 @@ new #[Title('Unggah Matrix')] class extends Component {
                             {{ __('Mengunggah berkas…') }}
                         </div>
                     </div>
+
+                    <flux:field>
+                        <flux:label>{{ __('Minggu laporan') }}</flux:label>
+                        <flux:select wire:model="pilihan">
+                            <flux:select.option value="">{{ __('Pilih minggu…') }}</flux:select.option>
+                            @foreach ($pilihanMinggu as $p)
+                                <flux:select.option value="{{ $p['kunci'] }}">{{ $p['label'] }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
+                        <flux:description>
+                            {{ __('Sudah terpilih minggu yang sedang berjalan. Judul minggu dan periode di dalam berkas tidak dipakai.') }}
+                        </flux:description>
+                        <flux:error name="pilihan" />
+                    </flux:field>
 
                     <div class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs leading-relaxed text-blue-800 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300">
                         {{ __('Yang dibaca hanya lima sheet:') }}

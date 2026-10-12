@@ -107,10 +107,21 @@ class MatrixImportService
      * memakai yang terbaru, dan yang lama tetap bisa ditengok kalau angkanya
      * dipertanyakan.
      */
-    public function impor(string $path, string $namaFile, ?int $userId = null): MatrixImport
-    {
+    public function impor(
+        string $path,
+        string $namaFile,
+        ?int $userId = null,
+        ?string $mingguKe = null,
+        ?string $periode = null,
+    ): MatrixImport {
         $spreadsheet = $this->baca($path);
         $meta = $this->bacaMeta($this->cariSheet($spreadsheet, ['MIKRO']));
+
+        // Minggu dan periode dipilih pengunggah, bukan dipercaya dari judul berkas:
+        // judul di sheet MIKRO diketik tangan dan kerap lupa diganti — berkas
+        // 7 Oktober pernah masuk masih bertuliskan "Per September 2026".
+        $meta['minggu_ke'] = $mingguKe ?? $meta['minggu_ke'];
+        $meta['periode'] = $periode ?? $meta['periode'];
         $this->legendaSubcon = $this->bacaLegendaSubcon($spreadsheet);
 
         return DB::transaction(function () use ($spreadsheet, $namaFile, $userId, $meta) {
@@ -190,6 +201,55 @@ class MatrixImportService
      *
      * @return array{proyek: ?string, minggu_ke: ?string, periode: ?string}
      */
+    /**
+     * Pilihan minggu laporan: minggu ke-berapa di dalam bulannya, mis.
+     * "Minggu ke-2 · Oktober 2026". Ditawarkan seluruh minggu bulan lalu dan
+     * bulan berjalan — bulan lalu untuk berkas yang terlambat diunggah.
+     *
+     * Minggu ke-N = tanggal 1–7, 8–14, 15–21, 22–28, 29 dst. Sederhana dan bisa
+     * ditebak tanpa melihat kalender.
+     *
+     * @return list<array{kunci: string, minggu: int, bulan: string, label: string}>
+     */
+    public static function pilihanMinggu(?\DateTimeInterface $hari = null): array
+    {
+        $hari = Carbon::instance($hari ?? now());
+        $pilihan = [];
+
+        foreach ([$hari->copy()->startOfMonth()->subMonth(), $hari->copy()->startOfMonth()] as $bulan) {
+            foreach (range(1, (int) ceil($bulan->daysInMonth / 7)) as $minggu) {
+                $pilihan[] = [
+                    'kunci' => $minggu.'|'.$bulan->format('Y-m'),
+                    'minggu' => $minggu,
+                    'bulan' => $bulan->format('Y-m'),
+                    'label' => 'Minggu ke-'.$minggu.' · '.$bulan->locale('id')->translatedFormat('F Y'),
+                ];
+            }
+        }
+
+        return $pilihan;
+    }
+
+    /** Pilihan yang cocok dengan hari ini — bawaan dropdown. */
+    public static function mingguIni(?\DateTimeInterface $hari = null): string
+    {
+        $hari = Carbon::instance($hari ?? now());
+
+        return (int) ceil($hari->day / 7).'|'.$hari->format('Y-m');
+    }
+
+    /** "Per Oktober 2026" dari "2026-10" — bentuk yang sama dengan judul di berkas Matrix. */
+    public static function teksPeriode(string $bulan): string
+    {
+        return 'Per '.Carbon::createFromFormat('!Y-m', $bulan)->locale('id')->translatedFormat('F Y');
+    }
+
+    /** "MINGGU KE-25" — bentuk yang sama dengan judul di berkas Matrix. */
+    public static function teksMinggu(int $minggu): string
+    {
+        return 'MINGGU KE-'.$minggu;
+    }
+
     /**
      * Kode subcon dan kepanjangannya, mis. "MSM : MUATIARA S MIZAN".
      *

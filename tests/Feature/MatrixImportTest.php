@@ -463,6 +463,7 @@ it('mengunggah lewat halaman dan langsung dipakai laporan', function () {
         ->set('berkas', UploadedFile::fake()->createWithContent(
             'MATRIX.xlsx', file_get_contents($this->berkas)
         ))
+        ->set('pilihan', MatrixImportService::mingguIni())
         ->call('unggah')
         ->assertHasNoErrors();
 
@@ -500,4 +501,64 @@ it('membolehkan direktur melihat tapi tidak mengunggah', function () {
 
     $this->actingAs($direktur)->get(route('matrix.monitoring-akad'))->assertOk();
     $this->actingAs($direktur)->get(route('matrix.upload'))->assertForbidden();
+});
+
+// ─────────────── Minggu & periode dipilih pengunggah ───────────────
+
+it('menyimpan minggu pilihan pengunggah, bukan judul di berkas', function () {
+    // Judul di sheet MIKRO diketik tangan dan kerap lupa diganti — berkas
+    // 7 Oktober pernah masuk masih bertuliskan "Per September 2026".
+    $user = User::factory()->create();
+    $user->assignRole('super-admin');
+
+    Livewire::actingAs($user)
+        ->test('pages::matrix.upload')
+        ->assertSet('pilihan', MatrixImportService::mingguIni())
+        ->set('berkas', UploadedFile::fake()->createWithContent('MATRIX.xlsx', file_get_contents($this->berkas)))
+        ->set('pilihan', '1|'.now()->format('Y-m'))
+        ->call('unggah')
+        ->assertHasNoErrors();
+
+    $import = MatrixImport::terakhir();
+
+    expect($import->minggu_ke)->toBe('MINGGU KE-1')
+        ->and($import->periode)->toBe(MatrixImportService::teksPeriode(now()->format('Y-m')));
+});
+
+it('menghitung minggu di dalam bulannya', function () {
+    // 1–7 minggu ke-1, 8–14 ke-2, dst.
+    expect(MatrixImportService::mingguIni(now()->setDate(2026, 10, 1)))->toBe('1|2026-10')
+        ->and(MatrixImportService::mingguIni(now()->setDate(2026, 10, 12)))->toBe('2|2026-10')
+        ->and(MatrixImportService::mingguIni(now()->setDate(2026, 10, 31)))->toBe('5|2026-10');
+});
+
+it('menawarkan seluruh minggu bulan lalu dan bulan berjalan', function () {
+    $pilihan = MatrixImportService::pilihanMinggu(now()->setDate(2026, 10, 12));
+
+    // September 30 hari → 5 minggu; Oktober 31 hari → 5 minggu.
+    expect($pilihan)->toHaveCount(10)
+        ->and($pilihan[0]['label'])->toBe('Minggu ke-1 · September 2026')
+        ->and($pilihan[6]['label'])->toBe('Minggu ke-2 · Oktober 2026');
+});
+
+it('menolak pilihan di luar daftar yang ditawarkan', function () {
+    $user = User::factory()->create();
+    $user->assignRole('super-admin');
+
+    Livewire::actingAs($user)
+        ->test('pages::matrix.upload')
+        ->set('berkas', UploadedFile::fake()->createWithContent('MATRIX.xlsx', file_get_contents($this->berkas)))
+        ->set('pilihan', '9|2030-01')
+        ->call('unggah')
+        ->assertHasErrors(['pilihan']);
+
+    expect(MatrixImport::count())->toBe(0);
+});
+
+it('tetap memakai judul berkas kalau dipanggil tanpa pilihan', function () {
+    // Jalur lama (perintah atau pemanggil lain) tidak boleh berubah perilakunya.
+    $import = app(MatrixImportService::class)->impor($this->berkas, 'MATRIX.xlsx');
+
+    expect($import->minggu_ke)->toBe('MINGGU KE-24')
+        ->and($import->periode)->toBe('Per September 2026');
 });
