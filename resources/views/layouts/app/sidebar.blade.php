@@ -62,6 +62,7 @@
                     'spr.lihat', 'spr.approve', 'pembayaran.kelola',
                     'pemberkasan.kelola', 'pemberkasan.lihat',
                     'matrix.lihat', 'teknik.rumah.lihat', 'laporan.lihat',
+                    'legal.lihat', 'legal.pengajuan.kelola', 'legal.sertifikat.kelola', 'legal.serahterima.kelola',
                 ])
                     <livewire:active-proyek />
                 @endcanany
@@ -257,6 +258,16 @@
                                 {{ __('Bank KPR') }}
                             </flux:sidebar.item>
                         @endcanany
+                    </flux:sidebar.group>
+                @endcanany
+
+                @canany(['legal.lihat', 'legal.pengajuan.kelola', 'legal.sertifikat.kelola', 'legal.serahterima.kelola'])
+                    <flux:sidebar.group :heading="__('Perizinan')" icon="document-check" expandable
+                                        :expanded="request()->routeIs('perizinan.*')">
+                        <flux:sidebar.item icon="clipboard-document-check" :href="route('perizinan.sertifikat.index')"
+                                           :current="request()->routeIs('perizinan.sertifikat.*')" wire:navigate>
+                            {{ __('Data Sertifikat') }}
+                        </flux:sidebar.item>
                     </flux:sidebar.group>
                 @endcanany
 

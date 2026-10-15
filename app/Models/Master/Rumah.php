@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 // Observer registered di AppServiceProvider::boot() (pattern existing project)
 class Rumah extends Model
@@ -80,6 +81,34 @@ class Rumah extends Model
     public function biayaTambahanRealisasi(): HasMany
     {
         return $this->hasMany(BiayaTambahanRealisasi::class);
+    }
+
+    /**
+     * Sertifikat unit ini. Satu unit satu sertifikat — kuncinya unik di
+     * tabelnya, jadi relasinya tunggal meski lahir dari pengajuan kolektif.
+     */
+    public function sertifikat(): HasOne
+    {
+        return $this->hasOne(Sertifikat::class);
+    }
+
+    public function spr(): HasMany
+    {
+        return $this->hasMany(Spr::class);
+    }
+
+    /**
+     * SPR yang masih memegang unit ini. Dipakai arsip sertifikat untuk
+     * menemukan notaris dan tanggal AJB-nya lewat rencana akad.
+     */
+    public function sprAktif(): HasOne
+    {
+        // Kolomnya disebut lengkap: latestOfMany menggabungkan tabel spr dengan
+        // dirinya sendiri, sehingga 'status' dan 'rumah_id' tanpa awalan tabel
+        // jadi ambigu dan ditolak database.
+        return $this->hasOne(Spr::class)
+            ->whereIn('spr.status', ['approved', 'akad'])
+            ->latestOfMany();
     }
 
     public function progresLog(): HasMany

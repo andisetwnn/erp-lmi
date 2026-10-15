@@ -59,6 +59,12 @@ class RolePermissionSeeder extends Seeder
             'matrix.kelola',       // Unggah berkas Matrix — sengaja hanya super-admin
             'matrix.lihat',        // Lihat Laporan Mikro / Makro / Non Lot
 
+            // ─── LEGAL / PERIZINAN (pecah sertifikat) ───
+            'legal.pengajuan.kelola',   // Ajukan pecah sertifikat ke BPN
+            'legal.sertifikat.kelola',  // Catat sertifikat terbit + unggah scannya
+            'legal.serahterima.kelola', // Serahkan sertifikat ke bank + unggah BAST
+            'legal.lihat',              // Lihat arsip & status sertifikat (view-only)
+
             // ─── TEKNIK (progres fisik bangunan) ───
             'teknik.rumah.lihat',   // Lihat menu teknik/rumah (Admin Teknik, PM, Direktur)
             'teknik.rumah.update',  // Update progres fisik + LOT (Admin Teknik only)
@@ -116,6 +122,7 @@ class RolePermissionSeeder extends Seeder
                 'spr.lihat',
                 'spr.cetak',
                 'pemberkasan.lihat',
+                'legal.lihat',
                 'teknik.rumah.lihat',
                 'bukubesar.lihat',
                 'kasbank.lihat',
@@ -145,6 +152,7 @@ class RolePermissionSeeder extends Seeder
                 'spr.pindah-unit',
                 'spr.cetak',
                 'pemberkasan.lihat',
+                'legal.lihat',
                 'teknik.rumah.lihat',
                 'laporan.lihat',
                 'log.lihat',
@@ -166,6 +174,7 @@ class RolePermissionSeeder extends Seeder
                 'pembayaran.kelola',
                 'pembayaran.approve',
                 'pemberkasan.lihat',
+                'legal.lihat',
                 'biayatambahan.kelola',
                 'jurnal.umum.kelola',
                 'jurnal.bank.kelola',
@@ -200,6 +209,7 @@ class RolePermissionSeeder extends Seeder
                 'spr.batal',
                 'spr.cetak',
                 'pemberkasan.kelola',
+                'legal.lihat',
                 'laporan.lihat',
                 'ttd.kelola',
             ],
@@ -219,6 +229,18 @@ class RolePermissionSeeder extends Seeder
             'admin-teknik' => [
                 'teknik.rumah.lihat',
                 'teknik.rumah.update',
+            ],
+
+            // Admin Legal: pecah sertifikat sampai diserahkan ke bank.
+            // Izin serah terima sengaja terpisah — kalau nanti diputuskan
+            // Marketing yang menyerahkan, tinggal dipindah tanpa mengubah kode.
+            'admin-legal' => [
+                'legal.pengajuan.kelola',
+                'legal.sertifikat.kelola',
+                'legal.serahterima.kelola',
+                'legal.lihat',
+                'laporan.lihat',
+                'ttd.kelola',
             ],
         ];
     }

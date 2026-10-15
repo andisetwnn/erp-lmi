@@ -11,7 +11,7 @@ new #[Title('Monitoring')] class extends Component
 {
     use WithPagination;
 
-    /** '' = semua kategori, 'penjualan' | 'keuangan' */
+    /** '' = semua kategori; selain itu salah satu kunci CATEGORIES. */
     #[Url(as: 'c')]
     public string $category = '';
 
@@ -32,6 +32,7 @@ new #[Title('Monitoring')] class extends Component
         'penjualan' => ['Penjualan', 'chart-bar', 'emerald'],
         'keuangan' => ['Keuangan', 'banknotes', 'purple'],
         'unit' => ['Unit', 'home-modern', 'blue'],
+        'legal' => ['Legal', 'document-text', 'amber'],
     ];
 
     public const RANGES = [
@@ -66,6 +67,12 @@ new #[Title('Monitoring')] class extends Component
         'tipe.created' => ['Tipe Rumah Baru', 'cube', 'blue', 'unit'],
         'tipe.updated' => ['Tipe Rumah Diubah', 'pencil-square', 'blue', 'unit'],
         'tipe.deleted' => ['Tipe Rumah Dihapus', 'trash', 'rose', 'unit'],
+        // Legal — pecah sertifikat
+        'sertifikat.diajukan' => ['Pengajuan Pecah Sertifikat', 'document-plus', 'amber', 'legal'],
+        'sertifikat.terbit' => ['Sertifikat Terbit', 'document-check', 'emerald', 'legal'],
+        'sertifikat.diperbarui' => ['Data Sertifikat Diperbarui', 'pencil-square', 'blue', 'legal'],
+        'sertifikat.ke_bank' => ['Sertifikat Diserahkan ke Bank', 'building-library', 'violet', 'legal'],
+        'sertifikat.bast_dibatalkan' => ['Serah Terima Bank Dibatalkan', 'arrow-uturn-left', 'rose', 'legal'],
     ];
 
     /** Deskripsi tooltip per event — dijelaskan supaya user paham. */
@@ -91,7 +98,26 @@ new #[Title('Monitoring')] class extends Component
         'tipe.created'         => 'Tipe rumah baru ditambahkan (luas, harga, skema uang muka).',
         'tipe.updated'         => 'Data tipe rumah diubah — harga dan skema uang muka unit baru mengikuti perubahan ini.',
         'tipe.deleted'         => 'Tipe rumah dihapus dari master data.',
+        'sertifikat.diajukan'  => 'Legal mengajukan pemecahan sertifikat induk untuk sejumlah unit.',
+        'sertifikat.terbit'    => 'Sertifikat satu unit sudah terbit dan nomornya dicatat.',
+        'sertifikat.diperbarui' => 'Data sertifikat yang sudah tercatat dikoreksi — isi lama dan barunya tersimpan di riwayat unitnya.',
+        'sertifikat.ke_bank'   => 'Sertifikat diserahkan ke bank sebagai jaminan kredit, disertai dokumen serah terima.',
+        'sertifikat.bast_dibatalkan' => 'Penyerahan ke bank dibatalkan — sertifikatnya kembali berstatus Terbit.',
     ];
+
+    /**
+     * Kategori yang ikut terbaca saat tidak ada kategori yang dipilih.
+     *
+     * Diturunkan dari CATEGORIES, bukan ditulis ulang: daftarnya dipakai di tiga
+     * kueri berbeda, dan kategori baru yang lupa ditambahkan ke salah satunya
+     * akan hilang diam-diam dari feed tanpa pesan galat apa pun.
+     *
+     * @return list<string>
+     */
+    private function logTerpantau(): array
+    {
+        return array_values(array_filter(array_keys(self::CATEGORIES)));
+    }
 
     public function setCategory(string $c): void
     {
@@ -129,7 +155,7 @@ new #[Title('Monitoring')] class extends Component
         $query = Activity::query()
             ->when($this->category !== '',
                 fn ($q) => $q->where('log_name', $this->category),
-                fn ($q) => $q->whereIn('log_name', ['penjualan', 'keuangan', 'unit']))
+                fn ($q) => $q->whereIn('log_name', $this->logTerpantau()))
             ->when($this->eventFilter, fn ($q) => $q->where('event', $this->eventFilter))
             ->where('id', '>', $this->lastSeenId);
 
@@ -174,7 +200,7 @@ new #[Title('Monitoring')] class extends Component
         if ($this->category !== '') {
             $query->where('log_name', $this->category);
         } else {
-            $query->whereIn('log_name', ['penjualan', 'keuangan', 'unit']);
+            $query->whereIn('log_name', $this->logTerpantau());
         }
 
         if ($start = $this->rangeStart()) {
@@ -191,7 +217,7 @@ new #[Title('Monitoring')] class extends Component
         $summaryQuery = Activity::query()
             ->when($this->category !== '',
                 fn ($q) => $q->where('log_name', $this->category),
-                fn ($q) => $q->whereIn('log_name', ['penjualan', 'keuangan', 'unit']))
+                fn ($q) => $q->whereIn('log_name', $this->logTerpantau()))
             ->when($start = $this->rangeStart(), fn ($q) => $q->where('created_at', '>=', $start));
 
         $summary = $summaryQuery

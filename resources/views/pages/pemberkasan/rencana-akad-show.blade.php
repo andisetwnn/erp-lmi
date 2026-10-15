@@ -51,8 +51,30 @@ new #[Title('Detail Rencana Akad')] class extends Component
     public function getRencanaProperty(): RencanaAkad
     {
         return RencanaAkad::with(['bank', 'notaris', 'proyek', 'biayaSesi', 'unit.spr.rumah.tipeRumah', 'unit.spr.rumah.subcon',
-            'unit.spr.prospectCustomer', 'unit.spr.sales', 'unit.spr.pemberkasan'])
+            'unit.spr.rumah.sertifikat', 'unit.spr.prospectCustomer', 'unit.spr.sales', 'unit.spr.pemberkasan'])
             ->findOrFail($this->rencanaId);
+    }
+
+    /**
+     * Unit berjenis AJB yang sertifikat per unitnya belum terbit.
+     *
+     * AJB memindahkan kepemilikan, dan notaris menuntut sertifikat per unit
+     * sudah ada untuk menjalankannya — berbeda dari PPJB yang tidak.
+     *
+     * Dipakai sebagai peringatan, bukan penghalang. Legal dan Marketing berjalan
+     * paralel: sertifikatnya bisa saja sudah terbit di tangan Legal tapi belum
+     * sempat dicatat, dan mengunci jadwal akad atas dasar data yang telat masuk
+     * cuma membuat orang mencari jalan memutar.
+     *
+     * @return \Illuminate\Support\Collection<int, RencanaAkadUnit>
+     */
+    public function getAjbTanpaSertifikatProperty()
+    {
+        return $this->rencana->unit
+            ->where('status', '!=', 'batal')
+            ->filter(fn (RencanaAkadUnit $u) => $u->jenis_akad === 'ajb'
+                && ! $u->spr?->rumah?->sertifikat?->sudahTerbit())
+            ->values();
     }
 
     private function svc(): RencanaAkadService
@@ -578,6 +600,17 @@ new #[Title('Detail Rencana Akad')] class extends Component
                                     @else
                                         {{ \App\Models\Master\RencanaAkadUnit::LABEL_JENIS_AKAD[$u->jenis_akad] ?? $u->jenis_akad }}
                                     @endif
+
+                                    {{-- Ditaruh persis di bawah pilihannya: di sinilah
+                                         jenis akadnya ditentukan, jadi di sini pula
+                                         akibatnya harus terbaca. --}}
+                                    @if ($u->jenis_akad === 'ajb' && ! $u->spr?->rumah?->sertifikat?->sudahTerbit())
+                                        <div class="mt-1 flex items-start gap-1 text-[10px] leading-tight text-amber-600 dark:text-amber-400"
+                                             title="{{ __('AJB memindahkan kepemilikan dan menuntut sertifikat per unit sudah terbit.') }}">
+                                            <flux:icon.exclamation-triangle class="mt-px size-3 shrink-0" />
+                                            <span>{{ __('Sertifikat belum terbit') }}</span>
+                                        </div>
+                                    @endif
                                 </td>
                                 <td class="px-3 py-2 text-right">
                                     @if ($rencana->bolehDiubah() && $bolehKelola)
@@ -916,6 +949,29 @@ new #[Title('Detail Rencana Akad')] class extends Component
 
             @if ($aksiStatus === 'fix')
                 <flux:input type="date" wire:model="tanggalFix" label="Tanggal Akad (dari bank)" />
+
+                {{-- Mengunci tanggal di sini langsung mengisi tanggal AJB tiap
+                     unitnya. Kalau sertifikatnya belum terbit, yang tercatat
+                     adalah akad yang tidak bisa dijalankan notaris — jadi
+                     peringatannya muncul di langkah ini, bukan sesudahnya. --}}
+                @if ($this->ajbTanpaSertifikat->isNotEmpty())
+                    <div class="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                        <flux:icon.exclamation-triangle class="mt-0.5 size-4 shrink-0" />
+                        <div class="min-w-0">
+                            <div class="font-semibold">
+                                {{ $this->ajbTanpaSertifikat->count() }} {{ __('unit AJB sertifikatnya belum terbit') }}
+                            </div>
+                            <div class="mt-1 font-mono text-[11px]">
+                                {{ $this->ajbTanpaSertifikat
+                                    ->map(fn ($u) => $u->spr?->rumah?->kode_unit)
+                                    ->join(', ') }}
+                            </div>
+                            <p class="mt-1.5">
+                                {{ __('AJB memindahkan kepemilikan dan menuntut sertifikat per unit. Lanjutkan hanya kalau sertifikatnya memang sudah ada tapi belum tercatat — kalau belum, ubah jenis akadnya jadi PPJB dulu.') }}
+                            </p>
+                        </div>
+                    </div>
+                @endif
             @endif
 
             @if (in_array($aksiStatus, ['draft', 'batal'], true))

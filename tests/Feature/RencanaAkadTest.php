@@ -8,12 +8,14 @@ use App\Models\Master\Proyek;
 use App\Models\Master\RencanaAkad;
 use App\Models\Master\Rumah;
 use App\Models\Master\Sales;
+use App\Models\Master\Sertifikat;
 use App\Models\Master\Spr;
 use App\Models\Master\SprPemberkasan;
 use App\Models\Master\SprRealisasiPembayaran;
 use App\Models\Master\TipeRumah;
 use App\Models\User;
 use App\Services\RencanaAkadService;
+use App\Services\SertifikatService;
 use App\Support\ProyekAktif;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -1099,4 +1101,80 @@ it('mengabaikan kolom urutan yang tidak dikenal', function () {
         ->assertSet('urutKandidat', 'unit');
 
     expect(urutanKandidat('harga_jual'))->toBe(urutanKandidat('unit'));
+});
+
+// ─────────────── Peringatan AJB tanpa sertifikat ───────────────
+
+it('memperingatkan unit AJB yang sertifikatnya belum terbit', function () {
+    // AJB memindahkan kepemilikan dan menuntut sertifikat per unit sudah ada.
+    // Tanpa peringatan ini, mengunci tanggal akad akan mengisi tanggal AJB
+    // untuk akad yang tidak bisa dijalankan notaris.
+    $spr = sprAkad('PA');
+    $rencana = rencanaBaru();
+    $unit = $this->svc->tambahUnit($rencana, $spr);
+    $unit->update(['jenis_akad' => 'ajb']);
+
+    $this->actingAs($this->admin);
+
+    $komponen = Livewire::test('pages::pemberkasan.rencana-akad-show', ['id' => $rencana->id]);
+
+    expect($komponen->instance()->ajbTanpaSertifikat->pluck('id')->all())->toBe([$unit->id])
+        // Dan terbaca di layarnya, bukan cuma ada di dalam komponen.
+        ->and($komponen->html())->toContain('Sertifikat belum terbit');
+});
+
+it('tidak memperingati unit AJB yang sertifikatnya sudah terbit', function () {
+    $spr = sprAkad('PB');
+    $rencana = rencanaBaru();
+    $unit = $this->svc->tambahUnit($rencana, $spr);
+    $unit->update(['jenis_akad' => 'ajb']);
+
+    app(SertifikatService::class)->ajukan($this->proyek, '2026-01-02', 'kavling', [$spr->rumah_id => 70.0]);
+    Sertifikat::where('rumah_id', $spr->rumah_id)->update(['nomor_sertifikat' => 'SHGB 01234']);
+
+    $this->actingAs($this->admin);
+
+    expect(Livewire::test('pages::pemberkasan.rencana-akad-show', ['id' => $rencana->id])
+        ->instance()->ajbTanpaSertifikat)->toBeEmpty();
+});
+
+it('tidak memperingati unit PPJB — PPJB memang tidak butuh sertifikat', function () {
+    $spr = sprAkad('PC');
+    $rencana = rencanaBaru();
+    $this->svc->tambahUnit($rencana, $spr);   // jenis_akad bawaannya ppjb
+
+    $this->actingAs($this->admin);
+
+    expect(Livewire::test('pages::pemberkasan.rencana-akad-show', ['id' => $rencana->id])
+        ->instance()->ajbTanpaSertifikat)->toBeEmpty();
+});
+
+it('tidak memperingati unit AJB yang sudah dibatalkan', function () {
+    // Unit batal tidak ikut diakadkan, jadi tidak perlu diributkan.
+    $spr = sprAkad('PD');
+    $rencana = rencanaBaru();
+    $unit = $this->svc->tambahUnit($rencana, $spr);
+    $unit->update(['jenis_akad' => 'ajb']);
+    $this->svc->batalkanUnit($unit->fresh(), 'Konsumen tidak hadir', $this->admin->id);
+
+    $this->actingAs($this->admin);
+
+    expect(Livewire::test('pages::pemberkasan.rencana-akad-show', ['id' => $rencana->id])
+        ->instance()->ajbTanpaSertifikat)->toBeEmpty();
+});
+
+it('memperingatkan tanpa menghalangi penguncian tanggal', function () {
+    // Peringatan, bukan penghalang: sertifikatnya bisa saja sudah terbit di
+    // tangan Legal tapi belum sempat dicatat.
+    $spr = sprAkad('PE');
+    $rencana = rencanaBaru();
+    $unit = $this->svc->tambahUnit($rencana, $spr);
+    $unit->update(['jenis_akad' => 'ajb']);
+
+    $rencana = $this->svc->ubahStatus($rencana, 'diajukan', $this->admin->id);
+    $rencana = $this->svc->ubahStatus($rencana, 'diketahui', $this->admin->id);
+    $rencana = $this->svc->ubahStatus($rencana, 'fix', $this->admin->id, ['tanggal_fix' => '2026-02-10']);
+
+    expect($rencana->status)->toBe('fix')
+        ->and($unit->fresh()->tanggal_ajb?->toDateString())->toBe('2026-02-10');
 });

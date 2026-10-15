@@ -113,6 +113,11 @@ new #[Title('Pengguna Sistem')] class extends Component
         // Matrix
         'matrix.kelola'             => 'Unggah Berkas Matrix',
         'matrix.lihat'              => 'Lihat Laporan Matrix',
+        // Legal / Perizinan
+        'legal.pengajuan.kelola'    => 'Ajukan Pecah Sertifikat',
+        'legal.sertifikat.kelola'   => 'Catat Data Sertifikat',
+        'legal.serahterima.kelola'  => 'Serah Terima Sertifikat ke Bank',
+        'legal.lihat'               => 'Lihat Arsip Sertifikat',
         // Teknik
         'teknik.rumah.lihat'        => 'Lihat Data Rumah Teknik',
         'teknik.rumah.update'       => 'Update Progres Fisik Rumah',
@@ -179,6 +184,11 @@ new #[Title('Pengguna Sistem')] class extends Component
         // Matrix
         'matrix.kelola'             => 'Mengunggah berkas Matrix dari Admin KPR. Sengaja dibatasi karena unggahan bisa memperbarui data teknik dan pemberkasan sekaligus.',
         'matrix.lihat'              => 'Melihat Laporan Monitoring Akad hasil unggahan Matrix (Mikro, Makro, Non Lot, Akad).',
+        // Legal / Perizinan
+        'legal.pengajuan.kelola'    => 'Mengajukan pecah sertifikat induk — per kavling atau kolektif se-blok, beserta luas tanah yang diajukan.',
+        'legal.sertifikat.kelola'   => 'Mencatat sertifikat yang sudah terbit: nomor, NIB, HGB induk, luas hasil ukur, dan unggahan scannya.',
+        'legal.serahterima.kelola'  => 'Mencatat penyerahan fisik sertifikat ke bank beserta lampiran BAST-nya. Dipisah supaya bisa dipindah ke peran lain kalau nanti bukan Legal yang menyerahkan.',
+        'legal.lihat'               => 'View-only arsip sertifikat beserta statusnya — tidak bisa mengajukan atau mencatat. Cocok untuk Direktur, PM, Finance, dan Admin KPR.',
         'teknik.rumah.lihat'        => 'Akses menu Teknik → Data Rumah. Lihat daftar unit dengan progres fisik, LOT, dan status bangunan (tanpa data harga/finansial). Cocok untuk Admin Teknik, PM, Direktur.',
         'teknik.rumah.update'       => 'Update persentase progres fisik pembangunan unit (0-100%) + nomor LOT sertifikat. Setiap perubahan otomatis tercatat di log audit trail.',
         'target.kelola'             => 'Input & edit target penjualan/akad per proyek per tahun (RAB tahunan). Angka target akan tampil di matrix Marketing Performance dashboard direksi. Biasanya diinput oleh Direktur di awal tahun.',

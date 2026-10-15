@@ -4,6 +4,9 @@ namespace App\Support;
 
 use App\Models\Master\Booking;
 use App\Models\Master\Rumah;
+use App\Models\Master\Sertifikat;
+use App\Models\Master\SertifikatPengajuan;
+use App\Models\Master\SertifikatSerahTerima;
 use App\Models\Master\Spr;
 use App\Models\Master\SprRealisasiPembayaran;
 use App\Models\Master\TipeRumah;
@@ -43,6 +46,12 @@ class BusinessActivityLogger
         'tipe.created' => 'Tipe Rumah Baru',
         'tipe.updated' => 'Tipe Rumah Diubah',
         'tipe.deleted' => 'Tipe Rumah Dihapus',
+        // Legal — pecah sertifikat
+        'sertifikat.diajukan' => 'Pengajuan Pecah Sertifikat',
+        'sertifikat.terbit' => 'Sertifikat Terbit',
+        'sertifikat.diperbarui' => 'Data Sertifikat Diperbarui',
+        'sertifikat.ke_bank' => 'Sertifikat Diserahkan ke Bank',
+        'sertifikat.bast_dibatalkan' => 'Serah Terima Bank Dibatalkan',
     ];
 
     /** Konversi event code → label formal Indonesia. */
@@ -489,6 +498,140 @@ class BusinessActivityLogger
                 'nama_tipe' => $tipe->nama_tipe,
             ])
             ->log("Tipe rumah {$label} dihapus");
+    }
+
+    // ── Legal: pecah sertifikat ───────────────────────────────────────────
+    //
+    // Yang dicatat di sini sengaja hanya kejadian yang tidak bisa dibaca ulang
+    // dari datanya sendiri. Tanggal pengajuan dan tanggal serah terima sudah
+    // tersimpan lengkap beserta pencatatnya di tabel masing-masing, jadi
+    // riwayat per unit menurunkannya dari sana — bukan dari log ini.
+    //
+    // Yang tidak bisa diturunkan: kapan nomor sertifikat diisi, apa saja yang
+    // pernah dikoreksi sesudahnya, dan penyerahan yang dibatalkan. Kolom
+    // `updated_at` tidak menjawabnya karena ikut tertimpa saat sertifikatnya
+    // diserahkan ke bank, dan pembatalan menghapus jejak relasinya.
+
+    /** Satu berkas pengajuan ke BPN — dicatat sekali, bukan per unit. */
+    public static function sertifikatDiajukan(SertifikatPengajuan $pengajuan, int $jumlahUnit): void
+    {
+        $pengajuan->loadMissing('proyek');
+        $lingkup = $pengajuan->metode === 'blok' && $pengajuan->blok
+            ? "blok {$pengajuan->blok}"
+            : "{$jumlahUnit} unit";
+
+        activity('legal')
+            ->causedBy(self::causer())
+            ->performedOn($pengajuan)
+            ->event('sertifikat.diajukan')
+            ->withProperties([
+                'nomor' => $pengajuan->nomor,
+                'proyek' => $pengajuan->proyek?->nama_proyek,
+                'metode' => $pengajuan->labelMetode(),
+                'blok' => $pengajuan->blok,
+                'jumlah_unit' => $jumlahUnit,
+            ])
+            ->log("Pengajuan {$pengajuan->nomor} · {$lingkup}");
+    }
+
+    /** Nomor sertifikat terisi untuk pertama kalinya. Dicatat per unit. */
+    public static function sertifikatTerbit(Sertifikat $s): void
+    {
+        $s->loadMissing('rumah');
+        $unit = $s->rumah?->kode_unit;
+
+        activity('legal')
+            ->causedBy(self::causer())
+            ->performedOn($s)
+            ->event('sertifikat.terbit')
+            ->withProperties([
+                'unit' => $unit,
+                'nomor_sertifikat' => $s->nomor_sertifikat,
+                'nib' => $s->nib,
+                'hgb_induk' => $s->hgb_induk,
+                'tanggal_terbit' => $s->tanggal_terbit?->format('Y-m-d'),
+                'luas' => $s->luas_sertifikat !== null ? (float) $s->luas_sertifikat : null,
+                'berkas' => $s->file_original_name,
+            ])
+            ->log("Sertifikat unit {$unit} terbit · {$s->nomor_sertifikat}");
+    }
+
+    /**
+     * Koreksi data sertifikat yang sudah pernah diisi.
+     *
+     * Kuncinya sudah berupa label siap tampil, bukan nama kolom: riwayatnya
+     * dibaca Legal, dan nama teknis tidak boleh bocor ke layar.
+     *
+     * @param  array<string, array{0: ?string, 1: ?string}>  $perubahan  label => [lama, baru]
+     */
+    public static function sertifikatDiperbarui(Sertifikat $s, array $perubahan): void
+    {
+        if ($perubahan === []) {
+            return;
+        }
+
+        $s->loadMissing('rumah');
+        $unit = $s->rumah?->kode_unit;
+
+        activity('legal')
+            ->causedBy(self::causer())
+            ->performedOn($s)
+            ->event('sertifikat.diperbarui')
+            ->withProperties([
+                'unit' => $unit,
+                'nomor_sertifikat' => $s->nomor_sertifikat,
+                'perubahan' => $perubahan,
+            ])
+            ->log("Data sertifikat unit {$unit} dikoreksi · ".implode(', ', array_keys($perubahan)));
+    }
+
+    /** Satu berkas serah terima ke bank — dicatat sekali, bukan per unit. */
+    public static function sertifikatKeBank(SertifikatSerahTerima $serah, int $jumlah): void
+    {
+        $serah->loadMissing('proyek');
+
+        activity('legal')
+            ->causedBy(self::causer())
+            ->performedOn($serah)
+            ->event('sertifikat.ke_bank')
+            ->withProperties([
+                'proyek' => $serah->proyek?->nama_proyek,
+                'tanggal' => $serah->tanggal?->format('Y-m-d'),
+                'jumlah_sertifikat' => $jumlah,
+                'berkas' => $serah->file_original_name,
+            ])
+            ->log("{$jumlah} sertifikat diserahkan ke bank · ".($serah->tanggal?->format('d/m/Y') ?? '—'));
+    }
+
+    /**
+     * Penyerahan dibatalkan — sertifikatnya kembali berstatus Terbit.
+     *
+     * Dicatat pada tiap sertifikatnya, bukan pada berkas serah terimanya:
+     * berkas itu ikut terhapus, dan setelahnya tidak ada apa pun di baris
+     * sertifikat yang menunjukkan ia pernah tercatat di bank.
+     *
+     * @param  iterable<Sertifikat>  $daftar
+     */
+    public static function sertifikatBastDibatalkan(iterable $daftar, ?string $tanggalSerah, ?string $alasan = null): void
+    {
+        $causer = self::causer();
+
+        foreach ($daftar as $s) {
+            $s->loadMissing('rumah');
+            $unit = $s->rumah?->kode_unit;
+
+            activity('legal')
+                ->causedBy($causer)
+                ->performedOn($s)
+                ->event('sertifikat.bast_dibatalkan')
+                ->withProperties([
+                    'unit' => $unit,
+                    'nomor_sertifikat' => $s->nomor_sertifikat,
+                    'tanggal_serah' => $tanggalSerah,
+                    'alasan' => $alasan,
+                ])
+                ->log("Serah terima unit {$unit} ke bank dibatalkan".($alasan ? " · alasan: {$alasan}" : ''));
+        }
     }
 
     /**

@@ -122,6 +122,25 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::livewire('user-akses', 'pages::master.user')->name('user-akses.index');
     });
 
+    // PERIZINAN — pecah sertifikat sampai diserahkan ke bank (Admin Legal).
+    // Halaman arsip terbuka untuk yang hanya boleh melihat; tiap halaman input
+    // dikunci izinnya sendiri supaya tahapannya bisa dipisah antar peran.
+    Route::prefix('perizinan')->name('perizinan.')->group(function () {
+        Route::middleware('permission:legal.lihat|legal.pengajuan.kelola|legal.sertifikat.kelola|legal.serahterima.kelola')
+            ->group(function () {
+                Route::livewire('sertifikat', 'pages::perizinan.sertifikat')->name('sertifikat.index');
+            });
+        Route::middleware('permission:legal.pengajuan.kelola')->group(function () {
+            Route::livewire('sertifikat/pengajuan', 'pages::perizinan.sertifikat-pengajuan')->name('sertifikat.pengajuan');
+        });
+        Route::middleware('permission:legal.sertifikat.kelola')->group(function () {
+            Route::livewire('sertifikat/input', 'pages::perizinan.sertifikat-input')->name('sertifikat.input');
+        });
+        Route::middleware('permission:legal.serahterima.kelola')->group(function () {
+            Route::livewire('sertifikat/serah-bank', 'pages::perizinan.sertifikat-serah-bank')->name('sertifikat.serah-bank');
+        });
+    });
+
     // MASTER — permission granular per entitas (spatie OR syntax: "master.kelola|master.<x>.kelola")
     Route::prefix('master')->name('master.')->group(function () {
         Route::middleware('permission:master.kelola|master.perusahaan.kelola')->group(function () {
