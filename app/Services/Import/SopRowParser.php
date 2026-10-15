@@ -280,9 +280,14 @@ class SopRowParser
     /**
      * Normalisasi nomor unit ke 2 digit — "4" → "04", "12" → "12".
      *
-     * Sistem berjalan menyimpan unit zero-padded ("AB-04"), sedangkan Excel SOP menulis
-     * tanpa padding ("AB-4"). Tanpa normalisasi, lookup blok+unit meleset dan importer
-     * membuat record rumah kedua untuk unit fisik yang sama.
+     * Menyeragamkan nomor unit jadi dua digit SEMATA untuk pencocokan: dipakai pada
+     * kedua sisi perbandingan — baris Excel dan baris basis data — supaya "4" dan
+     * "04" bertemu di kunci yang sama. Tanpa itu lookup blok+unit meleset dan
+     * importer membuat record rumah kedua untuk unit fisik yang sama.
+     *
+     * Bentuk yang benar-benar TERSIMPAN bukan ini, melainkan tanpa nol di depan —
+     * lihat Rumah::normalNomorUnit, yang menyeragamkannya saat ditulis. Jadi nilai
+     * dari sini aman dipakai mencari, tapi jangan dianggap bentuk simpanannya.
      *
      * Nilai non-numerik dikembalikan apa adanya.
      */

@@ -122,7 +122,7 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
             $q->where(function ($qq) use ($s) {
                 $qq->where('spr.nomor_spr', 'like', "%{$s}%")
                     ->orWhereHas('prospectCustomer', fn ($p) => $p->where('nama_lengkap', 'like', "%{$s}%")->orWhere('nik', 'like', "%{$s}%"))
-                    ->orWhereHas('rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", ["%{$s}%"]));
+                    ->orWhereHas('rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", ['%'.Rumah::normalCari($s).'%']));
             });
         }
 
@@ -177,7 +177,7 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
         }
         if ($this->search) {
             $s = $this->search;
-            $q->where(fn ($qq) => $qq->where('blok', 'like', "%{$s}%")->orWhere('nomor_unit', 'like', "%{$s}%")->orWhereRaw("CONCAT(blok,'-',nomor_unit) like ?", ["%{$s}%"]));
+            $q->where(fn ($qq) => $qq->where('blok', 'like', "%{$s}%")->orWhere('nomor_unit', 'like', '%'.Rumah::normalCari($s).'%')->orWhereRaw("CONCAT(blok,'-',nomor_unit) like ?", ['%'.Rumah::normalCari($s).'%']));
         }
 
         return $q->orderBy('blok')->orderBy('nomor_unit')->get()->map(fn ($r) => [

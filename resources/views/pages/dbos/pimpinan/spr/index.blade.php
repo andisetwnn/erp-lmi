@@ -193,7 +193,7 @@ new #[Title('SPR Grup'), Layout('layouts.pimpinan')] class extends Component {
                                     <div class="font-mono text-[10px] text-zinc-500">#{{ $s->sales?->kode ?? '—' }}</div>
                                 </td>
                                 <td class="px-4 py-3 font-mono text-xs text-zinc-700 dark:text-zinc-300">
-                                    {{ $s->rumah ? $s->rumah->blok.'-'.$s->rumah->nomor_unit : '—' }}
+                                    {{ $s->rumah ? $s->rumah->kode_unit : '—' }}
                                 </td>
                                 <td class="px-4 py-3 text-right text-xs font-bold text-emerald-700 dark:text-emerald-400">
                                     {{ number_format((float) $s->total_harga, 0, ',', '.') }}

@@ -240,13 +240,17 @@ it('membatalkan seluruh impor kalau ada unit yang tidak ada di master', function
 });
 
 it('menyamakan nomor unit berawalan nol dengan yang tanpa nol', function () {
-    buatUnit('ZZ', '07');
+    // Excel menulis "ZZ-7", unitnya didaftarkan sebagai "ZZ-07" — kavling yang
+    // sama. Dicocokkan lewat id unitnya, bukan lewat pencarian nomor: sejak
+    // nomor unit diseragamkan saat disimpan, "07" tidak lagi ada bentuknya di
+    // basis data, jadi mencarinya pasti nihil dan tesnya lulus palsu.
+    $unit = buatUnit('ZZ', '07');
     tulisBerkasBatal([['unit' => 'ZZ-7']]);
 
     jalankanImportBatal(['--commit' => true])->assertExitCode(0);
 
-    expect(Spr::where('status', 'cancelled')->value('rumah_id'))
-        ->toBe(Rumah::where('blok', 'ZZ')->where('nomor_unit', '07')->value('id'));
+    expect($unit->nomor_unit)->toBe('7')
+        ->and(Spr::where('status', 'cancelled')->value('rumah_id'))->toBe($unit->id);
 });
 
 it('tidak mengembalikan setoran yang baru sebatas UTJ', function () {

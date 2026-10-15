@@ -79,7 +79,7 @@ new #[Title('Master Rumah')] class extends Component {
     public function openRiwayat(int $id): void
     {
         $rumah = Rumah::with('proyek')->findOrFail($id);
-        $unit = trim(($rumah->blok ?? '').'-'.($rumah->nomor_unit ?? ''), '-');
+        $unit = (string) $rumah->kode_unit;
         $this->riwayatTitle = "Riwayat Unit {$unit}"
             .($rumah->proyek?->nama_proyek ? ' · '.$rumah->proyek->nama_proyek : '');
 
@@ -240,7 +240,7 @@ new #[Title('Master Rumah')] class extends Component {
                 $term = '%'.$this->search.'%';
                 $q->where(function ($qq) use ($term) {
                     $qq->where('blok', 'like', $term)
-                        ->orWhere('nomor_unit', 'like', $term)
+                        ->orWhere('nomor_unit', 'like', Rumah::normalCari($term))
                         ->orWhereHas('tipeRumah', fn ($tt) => $tt->where('tipe', 'like', $term)
                             ->orWhere('nama_tipe', 'like', $term));
                 });
@@ -444,9 +444,12 @@ new #[Title('Master Rumah')] class extends Component {
 
         $validated = $this->validate();
 
+        // Dibandingkan dalam bentuk bakunya: mengetik "08" untuk unit yang sudah
+        // tersimpan sebagai "8" harus tertolak di sini, bukan lolos lalu ditolak
+        // basis data dengan pesan yang tidak terbaca pengguna.
         $duplicateQuery = Rumah::where('proyek_id', $this->selectedProyekId)
             ->where('blok', $validated['blok'])
-            ->where('nomor_unit', $validated['nomor_unit']);
+            ->where('nomor_unit', Rumah::normalNomorUnit($validated['nomor_unit']));
         if ($this->editId) {
             $duplicateQuery->where('id', '!=', $this->editId);
         }
@@ -566,14 +569,14 @@ new #[Title('Master Rumah')] class extends Component {
             Flux::toast(
                 variant: 'danger',
                 heading: 'Tidak bisa hapus',
-                text: "Unit {$rumah->blok}-{$rumah->nomor_unit} masih punya {$rumah->virtual_account_count} virtual account. Hapus VA dulu.",
+                text: "Unit {$rumah->kode_unit} masih punya {$rumah->virtual_account_count} virtual account. Hapus VA dulu.",
             );
 
             return;
         }
 
         $this->deleteId = $rumah->id;
-        $this->deleteNama = "Unit {$rumah->blok}-{$rumah->nomor_unit}";
+        $this->deleteNama = "Unit {$rumah->kode_unit}";
 
         Flux::modal('rumah-delete-confirm')->show();
     }

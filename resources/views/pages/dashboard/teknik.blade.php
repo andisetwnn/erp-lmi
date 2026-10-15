@@ -160,7 +160,7 @@ new #[Title('Dashboard')] class extends Component
                         @foreach ($sedangDikerjakan as $r)
                             <div class="rounded-lg border border-zinc-100 px-3 py-2 dark:border-zinc-800">
                                 <div class="flex items-center justify-between">
-                                    <span class="text-sm font-semibold">{{ $r->blok }}-{{ $r->nomor_unit }}</span>
+                                    <span class="text-sm font-semibold">{{ $r->kode_unit }}</span>
                                     <span class="font-mono text-xs font-bold tabular-nums text-orange-700 dark:text-orange-400">{{ $r->progres_fisik }}%</span>
                                 </div>
                                 <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
@@ -189,7 +189,7 @@ new #[Title('Dashboard')] class extends Component
                         @foreach ($perubahanTerakhir as $log)
                             <div class="rounded-lg border border-zinc-100 px-3 py-2 dark:border-zinc-800">
                                 <div class="flex items-center justify-between text-sm">
-                                    <span class="font-semibold">{{ $log->rumah?->blok }}-{{ $log->rumah?->nomor_unit }}</span>
+                                    <span class="font-semibold">{{ $log->rumah?->kode_unit }}</span>
                                     <span class="font-mono text-xs tabular-nums">
                                         <span class="text-zinc-400">{{ $log->progres_dari }}%</span>
                                         <span class="text-zinc-400">→</span>

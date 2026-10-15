@@ -131,7 +131,7 @@ new #[Title('Master Virtual Account')] class extends Component
             ->when($this->search, function ($q) {
                 $term = '%'.$this->search.'%';
                 $q->where(function ($qq) use ($term) {
-                    $qq->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", [$term])
+                    $qq->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", [Rumah::normalCari($term)])
                         ->orWhereHas('virtualAccount', fn ($v) => $v->where('nomor_va', 'like', $term));
                 });
             })
@@ -401,7 +401,7 @@ new #[Title('Master Virtual Account')] class extends Component
             ->get(['id', 'proyek_id', 'blok', 'nomor_unit'])
             ->map(fn ($r) => [
                 'id' => $r->id,
-                'label' => "{$r->proyek?->nama_proyek} · {$r->blok}-{$r->nomor_unit}",
+                'label' => "{$r->proyek?->nama_proyek} · {$r->kode_unit}",
             ]);
     }
 }; ?>

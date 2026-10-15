@@ -123,7 +123,7 @@ new #[Title('Rencana Akad — Berdasarkan Blok')] class extends Component
             $s = trim($this->cari);
             $sprQuery->where(function ($q) use ($s) {
                 $q->where('nomor_spr', 'like', "%{$s}%")
-                    ->orWhereHas('rumah', fn ($r) => $r->where('blok', 'like', "%{$s}%")->orWhere('nomor_unit', 'like', "%{$s}%"))
+                    ->orWhereHas('rumah', fn ($r) => $r->where('blok', 'like', "%{$s}%")->orWhere('nomor_unit', 'like', '%'.Rumah::normalCari($s).'%'))
                     ->orWhereHas('prospectCustomer', fn ($p) => $p->where('nama_lengkap', 'like', "%{$s}%")->orWhere('nik', 'like', "%{$s}%"));
             });
         }
@@ -157,7 +157,7 @@ new #[Title('Rencana Akad — Berdasarkan Blok')] class extends Component
             'nomor_spr' => $spr->nomor_display,
             'nomor_rencana' => $unit?->rencanaAkad?->nomor,
             'blok' => $rumah?->blok,
-            'unit' => $rumah ? trim(($rumah->blok ?? '').'-'.($rumah->nomor_unit ?? '')) : null,
+            'unit' => $rumah?->kode_unit,
             'lot' => $rumah?->lot,
             'proyek' => $rumah?->proyek?->kode_surat ?? $rumah?->proyek?->nama_proyek,
             'persen_rmh' => (int) ($rumah?->progres_fisik ?? 0),

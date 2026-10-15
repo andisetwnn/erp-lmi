@@ -260,7 +260,7 @@
                 <tr>
                     <td class="center">{{ $i + 1 }}</td>
                     <td class="nama">{{ strtoupper($prospect?->nama_lengkap ?? '') }}</td>
-                    <td class="center">{{ $rumah?->blok }}-{{ $rumah?->nomor_unit }}</td>
+                    <td class="center">{{ $rumah?->kode_unit }}</td>
                     <td class="sales">{{ strtoupper($spr?->sales?->nama ?? '') }}</td>
                     <td class="center">{{ $spr?->tanggal_spr?->format('d/m/y') ?? '' }}</td>
                     <td class="center">{{ (int) ($tipe?->luas_bangunan ?? 0) ?: '' }}</td>

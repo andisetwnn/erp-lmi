@@ -102,7 +102,7 @@ new #[Title('Pindah Kavling')] class extends Component
             Flux::toast(
                 variant: 'success',
                 heading: 'Berhasil pindah',
-                text: "SPR {$spr->nomor_spr} → SPR baru {$sprBaru->nomor_spr} (unit {$sprBaru->rumah?->blok}-{$sprBaru->rumah?->nomor_unit}).",
+                text: "SPR {$spr->nomor_spr} → SPR baru {$sprBaru->nomor_spr} (unit {$sprBaru->rumah?->kode_unit}).",
             );
 
             $this->reset(['pindahSprId', 'pindahRumahBaruId', 'pindahAlasan']);

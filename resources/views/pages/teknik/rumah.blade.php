@@ -277,7 +277,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
             ->when($this->search !== '', function ($q) {
                 $s = "%{$this->search}%";
                 $q->where(function ($qq) use ($s) {
-                    $qq->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", [$s])
+                    $qq->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", [Rumah::normalCari($s)])
                         ->orWhere('lot', 'like', $s)
                         ->orWhereHas('subcon', fn ($c) => $c->where('nama', 'like', $s));
                 });

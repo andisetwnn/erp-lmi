@@ -103,8 +103,64 @@ class Rumah extends Model
     }
 
     /**
-     * Kode unit display, mis. "DC-08". Nomor unit selalu zero-padded 2 digit
-     * biar konsisten (DC-8 vs DC-08 di UI/laporan operasional).
+     * Bentuk baku nomor unit yang disimpan: tanpa nol di depan.
+     *
+     * "08" dan "8" adalah unit fisik yang sama, tapi kolomnya teks — tanpa
+     * penyeragaman ini keduanya lolos sebagai dua baris berbeda dari
+     * unique(proyek_id, blok, nomor_unit), dan satu kavling punya dua record.
+     *
+     * Nilai non-angka ("4A") dibiarkan apa adanya.
+     */
+    public static function normalNomorUnit(mixed $nomor): string
+    {
+        $n = trim((string) $nomor);
+
+        return ctype_digit($n) ? (ltrim($n, '0') ?: '0') : $n;
+    }
+
+    /**
+     * Kata kunci pencarian unit, disesuaikan ke bentuk simpanannya.
+     *
+     * Yang terbaca pengguna di layar "AF-08", yang tersimpan "AF-8". Tanpa
+     * penyesuaian ini, mengetik persis seperti yang tertera justru tidak
+     * menemukan apa pun — kesalahan yang menyalahkan pengguna atas bentuk
+     * penyimpanan yang tidak pernah ia lihat.
+     *
+     * Yang dibuang hanya nol di awal kata, sesudah tanda hubung, atau sesudah
+     * jokaritas "%" — sebagian pemanggil sudah membungkus kata kuncinya sebelum
+     * sampai ke sini, dan "%08%" harus tetap tertangani.
+     *
+     * Nomor lain yang memuat nol — nomor SPR "00190", NIK — tidak ikut terpotong
+     * selama fungsi ini dipakai pada kondisi nomor unit saja. Kata kunci yang
+     * sama biasanya juga menyaring kolom-kolom itu, jadi jangan dipasang di
+     * seluruh kondisi pencarian sekaligus.
+     */
+    public static function normalCari(string $kata): string
+    {
+        $kata = trim($kata);
+
+        return preg_replace('/(^|-|%)0+(?=\d)/', '$1', $kata) ?? $kata;
+    }
+
+    /**
+     * Penyeragaman dipasang di model, bukan di layar atau importer.
+     *
+     * Unit lahir dari tiga jalur — Master Rumah, importer SOP, dan importer
+     * stok kavling — dan dua di antaranya dulu menyimpan versi berpadding
+     * sementara yang satu lagi tidak. Selama aturannya dititipkan ke pemanggil,
+     * cukup satu jalur lupa untuk melahirkan unit kembar.
+     */
+    protected function nomorUnit(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => self::normalNomorUnit($value),
+        );
+    }
+
+    /**
+     * Kode unit display, mis. "DC-08". Yang disimpan tanpa nol di depan,
+     * yang ditampilkan selalu dua digit — supaya UI dan laporan operasional
+     * seragam (DC-8 vs DC-08).
      */
     protected function kodeUnit(): Attribute
     {

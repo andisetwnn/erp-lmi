@@ -1,6 +1,7 @@
 <?php
 
 use App\Livewire\Concerns\Sortable;
+use App\Models\Master\Rumah;
 use App\Models\Master\Sales;
 use App\Models\Master\Spr;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -141,7 +142,7 @@ new #[Title('Data SPR')] class extends Component
                         ->orWhereHas('prospectCustomer', fn ($p) => $p->where('nama_lengkap', 'like', "%{$s}%")
                             ->orWhere('nik', 'like', "%{$s}%")
                             ->orWhere('hp', 'like', "%{$s}%"))
-                        ->orWhereHas('rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", ["%{$s}%"]));
+                        ->orWhereHas('rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", ['%'.Rumah::normalCari($s).'%']));
                 });
             });
     }

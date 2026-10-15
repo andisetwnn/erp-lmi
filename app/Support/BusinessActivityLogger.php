@@ -73,7 +73,7 @@ class BusinessActivityLogger
 
     public static function bookingCreated(Booking $booking): void
     {
-        $unit = $booking->rumah?->blok.'-'.$booking->rumah?->nomor_unit;
+        $unit = $booking->rumah?->kode_unit;
         $customer = $booking->prospectCustomer?->nama_lengkap ?? '—';
 
         activity('penjualan')
@@ -91,7 +91,7 @@ class BusinessActivityLogger
 
     public static function sprSubmitted(Spr $spr): void
     {
-        $unit = $spr->rumah?->blok.'-'.$spr->rumah?->nomor_unit;
+        $unit = $spr->rumah?->kode_unit;
         $customer = $spr->prospectCustomer?->nama_lengkap ?? '—';
 
         activity('penjualan')
@@ -176,9 +176,9 @@ class BusinessActivityLogger
     public static function sprSwitched(Spr $sprLama, Spr $sprBaru, string $alasan, int $userId): void
     {
         $customer = $sprLama->prospectCustomer?->nama_lengkap ?? '—';
-        $unitLama = $sprLama->rumah ? "{$sprLama->rumah->blok}-{$sprLama->rumah->nomor_unit}" : '—';
+        $unitLama = $sprLama->rumah?->kode_unit ?? '—';
         $sprBaru->loadMissing('rumah');
-        $unitBaru = $sprBaru->rumah ? "{$sprBaru->rumah->blok}-{$sprBaru->rumah->nomor_unit}" : '—';
+        $unitBaru = $sprBaru->rumah?->kode_unit ?? '—';
 
         activity('penjualan')
             ->causedBy($userId)
@@ -200,8 +200,8 @@ class BusinessActivityLogger
     {
         $customerA = $sprA->prospectCustomer?->nama_lengkap ?? '—';
         $customerB = $sprB->prospectCustomer?->nama_lengkap ?? '—';
-        $unitA = $sprA->rumah ? "{$sprA->rumah->blok}-{$sprA->rumah->nomor_unit}" : '—';
-        $unitB = $sprB->rumah ? "{$sprB->rumah->blok}-{$sprB->rumah->nomor_unit}" : '—';
+        $unitA = $sprA->rumah?->kode_unit ?? '—';
+        $unitB = $sprB->rumah?->kode_unit ?? '—';
 
         activity('penjualan')
             ->causedBy($userId)
@@ -389,7 +389,7 @@ class BusinessActivityLogger
     public static function unitCreated(Rumah $rumah): void
     {
         $rumah->loadMissing('proyek', 'tipeRumah');
-        $unit = $rumah->blok.'-'.$rumah->nomor_unit;
+        $unit = $rumah->kode_unit;
 
         activity('unit')
             ->causedBy(self::causer())
@@ -407,7 +407,7 @@ class BusinessActivityLogger
     public static function unitUpdated(Rumah $rumah, array $changes): void
     {
         $rumah->loadMissing('proyek');
-        $unit = $rumah->blok.'-'.$rumah->nomor_unit;
+        $unit = $rumah->kode_unit;
 
         activity('unit')
             ->causedBy(self::causer())
@@ -424,7 +424,7 @@ class BusinessActivityLogger
     public static function unitStatusChanged(Rumah $rumah, string $from, string $to): void
     {
         $rumah->loadMissing('proyek');
-        $unit = $rumah->blok.'-'.$rumah->nomor_unit;
+        $unit = $rumah->kode_unit;
 
         activity('unit')
             ->causedBy(self::causer())

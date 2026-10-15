@@ -70,8 +70,10 @@ it('menambahkan unit yang belum ada dengan status draft', function () {
 
     expect($unit)->toHaveCount(2)
         ->and($unit->pluck('status')->unique()->all())->toBe(['draft'])
-        // Nomor diseragamkan dua digit mengikuti mayoritas isi master.
-        ->and($unit->pluck('nomor_unit')->all())->toBe(['01', '02']);
+        // Excel menulis "01" dan "02"; yang tersimpan tanpa nol di depan.
+        // Penyeragamannya di model — lihat Rumah::normalNomorUnit.
+        ->and($unit->pluck('nomor_unit')->all())->toBe(['1', '2'])
+        ->and($unit->pluck('kode_unit')->all())->toBe(['ZZ-01', 'ZZ-02']);
 });
 
 it('melewati unit yang sudah ada, apa pun statusnya', function () {
@@ -91,12 +93,14 @@ it('melewati unit yang sudah ada, apa pun statusnya', function () {
 
     expect(Rumah::where('blok', 'ZZ')->count())->toBe(2)
         // Yang sudah ada tidak disentuh — statusnya tetap terjual, bukan direset draft.
-        ->and(Rumah::where('blok', 'ZZ')->where('nomor_unit', '01')->value('status'))->toBe('terjual');
+        // Dicari sebagai "1": yang diketik "01" tersimpan tanpa nol di depan.
+        ->and(Rumah::where('blok', 'ZZ')->where('nomor_unit', '1')->value('status'))->toBe('terjual');
 });
 
 it('menyamakan nomor berawalan nol dengan yang tanpa nol', function () {
-    // Isi master tidak seragam: sebagian "1", sebagian "01". Tanpa penyamaan,
-    // unit yang sudah ada akan terbaca sebagai kurang lalu digandakan.
+    // Excel boleh menulis "07" atau "7" untuk kavling yang sama. Tanpa penyamaan,
+    // unit yang sudah ada terbaca sebagai kurang lalu digandakan — dan sejak
+    // nomor unit punya satu bentuk baku, gandaannya langsung ditolak basis data.
     $tipe = TipeRumah::where('proyek_id', $this->proyek->id)->first();
 
     Rumah::create([
@@ -143,8 +147,8 @@ it('mencocokkan label tipe ke nama tipe di master', function () {
     $nakula = TipeRumah::where('tipe', 'Nakula 21/78')->first();
     $arjuna = TipeRumah::where('tipe', 'like', 'Arjuna%')->first();
 
-    expect(Rumah::where('blok', 'ZZ')->where('nomor_unit', '02')->value('tipe_rumah_id'))->toBe($nakula->id)
-        ->and(Rumah::where('blok', 'ZZ')->where('nomor_unit', '01')->value('tipe_rumah_id'))->toBe($arjuna->id);
+    expect(Rumah::where('blok', 'ZZ')->where('nomor_unit', '2')->value('tipe_rumah_id'))->toBe($nakula->id)
+        ->and(Rumah::where('blok', 'ZZ')->where('nomor_unit', '1')->value('tipe_rumah_id'))->toBe($arjuna->id);
 });
 
 it('menolak berkas yang judul kolomnya tidak sesuai', function () {

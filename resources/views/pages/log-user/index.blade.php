@@ -182,7 +182,7 @@ new #[Title('Log User')] class extends Component
                         $subjectLabel = match ($subjType) {
                             'Rumah' => (function () use ($subjId) {
                                 $r = \App\Models\Master\Rumah::with('proyek', 'tipeRumah')->find($subjId);
-                                return $r ? "Unit {$r->blok}-{$r->nomor_unit} · {$r->tipeRumah?->tipe} · {$r->proyek?->nama_proyek}" : "Unit #{$subjId}";
+                                return $r ? "Unit {$r->kode_unit} · {$r->tipeRumah?->tipe} · {$r->proyek?->nama_proyek}" : "Unit #{$subjId}";
                             })(),
                             'TipeRumah' => (function () use ($subjId) {
                                 $t = \App\Models\Master\TipeRumah::with('proyek')->find($subjId);

@@ -196,7 +196,7 @@ new #[Title('Form Booking'), Layout('layouts.dbos')] class extends Component {
                     'prospect_customer_id' => $prospect->id,
                     'status_dari' => null,
                     'status_ke' => 'finish',
-                    'catatan' => 'Booking unit '.$this->rumah->blok.'-'.$this->rumah->nomor_unit.' di '.$this->rumah->proyek?->nama_proyek,
+                    'catatan' => 'Booking unit '.$this->rumah->kode_unit.' di '.$this->rumah->proyek?->nama_proyek,
                     'changed_by_sales_id' => $salesId,
                 ]);
             });
@@ -214,7 +214,7 @@ new #[Title('Form Booking'), Layout('layouts.dbos')] class extends Component {
             BusinessActivityLogger::bookingCreated($createdBooking);
         }
 
-        session()->flash('toast', 'Booking berhasil dibuat. Unit '.$this->rumah->blok.'-'.$this->rumah->nomor_unit.' sekarang BOOKING.');
+        session()->flash('toast', 'Booking berhasil dibuat. Unit '.$this->rumah->kode_unit.' sekarang BOOKING.');
         $this->redirect(route('dbos.home'), navigate: true);
     }
 }; ?>

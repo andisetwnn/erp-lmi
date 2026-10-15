@@ -154,7 +154,7 @@ new #[Title('Dashboard')] class extends Component
                                 @foreach ($sprTerbaru as $s)
                                     <tr class="hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
                                         <td class="whitespace-nowrap px-3 py-2 font-mono font-semibold">{{ $s->nomor_display }}</td>
-                                        <td class="whitespace-nowrap px-3 py-2">{{ $s->rumah?->blok }}-{{ $s->rumah?->nomor_unit }}</td>
+                                        <td class="whitespace-nowrap px-3 py-2">{{ $s->rumah?->kode_unit }}</td>
                                         <td class="px-3 py-2 text-zinc-600 dark:text-zinc-400">{{ $s->prospectCustomer?->nama_lengkap ?? '–' }}</td>
                                         <td class="whitespace-nowrap px-3 py-2 text-zinc-500">{{ $s->sales?->nama ?? '–' }}</td>
                                         <td class="whitespace-nowrap px-3 py-2 text-right">
@@ -184,7 +184,7 @@ new #[Title('Dashboard')] class extends Component
                     <div class="space-y-2">
                         @foreach ($belumTertagih as $r)
                             <div class="flex items-center justify-between rounded-lg border border-zinc-100 px-3 py-2 dark:border-zinc-800">
-                                <span class="text-sm font-semibold">{{ $r->blok }}-{{ $r->nomor_unit }}</span>
+                                <span class="text-sm font-semibold">{{ $r->kode_unit }}</span>
                                 <span class="font-mono text-xs tabular-nums text-amber-700 dark:text-amber-400">Rp {{ number_format((float) $r->biaya_tambahan, 0, ',', '.') }}</span>
                             </div>
                         @endforeach

@@ -172,7 +172,7 @@ class SprSwitchingService
             throw ValidationException::withMessages(['rumah' => 'Unit tujuan sama dengan unit sekarang.']);
         }
         if ($rumahBaru->status !== 'available') {
-            throw ValidationException::withMessages(['rumah' => "Unit {$rumahBaru->blok}-{$rumahBaru->nomor_unit} status '{$rumahBaru->status}', tidak tersedia untuk switching."]);
+            throw ValidationException::withMessages(['rumah' => "Unit {$rumahBaru->kode_unit} status '{$rumahBaru->status}', tidak tersedia untuk switching."]);
         }
         if ($rumahBaru->proyek_id !== $sprLama->rumah?->proyek_id) {
             throw ValidationException::withMessages(['rumah' => 'Unit tujuan harus di proyek yang sama.']);
@@ -286,7 +286,7 @@ class SprSwitchingService
             'ttd_pm_path' => $sprLama->ttd_pm_path,
             // Trace switching
             'switched_from_spr_id' => $sprLama->id,
-            'catatan' => "PINDAH DARI SPR {$sprLama->nomor_spr} (unit {$sprLama->rumah?->blok}-{$sprLama->rumah?->nomor_unit}) pada ".$now->format('d/m/Y H:i').'.',
+            'catatan' => "PINDAH DARI SPR {$sprLama->nomor_spr} (unit {$sprLama->rumah?->kode_unit}) pada ".$now->format('d/m/Y H:i').'.',
             'ttd_sales_path' => $sprLama->ttd_sales_path,
         ]);
 

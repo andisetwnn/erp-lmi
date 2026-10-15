@@ -34,16 +34,16 @@ new #[Title('Booking Baru'), Layout('layouts.dbos')] class extends Component
 
         if (mb_strlen($search) >= 2) {
             // Cari unit (semua status) yang kode-nya mengandung input.
-            // Kode unit = "{blok}-{nomor_unit}". Search bisa ke blok atau nomor_unit.
+            // Kode unit lihat Rumah::kode_unit. Pencarian boleh ke blok atau nomornya.
             $searchResults = Rumah::query()
                 ->with(['proyek:id,nama_proyek,nama_perumahan', 'tipeRumah:id,tipe,nama_tipe,harga_jual'])
                 ->when($this->proyekFilter, fn ($q) => $q->where('proyek_id', $this->proyekFilter))
                 ->where(function ($q) use ($search) {
                     $bare = ltrim(str_replace(['-', ' '], '', $search), '0');
-                    $q->whereRaw("CONCAT(blok, '-', nomor_unit) LIKE ?", ['%'.$search.'%'])
-                        ->orWhereRaw("CONCAT(blok, nomor_unit) LIKE ?", ['%'.$bare.'%'])
+                    $q->whereRaw("CONCAT(blok, '-', nomor_unit) LIKE ?", ['%'.Rumah::normalCari($search).'%'])
+                        ->orWhereRaw("CONCAT(blok, nomor_unit) LIKE ?", ['%'.Rumah::normalCari($bare).'%'])
                         ->orWhere('blok', 'like', $search.'%')
-                        ->orWhere('nomor_unit', 'like', $search.'%');
+                        ->orWhere('nomor_unit', 'like', Rumah::normalCari($search).'%');
                 })
                 ->orderByRaw(\App\Models\Master\Spr::urutanJenisSql(['available', 'booking', 'terjual', 'draft'], 'status'))
                 ->orderBy('proyek_id')

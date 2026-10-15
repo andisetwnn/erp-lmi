@@ -55,7 +55,7 @@ class SyncRumahStatusCommand extends Command
                 ->first();
 
             $this->line(sprintf('  %-9s %-10s → terjual   (%s · %s)',
-                $r->blok.'-'.$r->nomor_unit, $r->status, $spr?->nomor_spr ?? '?', $spr?->status ?? '?'));
+                $r->kode_unit, $r->status, $spr?->nomor_spr ?? '?', $spr?->status ?? '?'));
         }
 
         if ($dryRun) {

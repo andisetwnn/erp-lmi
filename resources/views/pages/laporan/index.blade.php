@@ -268,7 +268,7 @@ public function setPeriod(string $p): void
             $q->where(function ($qq) use ($s) {
                 $qq->where('spr.nomor_spr', 'like', "%{$s}%")
                     ->orWhereHas('prospectCustomer', fn ($p) => $p->where('nama_lengkap', 'like', "%{$s}%")->orWhere('nik', 'like', "%{$s}%"))
-                    ->orWhereHas('rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", ["%{$s}%"]));
+                    ->orWhereHas('rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", ['%'.Rumah::normalCari($s).'%']));
             });
         }
         return $q;
@@ -311,7 +311,7 @@ public function setPeriod(string $p): void
         if ($this->filterKategori) $q->whereHas('tipeRumah', fn ($t) => $t->where('kategori', $this->filterKategori));
         if ($this->search !== '') {
             $s = $this->search;
-            $q->where(fn ($qq) => $qq->where('blok', 'like', "%{$s}%")->orWhere('nomor_unit', 'like', "%{$s}%")->orWhereRaw("CONCAT(blok,'-',nomor_unit) like ?", ["%{$s}%"]));
+            $q->where(fn ($qq) => $qq->where('blok', 'like', "%{$s}%")->orWhere('nomor_unit', 'like', '%'.Rumah::normalCari($s).'%')->orWhereRaw("CONCAT(blok,'-',nomor_unit) like ?", ['%'.Rumah::normalCari($s).'%']));
         }
 
         $totalUnit = (clone $q)->count();
@@ -611,8 +611,8 @@ public function setPeriod(string $p): void
                     ->orWhere('alasan', 'like', $s)
                     ->orWhereHas('sprLamaA.prospectCustomer', fn ($p) => $p->where('nama_lengkap', 'like', $s))
                     ->orWhereHas('sprLamaB.prospectCustomer', fn ($p) => $p->where('nama_lengkap', 'like', $s))
-                    ->orWhereHas('sprLamaA.rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", [$s]))
-                    ->orWhereHas('sprLamaB.rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", [$s]));
+                    ->orWhereHas('sprLamaA.rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", [Rumah::normalCari($s)]))
+                    ->orWhereHas('sprLamaB.rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", [Rumah::normalCari($s)]));
             });
         }
 
@@ -644,7 +644,7 @@ public function setPeriod(string $p): void
         if ($this->search !== '') {
             $rumahQ->where(function ($q) {
                 $q->where('blok', 'like', "%{$this->search}%")
-                    ->orWhere('nomor_unit', 'like', "%{$this->search}%");
+                    ->orWhere('nomor_unit', 'like', '%'.Rumah::normalCari($this->search).'%');
             });
         }
 

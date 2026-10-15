@@ -69,7 +69,7 @@ class PimpinanBookingExport implements FromQuery, ShouldAutoSize, WithHeadings, 
             $b->sales?->nama ?? '—',
             $b->sales?->kode ?? '—',
             $b->proyek?->nama_proyek ?? '—',
-            $b->rumah ? $b->rumah->blok.'-'.$b->rumah->nomor_unit : '—',
+            $b->rumah?->kode_unit ?? '—',
             $tipeLabel ?: '—',
             $b->keterangan_batal ?? '',
         ];

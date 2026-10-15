@@ -2,6 +2,7 @@
 
 use App\Models\Master\BankKpr;
 use App\Models\Master\Proyek;
+use App\Models\Master\Rumah;
 use App\Models\Master\Spr;
 use App\Models\Master\SprPemberkasan;
 use Flux\Flux;
@@ -307,7 +308,7 @@ new #[Title('Input Pemberkasan')] class extends Component
             $q->where(function ($qq) use ($s) {
                 $qq->where('nomor_spr', 'like', $s)
                     ->orWhereHas('prospectCustomer', fn ($p) => $p->where('nama_lengkap', 'like', $s)->orWhere('nik', 'like', $s))
-                    ->orWhereHas('rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", [$s]));
+                    ->orWhereHas('rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", [Rumah::normalCari($s)]));
             });
         }
 

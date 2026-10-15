@@ -533,7 +533,7 @@ new #[Title('Detail Rencana Akad')] class extends Component
                                         </div>
                                     @endif
                                 </td>
-                                <td class="px-3 py-2 font-medium">{{ $spr->rumah?->blok }}-{{ $spr->rumah?->nomor_unit }}</td>
+                                <td class="px-3 py-2 font-medium">{{ $spr->rumah?->kode_unit }}</td>
                                 <td class="px-3 py-2">{{ $spr->prospectCustomer?->nama_lengkap ?? '—' }}</td>
                                 <td class="px-3 py-2 text-xs">{{ $spr->rumah?->subcon?->nama ?? '—' }}</td>
                                 <td class="px-3 py-2 text-right font-mono tabular-nums text-xs">
@@ -793,7 +793,7 @@ new #[Title('Detail Rencana Akad')] class extends Component
                             @endphp
                             <tr wire:key="kandidat-{{ $spr->id }}" @class(['opacity-60' => $k['alasan']])>
                                 <td class="px-3 py-2 font-medium">
-                                    {{ $spr->rumah?->blok }}-{{ $spr->rumah?->nomor_unit }}
+                                    {{ $spr->rumah?->kode_unit }}
                                 </td>
                                 <td class="px-3 py-2">{{ $spr->prospectCustomer?->nama_lengkap ?? '—' }}</td>
                                 <td class="px-3 py-2 text-right font-mono tabular-nums text-xs">

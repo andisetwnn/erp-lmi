@@ -115,8 +115,8 @@ class ImportStockKavling extends Command
                     'proyek_id' => $proyek->id,
                     'tipe_rumah_id' => $u['tipe_rumah_id'],
                     'blok' => $u['blok'],
-                    // Nomor diseragamkan dua digit mengikuti mayoritas isi master.
-                    'nomor_unit' => str_pad(ltrim($u['nomor'], '0'), 2, '0', STR_PAD_LEFT),
+                    // Bentuk bakunya diseragamkan model — lihat Rumah::normalNomorUnit.
+                    'nomor_unit' => $u['nomor'],
                     'status' => $status,
                 ]);
             }
