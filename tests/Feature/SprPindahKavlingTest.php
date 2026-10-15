@@ -10,6 +10,7 @@ use App\Models\Master\SprRealisasiPembayaran;
 use App\Models\Master\TipeRumah;
 use App\Models\User;
 use App\Services\SprSwitchingService;
+use App\Support\ProyekAktif;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -27,6 +28,8 @@ beforeEach(function () {
     $this->seed();
 
     $this->proyek = Proyek::first();
+    // Halaman per proyek baru menampilkan data setelah proyek dipilih di sidebar.
+    session([ProyekAktif::SESI => $this->proyek->id]);
     $this->tipe = TipeRumah::where('proyek_id', $this->proyek->id)->first();
 
     $this->sales = Sales::create([

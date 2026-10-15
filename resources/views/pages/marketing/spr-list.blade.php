@@ -55,7 +55,7 @@ new #[Title('Data SPR')] class extends Component
 
     public function mount(): void
     {
-        $this->filterProyek = session('active_proyek_id');
+        $this->filterProyek = \App\Support\ProyekAktif::sinkron($this->filterProyek);
     }
 
     #[On('active-proyek-changed')]
@@ -93,7 +93,7 @@ new #[Title('Data SPR')] class extends Component
 
     public function clearFilters(): void
     {
-        $this->reset(['search', 'filterProyek', 'filterSales', 'filterTanggalFrom', 'filterTanggalTo']);
+        $this->reset(['search', 'filterSales', 'filterTanggalFrom', 'filterTanggalTo']);
         $this->resetPage();
     }
 

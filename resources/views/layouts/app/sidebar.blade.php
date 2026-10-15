@@ -165,7 +165,9 @@
                         @endcan
                         @can('pembayaran.kelola')
                             @php
+                                // Mengikuti proyek aktif, sama seperti halamannya.
                                 $countMaterai = \App\Models\Master\Spr::query()
+                                    ->whereHas('rumah', fn ($r) => $r->where('proyek_id', \App\Support\ProyekAktif::id() ?? 0))
                                     ->where('status', 'approved')
                                     ->whereNotNull('pm_approved_at')
                                     ->whereNotNull('konsumen_signed_at')
@@ -191,6 +193,7 @@
 
                         if ($user?->can('spr.approve')) {
                             $countApprovePending = \App\Models\Master\Spr::where('status', 'approved')
+                                ->whereHas('rumah', fn ($r) => $r->where('proyek_id', \App\Support\ProyekAktif::id() ?? 0))
                                 ->whereNull('pm_approved_at')
                                 ->count();
                         }
@@ -199,9 +202,10 @@
                             // Jumlah rencana menunggu PM. Cache 60 detik supaya sidebar tidak
                             // hit query setiap halaman dimuat kalau volumenya nanti besar.
                             $pendingApprovalAkad = \Illuminate\Support\Facades\Cache::remember(
-                                'sidebar:pending-approval-rencana-akad',
+                                'sidebar:pending-approval-rencana-akad:'.(\App\Support\ProyekAktif::id() ?? 0),
                                 60,
                                 fn () => \App\Models\Master\RencanaAkad::query()
+                                    ->where('proyek_id', \App\Support\ProyekAktif::id() ?? 0)
                                     ->where('status', 'diajukan')->count(),
                             );
                         }
@@ -284,7 +288,9 @@
 
                 @can('pembayaran.kelola')
                     @php
-                        $countUtj = \App\Models\Master\Spr::where('status', 'submitted')->count();
+                        $countUtj = \App\Models\Master\Spr::where('status', 'submitted')
+                            ->whereHas('rumah', fn ($r) => $r->where('proyek_id', \App\Support\ProyekAktif::id() ?? 0))
+                            ->count();
                     @endphp
                     <flux:sidebar.group :heading="__('Transaksi Penerimaan')" icon="banknotes" expandable
                                         :expanded="request()->routeIs('finance.penerimaan-konsumen.*')">

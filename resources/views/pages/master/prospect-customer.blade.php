@@ -8,6 +8,7 @@ use App\Models\Master\Proyek;
 use App\Models\Master\Sales;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Flux\Flux;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -37,6 +38,18 @@ new #[Title('Prospect Customer')] class extends Component
     #[Url(as: 'proyek')]
     public string $filterProyek = '';
 
+    public function mount(): void
+    {
+        $this->filterProyek = (string) (\App\Support\ProyekAktif::sinkron((int) $this->filterProyek ?: null) ?? '');
+    }
+
+    #[On('active-proyek-changed')]
+    public function syncProyek(int $proyekId): void
+    {
+        $this->filterProyek = (string) $proyekId;
+        $this->resetPage();
+    }
+
     #[Url(as: 'status')]
     public string $filterStatus = '';
 
@@ -65,7 +78,9 @@ new #[Title('Prospect Customer')] class extends Component
 
     public function with(): array
     {
+        // Selalu satu proyek — dari picker sidebar. Tanpa proyek, tidak ada yang tampil.
         $base = ProspectCustomer::query()
+            ->where('proyek_id', (int) $this->filterProyek)
             ->with(['proyek:id,nama_proyek', 'sales:id,kode,nama']);
 
         // Counts global (sebelum filter)
@@ -195,7 +210,7 @@ new #[Title('Prospect Customer')] class extends Component
 
     public function resetFilters(): void
     {
-        $this->reset(['search', 'filterSales', 'filterProyek', 'filterStatus', 'filterSumber', 'filterTanggalFrom', 'filterTanggalTo']);
+        $this->reset(['search', 'filterSales', 'filterStatus', 'filterSumber', 'filterTanggalFrom', 'filterTanggalTo']);
         $this->sort = 'terbaru';
         $this->resetPage();
     }
@@ -269,12 +284,24 @@ new #[Title('Prospect Customer')] class extends Component
 
     public function exportExcel()
     {
+        if ($this->filterProyek === '') {
+            Flux::toast(variant: 'warning', text: 'Pilih proyek dulu di picker sidebar.');
+
+            return null;
+        }
+
         $filename = 'prospect-customer-'.now()->format('Ymd-His').'.xlsx';
         return Excel::download(new ProspectCustomerExport($this->currentFilters()), $filename);
     }
 
     public function exportPdf()
     {
+        if ($this->filterProyek === '') {
+            Flux::toast(variant: 'warning', text: 'Pilih proyek dulu di picker sidebar.');
+
+            return null;
+        }
+
         // Pakai query yang sama dengan list (tanpa pagination).
         $export = new ProspectCustomerExport($this->currentFilters());
         $rows = $export->query()->get();
@@ -314,6 +341,11 @@ new #[Title('Prospect Customer')] class extends Component
             </flux:dropdown>
         </div>
 
+        @if ($filterProyek === '')
+            <div class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                {{ __('Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri.') }}
+            </div>
+        @else
         {{-- STATS PER STATUS --}}
         <div class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             @php
@@ -393,16 +425,6 @@ new #[Title('Prospect Customer')] class extends Component
                     </flux:select>
                 </flux:field>
 
-                {{-- Proyek --}}
-                <flux:field>
-                    <flux:label>{{ __('Proyek') }}</flux:label>
-                    <flux:select wire:model.live="filterProyek">
-                        <flux:select.option value="">{{ __('Semua proyek') }}</flux:select.option>
-                        @foreach ($proyekOptions as $p)
-                            <flux:select.option value="{{ $p->id }}">{{ $p->nama_proyek }}</flux:select.option>
-                        @endforeach
-                    </flux:select>
-                </flux:field>
 
                 {{-- Sumber --}}
                 <flux:field>
@@ -449,7 +471,7 @@ new #[Title('Prospect Customer')] class extends Component
                 </flux:field>
             </div>
 
-            @if ($search || $filterSales || $filterProyek || $filterStatus || $filterSumber || $filterTanggalFrom || $filterTanggalTo)
+            @if ($search || $filterSales || $filterStatus || $filterSumber || $filterTanggalFrom || $filterTanggalTo)
                 <div class="mt-3 flex items-center gap-2 border-t border-zinc-100 pt-3 text-xs text-zinc-500 dark:border-zinc-800">
                     <flux:icon.funnel class="size-3.5" />
                     {{ __('Menampilkan') }}
@@ -625,6 +647,8 @@ new #[Title('Prospect Customer')] class extends Component
             <div class="mt-4">
                 <flux:pagination :paginator="$rows" />
             </div>
+        @endif
+
         @endif
 
         {{-- MODAL: Detail Prospek --}}

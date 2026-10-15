@@ -36,7 +36,7 @@ new #[Title('Input Pembatalan SPR')] class extends Component
 
     public function mount(): void
     {
-        $this->proyekId = session('active_proyek_id');
+        $this->proyekId = \App\Support\ProyekAktif::sinkron($this->proyekId);
         if ($this->sprId) {
             $this->loadSpr($this->sprId);
         }

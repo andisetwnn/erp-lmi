@@ -32,7 +32,7 @@ new #[Title('Persetujuan SPR')] class extends Component
 
     public function mount(): void
     {
-        $this->filterProyek = session('active_proyek_id');
+        $this->filterProyek = \App\Support\ProyekAktif::sinkron($this->filterProyek);
     }
 
     #[On('active-proyek-changed')]

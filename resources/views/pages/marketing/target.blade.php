@@ -5,6 +5,7 @@ use App\Models\Master\TargetMarketing;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -31,9 +32,14 @@ new #[Title('Target Marketing (RAB)')] class extends Component
         if (! $this->selectedTahun) {
             $this->selectedTahun = (int) now()->year;
         }
-        if (! $this->selectedProyekId) {
-            $this->selectedProyekId = Proyek::orderBy('nama_proyek')->value('id');
-        }
+        $this->selectedProyekId = \App\Support\ProyekAktif::sinkron($this->selectedProyekId);
+        $this->loadRows();
+    }
+
+    #[On('active-proyek-changed')]
+    public function syncProyek(int $proyekId): void
+    {
+        $this->selectedProyekId = $proyekId;
         $this->loadRows();
     }
 
@@ -117,7 +123,6 @@ new #[Title('Target Marketing (RAB)')] class extends Component
 
     public function with(): array
     {
-        $proyekList = Proyek::orderBy('nama_proyek')->get();
         $tahunMin = min((int) now()->year - 2, TargetMarketing::min('tahun') ?: (int) now()->year - 2);
         $tahunMax = (int) now()->year + 3;
 
@@ -125,7 +130,7 @@ new #[Title('Target Marketing (RAB)')] class extends Component
         $totalPenjualan = collect($this->rows)->sum('target_penjualan');
 
         return [
-            'proyekList' => $proyekList,
+            'proyekAktif' => $this->selectedProyekId ? Proyek::find($this->selectedProyekId) : null,
             'tahunOptions' => range($tahunMax, $tahunMin),
             'canEdit' => Auth::user()?->can('target.kelola'),
             'totalAkad' => (int) $totalAkad,
@@ -144,15 +149,10 @@ new #[Title('Target Marketing (RAB)')] class extends Component
                 </div>
                 <div>
                     <flux:heading size="xl">{{ __('Target Marketing (RAB)') }}</flux:heading>
-                    <flux:subheading>Set target akad & penjualan per bulan — breakdown per proyek per tahun</flux:subheading>
+                    <flux:subheading>{{ $proyekAktif?->nama_proyek ?? __('Belum ada proyek terpilih') }} · {{ __('target akad & penjualan per bulan') }}</flux:subheading>
                 </div>
             </div>
             <div class="flex gap-2">
-                <flux:select wire:model.live="selectedProyekId" size="sm" icon="building-office-2">
-                    @foreach ($proyekList as $p)
-                        <flux:select.option value="{{ $p->id }}">{{ $p->nama_proyek }}</flux:select.option>
-                    @endforeach
-                </flux:select>
                 <flux:select wire:model.live="selectedTahun" size="sm" icon="calendar">
                     @foreach ($tahunOptions as $th)
                         <flux:select.option value="{{ $th }}">Tahun {{ $th }}</flux:select.option>
@@ -161,6 +161,11 @@ new #[Title('Target Marketing (RAB)')] class extends Component
             </div>
         </div>
 
+        @if (! $selectedProyekId)
+            <div class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                {{ __('Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri.') }}
+            </div>
+        @else
         {{-- Total Card --}}
         <div class="mb-4 grid grid-cols-2 gap-3">
             <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/30">
@@ -261,5 +266,6 @@ new #[Title('Target Marketing (RAB)')] class extends Component
                 </div>
             @endif
         </div>
+        @endif
     </div>
 </section>

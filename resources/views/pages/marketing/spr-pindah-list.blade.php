@@ -38,7 +38,7 @@ new #[Title('Pindah Kavling')] class extends Component
 
     public function mount(): void
     {
-        $this->filterProyek = session('active_proyek_id');
+        $this->filterProyek = \App\Support\ProyekAktif::sinkron($this->filterProyek);
     }
 
     #[On('active-proyek-changed')]
@@ -196,11 +196,16 @@ new #[Title('Pindah Kavling')] class extends Component
             })
             ->orderByDesc('processed_at');
 
+        // Tanpa proyek terpilih tidak ada yang ditampilkan — bukan riwayat semua proyek.
+        if (! $this->filterProyek) {
+            $historyQuery->whereRaw('1 = 0');
+        }
+
         $history = $historyQuery->paginate(15);
 
         // ============ OPTIONS untuk modal: SPR SELESAI (approved + bermeterai) yang boleh dipindah ============
         $sprAktifOptions = collect();
-        if (Auth::user()?->can('spr.pindah-unit')) {
+        if ($this->filterProyek && Auth::user()?->can('spr.pindah-unit')) {
             $sprAktifOptions = Spr::query()
                 ->with(['rumah.tipeRumah', 'prospectCustomer:id,nama_lengkap'])
                 ->where('status', 'approved')
@@ -267,6 +272,11 @@ new #[Title('Pindah Kavling')] class extends Component
             </div>
         </div>
 
+        @if (! $filterProyek)
+            <div class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                {{ __('Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri.') }}
+            </div>
+        @else
         {{-- ACTION BUTTONS --}}
         @can('spr.pindah-unit')
             <div class="mb-5 flex flex-wrap gap-3">
@@ -371,6 +381,7 @@ new #[Title('Pindah Kavling')] class extends Component
             </div>
             <div class="border-t border-zinc-100 p-3 dark:border-zinc-800">{{ $history->links() }}</div>
         </div>
+        @endif
     </div>
 
     {{-- ============ MODAL: PINDAH UNIT ============ --}}

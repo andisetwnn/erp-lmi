@@ -1,30 +1,48 @@
 <?php
 
 use App\Models\Master\Spr;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('SPR')] class extends Component
 {
+    /** Proyek dari picker sidebar — ringkasan di halaman ini milik satu proyek. */
+    public ?int $proyekId = null;
+
+    public function mount(): void
+    {
+        $this->proyekId = \App\Support\ProyekAktif::id();
+    }
+
+    #[On('active-proyek-changed')]
+    public function syncProyek(int $proyekId): void
+    {
+        $this->proyekId = $proyekId;
+    }
+
     public function with(): array
     {
+        // Tanpa proyek terpilih semua angka nol — bukan gabungan semua proyek.
+        $spr = fn () => Spr::whereHas('rumah', fn ($r) => $r->where('proyek_id', $this->proyekId ?? 0));
+
         return [
             'stats' => [
-                'total' => Spr::count(),
+                'total' => $spr()->count(),
                 // Diproses = submitted + approved yang belum final (belum ber-e-Materai)
-                'diproses' => Spr::where(function ($q) {
+                'diproses' => $spr()->where(function ($q) {
                     $q->where('status', 'submitted')
                         ->orWhere(function ($qq) {
                             $qq->where('status', 'approved')->whereNull('spr_finalized_at');
                         });
                 })->count(),
                 // Selesai = approved + sudah ber-e-Materai (final, siap kirim ke konsumen)
-                'selesai' => Spr::where('status', 'approved')->whereNotNull('spr_finalized_at')->count(),
-                'akad' => Spr::where('status', 'akad')->count(),
-                'rejected' => Spr::where('status', 'rejected')->count(),
-                'cancelled' => Spr::where('status', 'cancelled')->count(),
+                'selesai' => $spr()->where('status', 'approved')->whereNotNull('spr_finalized_at')->count(),
+                'akad' => $spr()->where('status', 'akad')->count(),
+                'rejected' => $spr()->where('status', 'rejected')->count(),
+                'cancelled' => $spr()->where('status', 'cancelled')->count(),
                 // Total nilai penjualan yang telah terkontrak (Selesai + Akad).
-                'total_nilai' => (float) Spr::where(function ($q) {
+                'total_nilai' => (float) $spr()->where(function ($q) {
                     $q->where(function ($qq) {
                         $qq->where('status', 'approved')->whereNotNull('spr_finalized_at');
                     })->orWhere('status', 'akad');
@@ -63,6 +81,12 @@ new #[Title('SPR')] class extends Component
                 </div>
             </form>
         </div>
+
+        @if (! $proyekId)
+            <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-center text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                {{ __('Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri untuk melihat ringkasan SPR.') }}
+            </div>
+        @endif
 
         {{-- QUICK STATS STRIP (clickable → jump ke list dengan tab yang sesuai) --}}
         <div class="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
@@ -186,7 +210,7 @@ new #[Title('SPR')] class extends Component
                     <div class="min-w-0 flex-1">
                         <h3 class="text-base font-bold text-zinc-900 dark:text-white">{{ __('Data SPR') }}</h3>
                         <p class="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-                            {{ __('Lihat seluruh data SPR dari semua proyek. Filter status, cetak ulang PDF, lihat detail customer & termin pembayaran.') }}
+                            {{ __('Lihat seluruh data SPR proyek aktif. Filter status, cetak ulang PDF, lihat detail customer & termin pembayaran.') }}
                         </p>
 
                         <div class="mt-3 flex flex-wrap gap-1.5">

@@ -111,9 +111,7 @@ new #[Title('Master Rumah')] class extends Component {
     public function mount(): void
     {
         // Hydrate dari session global kalau URL belum punya value
-        if (! $this->selectedProyekId && $sessionProyek = session('active_proyek_id')) {
-            $this->selectedProyekId = $sessionProyek;
-        }
+        $this->selectedProyekId = \App\Support\ProyekAktif::sinkron($this->selectedProyekId);
     }
 
     // Listen ke global picker — sync property otomatis

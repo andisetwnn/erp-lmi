@@ -83,9 +83,7 @@ new #[Title('Input Pemberkasan')] class extends Component
 
     public function mount(): void
     {
-        if (! $this->selectedProyekId && $sessionProyek = session('active_proyek_id')) {
-            $this->selectedProyekId = (int) $sessionProyek;
-        }
+        $this->selectedProyekId = \App\Support\ProyekAktif::sinkron($this->selectedProyekId);
     }
 
     #[On('active-proyek-changed')]
@@ -301,9 +299,8 @@ new #[Title('Input Pemberkasan')] class extends Component
             ->whereIn('status', ['approved', 'akad'])
             ->where('jenis_pembayaran', 'kpr');
 
-        if ($this->selectedProyekId) {
-            $q->whereHas('rumah', fn ($r) => $r->where('proyek_id', $this->selectedProyekId));
-        }
+        // Selalu dibatasi proyek: tanpa proyek terpilih hasilnya kosong, bukan semua proyek.
+        $q->whereHas('rumah', fn ($r) => $r->where('proyek_id', $this->selectedProyekId ?? 0));
 
         if ($this->search !== '') {
             $s = "%{$this->search}%";
@@ -446,7 +443,7 @@ new #[Title('Input Pemberkasan')] class extends Component
 
         @if (! $selectedProyekId)
             <div class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
-                Pilih proyek dulu di picker atas untuk menampilkan data pemberkasan.
+                Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri untuk menampilkan data pemberkasan.
             </div>
         @else
             {{-- TABLE — setiap cell editable (klik langsung) --}}

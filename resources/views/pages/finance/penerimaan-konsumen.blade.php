@@ -8,6 +8,7 @@ use App\Support\BusinessActivityLogger;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -16,6 +17,22 @@ use Livewire\WithPagination;
 new #[Title('Penerimaan Konsumen')] class extends Component
 {
     use Sortable, WithPagination;
+
+    /** Proyek dari picker sidebar — lihat App\Support\ProyekAktif. */
+    #[Url(as: 'proyek')]
+    public ?int $proyekId = null;
+
+    public function mount(): void
+    {
+        $this->proyekId = \App\Support\ProyekAktif::sinkron($this->proyekId);
+    }
+
+    #[On('active-proyek-changed')]
+    public function syncProyek(int $proyekId): void
+    {
+        $this->proyekId = $proyekId;
+        $this->resetPage();
+    }
 
     #[Url(as: 'q', except: '')]
     public string $search = '';
@@ -158,7 +175,8 @@ new #[Title('Penerimaan Konsumen')] class extends Component
         ]);
 
         // SPR yang menunggu konfirmasi UTJ
-        $query = $base()->where('status', 'submitted');
+        $query = $base()->where('status', 'submitted')
+            ->whereHas('rumah', fn ($r) => $r->where('proyek_id', $this->proyekId ?? 0));
 
         if ($this->search !== '') {
             $s = $this->search;
@@ -213,6 +231,11 @@ new #[Title('Penerimaan Konsumen')] class extends Component
             <flux:subheading>{{ __('Konfirmasi Uang Tanda Jadi (UTJ) — verifikasi bukti transfer dari customer.') }}</flux:subheading>
         </div>
 
+        @if (! $proyekId)
+            <div class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                {{ __('Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri.') }}
+            </div>
+        @else
         {{-- SEARCH + PAGE SIZE --}}
         <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div class="relative w-full max-w-md">
@@ -310,6 +333,8 @@ new #[Title('Penerimaan Konsumen')] class extends Component
             <div class="mt-4">
                 <flux:pagination :paginator="$sprs" />
             </div>
+        @endif
+
         @endif
 
         {{-- ============ MODAL: Konfirmasi UTJ ============ --}}

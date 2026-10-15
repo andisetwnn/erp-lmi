@@ -33,7 +33,7 @@ new #[Title('Dashboard')] class extends Component
 
     public function mount(): void
     {
-        $this->filterProyek = session('active_proyek_id');
+        $this->filterProyek = \App\Support\ProyekAktif::sinkron($this->filterProyek);
     }
 
     #[On('active-proyek-changed')]
@@ -115,6 +115,11 @@ new #[Title('Dashboard')] class extends Component
 
     public function with(): array
     {
+        // Tanpa proyek terpilih tidak ada yang dihitung — lihat gerbang di template.
+        if (! $this->filterProyek) {
+            return ['perluProyek' => true, 'proyekAktif' => null];
+        }
+
         [$from, $to] = $this->periodRange();
         [$prevFrom, $prevTo] = $this->previousPeriodRange();
         $proyekAktif = $this->filterProyek ? Proyek::find($this->filterProyek) : null;
@@ -316,6 +321,14 @@ new #[Title('Dashboard')] class extends Component
             </div>
         </div>
 
+        {{-- Data dashboard milik satu proyek. Tanpa proyek terpilih yang tampil
+             ajakan memilih, bukan angka gabungan semua proyek — begitu ada lebih
+             dari satu proyek, gabungan itu menyesatkan. --}}
+        @if ($perluProyek ?? false)
+            <div class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                {{ __('Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri untuk menampilkan dashboard.') }}
+            </div>
+        @else
         {{-- ============ ACTION ITEMS ============ --}}
         <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             @if ($utjPending > 0)
@@ -670,5 +683,6 @@ new #[Title('Dashboard')] class extends Component
             </div>
         </div>
 
+        @endif
     </div>
 </section>

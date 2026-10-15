@@ -8,6 +8,7 @@ use App\Services\RencanaAkadService;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -43,6 +44,13 @@ new #[Title('Approval Rencana Akad')] class extends Component
     #[Url(as: 'q')]
     public string $cari = '';
 
+    #[On('active-proyek-changed')]
+    public function syncProyek(int $proyekId): void
+    {
+        $this->proyekId = $proyekId;
+        $this->resetPage();
+    }
+
     public function mount(): void
     {
         abort_unless(Auth::user()?->can('rencanaakad.mengetahui'), 403);
@@ -50,7 +58,7 @@ new #[Title('Approval Rencana Akad')] class extends Component
         if ($this->bulan === '') {
             $this->bulan = now()->format('Y-m');
         }
-        $this->proyekId ??= Proyek::query()->value('id');
+        $this->proyekId = \App\Support\ProyekAktif::sinkron($this->proyekId);
     }
 
     public function updated($property): void
@@ -167,7 +175,7 @@ new #[Title('Approval Rencana Akad')] class extends Component
             ->withCount('unit')
             ->withSum('unit as total_kpr', 'setoran_ajb') // rough proxy; ganti kalau perlu
             ->where('status', 'diajukan')
-            ->when($this->proyekId, fn ($x) => $x->where('proyek_id', $this->proyekId))
+            ->where('proyek_id', $this->proyekId ?? 0)
             ->when($this->bankId, fn ($x) => $x->where('bank_id', $this->bankId))
             ->when($this->notarisId, fn ($x) => $x->where('notaris_id', $this->notarisId))
             ->when($this->cari !== '', fn ($x) => $x->where('nomor', 'like', "%{$this->cari}%"));
@@ -181,7 +189,6 @@ new #[Title('Approval Rencana Akad')] class extends Component
 
         return [
             'daftar' => $q->orderBy('tanggal_rencana')->orderByDesc('id')->paginate(15),
-            'proyekList' => Proyek::orderBy('nama_proyek')->get(['id', 'nama_proyek']),
             'bankList' => Bank::orderBy('nama')->get(['id', 'nama']),
             'notarisList' => Notaris::orderBy('nama')->get(['id', 'nama']),
             'jumlahMenunggu' => RencanaAkad::query()->where('status', 'diajukan')->count(),
@@ -220,17 +227,16 @@ new #[Title('Approval Rencana Akad')] class extends Component
             </div>
         </div>
 
+        @if (! $proyekId)
+            <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                {{ __('Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri.') }}
+            </div>
+        @endif
+
         {{-- FILTER --}}
         <div class="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
             <div>
                 <flux:input type="month" wire:model.live="bulan" label="Bulan" />
-            </div>
-            <div class="min-w-44">
-                <flux:select wire:model.live="proyekId" label="Proyek">
-                    @foreach ($proyekList as $p)
-                        <option value="{{ $p->id }}">{{ $p->nama_proyek }}</option>
-                    @endforeach
-                </flux:select>
             </div>
             <div class="min-w-44">
                 <flux:select wire:model.live="bankId" label="Bank">

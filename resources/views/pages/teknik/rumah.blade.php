@@ -67,9 +67,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
 
     public function mount(): void
     {
-        if (! $this->selectedProyekId && $sess = session('active_proyek_id')) {
-            $this->selectedProyekId = (int) $sess;
-        }
+        $this->selectedProyekId = \App\Support\ProyekAktif::sinkron($this->selectedProyekId);
     }
 
     #[On('active-proyek-changed')]
@@ -275,7 +273,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
     public function with(): array
     {
         $baseQuery = fn () => Rumah::query()
-            ->when($this->selectedProyekId, fn ($q) => $q->where('proyek_id', $this->selectedProyekId))
+            ->where('proyek_id', $this->selectedProyekId ?? 0)
             ->when($this->search !== '', function ($q) {
                 $s = "%{$this->search}%";
                 $q->where(function ($qq) use ($s) {
@@ -300,7 +298,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
         $q->whereBetween('progres_fisik', [$this->progresMin, $this->progresMax]);
 
         $blokList = Rumah::query()
-            ->when($this->selectedProyekId, fn ($q) => $q->where('proyek_id', $this->selectedProyekId))
+            ->where('proyek_id', $this->selectedProyekId ?? 0)
             ->distinct()->orderBy('blok')->pluck('blok');
 
         return [
@@ -473,7 +471,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
 
         @if (! $selectedProyekId)
             <div class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
-                Pilih proyek dulu di picker atas untuk menampilkan data rumah.
+                Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri untuk menampilkan data rumah.
             </div>
         @else
             {{-- BILAH AKSI MASSAL --}}

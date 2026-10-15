@@ -8,6 +8,7 @@ use App\Models\Master\VirtualAccount;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -27,6 +28,18 @@ new #[Title('Master Virtual Account')] class extends Component
 
     #[Url(as: 'proyek')]
     public ?int $filterProyek = null;
+
+    public function mount(): void
+    {
+        $this->filterProyek = \App\Support\ProyekAktif::sinkron($this->filterProyek);
+    }
+
+    #[On('active-proyek-changed')]
+    public function syncProyek(int $proyekId): void
+    {
+        $this->filterProyek = $proyekId;
+        $this->resetPage();
+    }
 
     #[Url(as: 'bank')]
     public ?int $filterBank = null;
@@ -88,7 +101,7 @@ new #[Title('Master Virtual Account')] class extends Component
 
     public function clearFilters(): void
     {
-        $this->reset(['search', 'filterProyek', 'filterBank', 'filterAktif']);
+        $this->reset(['search', 'filterBank', 'filterAktif']);
         $this->resetPage();
     }
 
@@ -114,7 +127,7 @@ new #[Title('Master Virtual Account')] class extends Component
                 },
             ])
             ->whereHas('virtualAccount', $vaFilter)
-            ->when($this->filterProyek, fn ($q) => $q->where('proyek_id', $this->filterProyek))
+            ->where('proyek_id', $this->filterProyek ?? 0)
             ->when($this->search, function ($q) {
                 $term = '%'.$this->search.'%';
                 $q->where(function ($qq) use ($term) {
@@ -409,19 +422,16 @@ new #[Title('Master Virtual Account')] class extends Component
             </div>
         </div>
 
+        @if (! $filterProyek)
+            <div class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                {{ __('Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri.') }}
+            </div>
+        @else
         {{-- FILTERS --}}
         <div class="mb-3 grid grid-cols-1 gap-3 md:grid-cols-12">
-            <div class="md:col-span-5">
+            <div class="md:col-span-8">
                 <flux:input wire:model.live.debounce.300ms="search" icon="magnifying-glass"
                             :placeholder="__('Cari nomor VA / kode unit (blok-unit)...')" />
-            </div>
-            <div class="md:col-span-3">
-                <flux:select wire:model.live="filterProyek" :placeholder="__('Semua Proyek')">
-                    <flux:select.option value="">{{ __('Semua Proyek') }}</flux:select.option>
-                    @foreach ($proyeks as $p)
-                        <flux:select.option value="{{ $p->id }}">{{ $p->nama_proyek }}</flux:select.option>
-                    @endforeach
-                </flux:select>
             </div>
             <div class="md:col-span-2">
                 <flux:select wire:model.live="filterBank" :placeholder="__('Semua Bank')">
@@ -440,7 +450,7 @@ new #[Title('Master Virtual Account')] class extends Component
             </div>
         </div>
 
-        @if ($search || $filterProyek || $filterBank || $filterAktif)
+        @if ($search || $filterBank || $filterAktif)
             <div class="mb-3">
                 <flux:button size="sm" variant="ghost" icon="x-mark" wire:click="clearFilters">
                     {{ __('Reset filter') }}
@@ -527,6 +537,7 @@ new #[Title('Master Virtual Account')] class extends Component
         </div>
 
         @include('partials.per-page-pagination', ['paginator' => $units])
+        @endif
 
         {{-- ============ DELETE CONFIRM MODAL ============ --}}
         <flux:modal name="va-delete-confirm" class="md:w-96">

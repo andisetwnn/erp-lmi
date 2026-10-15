@@ -7,6 +7,7 @@ use App\Models\Master\RencanaAkadUnit;
 use App\Models\Master\Rumah;
 use App\Models\Master\Spr;
 use Illuminate\Support\Collection;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -33,12 +34,18 @@ new #[Title('Rencana Akad — Berdasarkan Blok')] class extends Component
     #[Url(as: 'q')]
     public string $cari = '';
 
+    #[On('active-proyek-changed')]
+    public function syncProyek(int $proyekId): void
+    {
+        $this->proyekId = $proyekId;
+    }
+
     public function mount(): void
     {
         if ($this->bulan === '') {
             $this->bulan = now()->format('Y-m');
         }
-        $this->proyekId ??= Proyek::query()->value('id');
+        $this->proyekId = \App\Support\ProyekAktif::sinkron($this->proyekId);
     }
 
     /** Daftar blok yang tersedia di proyek — untuk dropdown filter. */
@@ -220,7 +227,6 @@ new #[Title('Rencana Akad — Berdasarkan Blok')] class extends Component
     public function with(): array
     {
         return [
-            'daftarProyek' => Proyek::orderBy('nama_proyek')->get(['id', 'nama_proyek', 'kode_surat']),
             'daftarBank' => Bank::orderBy('nama')->get(['id', 'nama']),
             'daftarNotaris' => Notaris::orderBy('nama')->get(['id', 'nama']),
             'blokTersedia' => $this->blokTersedia,
@@ -251,16 +257,16 @@ new #[Title('Rencana Akad — Berdasarkan Blok')] class extends Component
             </div>
         </div>
 
+        @if (! $proyekId)
+            <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                {{ __('Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri.') }}
+            </div>
+        @endif
+
         {{-- FILTER --}}
         <div class="mb-4 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
             <div class="grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-6">
                 <flux:input type="month" wire:model.live="bulan" label="Bulan" />
-
-                <flux:select wire:model.live="proyekId" label="Proyek">
-                    @foreach ($daftarProyek as $p)
-                        <flux:select.option value="{{ $p->id }}">{{ $p->nama_proyek }}</flux:select.option>
-                    @endforeach
-                </flux:select>
 
                 <flux:select wire:model.live="blok" label="Blok">
                     <flux:select.option value="">Semua Blok</flux:select.option>

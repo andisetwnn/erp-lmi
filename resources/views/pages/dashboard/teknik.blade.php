@@ -22,7 +22,7 @@ new #[Title('Dashboard')] class extends Component
 
     public function mount(): void
     {
-        $this->filterProyek = session('active_proyek_id');
+        $this->filterProyek = \App\Support\ProyekAktif::sinkron($this->filterProyek);
     }
 
     #[On('active-proyek-changed')]
@@ -38,6 +38,11 @@ new #[Title('Dashboard')] class extends Component
 
     public function with(): array
     {
+        // Tanpa proyek terpilih tidak ada yang dihitung — lihat gerbang di template.
+        if (! $this->filterProyek) {
+            return ['perluProyek' => true, 'proyekAktif' => null];
+        }
+
         $total = (clone $this->unit())->count();
         $belumDicatat = (clone $this->unit())->where(fn ($q) => $q->whereNull('progres_fisik')->orWhere('progres_fisik', 0))->count();
         $proses = (clone $this->unit())->whereBetween('progres_fisik', [1, 99])->count();
@@ -82,6 +87,14 @@ new #[Title('Dashboard')] class extends Component
             </div>
         </div>
 
+        {{-- Data dashboard milik satu proyek. Tanpa proyek terpilih yang tampil
+             ajakan memilih, bukan angka gabungan semua proyek — begitu ada lebih
+             dari satu proyek, gabungan itu menyesatkan. --}}
+        @if ($perluProyek ?? false)
+            <div class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                {{ __('Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri untuk menampilkan dashboard.') }}
+            </div>
+        @else
         {{-- KARTU UTAMA --}}
         <div class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
@@ -197,5 +210,6 @@ new #[Title('Dashboard')] class extends Component
             </div>
         </div>
 
+        @endif
     </div>
 </section>

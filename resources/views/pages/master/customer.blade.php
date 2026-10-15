@@ -12,6 +12,7 @@ use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -36,6 +37,17 @@ new #[Title('Master Customer')] class extends Component {
 
     #[Url(as: 'proyek')]
     public string $filterProyek = '';
+
+    public function mount(): void
+    {
+        $this->filterProyek = (string) (\App\Support\ProyekAktif::sinkron((int) $this->filterProyek ?: null) ?? '');
+    }
+
+    #[On('active-proyek-changed')]
+    public function syncProyek(int $proyekId): void
+    {
+        $this->filterProyek = (string) $proyekId;
+    }
 
     #[Url(as: 'qtk')]
     public string $searchTempatKerja = '';
@@ -173,7 +185,7 @@ new #[Title('Master Customer')] class extends Component {
                 Customer::query()
                     ->with(['proyek:id,nama_proyek,nama_perumahan', 'bank:id,nama', 'tempatKerja:id,nama', 'updatedByUser:id,name'])
                     ->withCount('kontakDarurat')
-                    ->when($this->filterProyek !== 'all', fn ($q) => $q->where('proyek_id', $this->filterProyek))
+                    ->where('proyek_id', (int) $this->filterProyek)
                     ->when($this->search, function ($q) {
                         $term = '%'.$this->search.'%';
                         $q->where(function ($qq) use ($term) {
@@ -817,14 +829,7 @@ new #[Title('Master Customer')] class extends Component {
         @if ($tab === 'customer')
 
         <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div class="flex-1 sm:max-w-md">
-                <flux:select wire:model.live="filterProyek" placeholder="{{ __('-- Pilih proyek dulu --') }}">
-                    <flux:select.option value="all">{{ __('Semua Proyek') }}</flux:select.option>
-                    @foreach ($proyekOptions as $p)
-                        <flux:select.option value="{{ $p->id }}">{{ $p->nama_proyek }} — {{ $p->nama_perumahan }}</flux:select.option>
-                    @endforeach
-                </flux:select>
-            </div>
+            <div class="flex-1"></div>
             <flux:button variant="primary" icon="plus" wire:click="create" class="self-start sm:self-auto">
                 {{ __('Tambah Customer') }}
             </flux:button>
@@ -835,7 +840,7 @@ new #[Title('Master Customer')] class extends Component {
                 <flux:icon.home-modern class="mx-auto size-12 text-zinc-400" />
                 <flux:heading class="mt-4">{{ __('Pilih proyek dulu') }}</flux:heading>
                 <p class="mt-1 text-sm text-zinc-500">
-                    {{ __('Pilih proyek tertentu atau "Semua Proyek" di dropdown atas untuk menampilkan data customer.') }}
+                    {{ __('Pilih proyek di picker "Proyek Aktif" pada sidebar kiri untuk menampilkan data customer.') }}
                 </p>
             </div>
         @else

@@ -9,6 +9,7 @@ use App\Models\Master\Spr;
 use App\Models\Master\SprPemberkasan;
 use App\Models\Master\TipeRumah;
 use App\Models\User;
+use App\Support\ProyekAktif;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -25,6 +26,8 @@ beforeEach(function () {
     $this->seed();
 
     $this->proyek = Proyek::first();
+    // Halaman per proyek baru menampilkan data setelah proyek dipilih di sidebar.
+    session([ProyekAktif::SESI => $this->proyek->id]);
     $this->tipe = TipeRumah::where('proyek_id', $this->proyek->id)->first();
 
     $this->sales = Sales::create([

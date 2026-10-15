@@ -1,6 +1,8 @@
 <?php
 
+use App\Models\Master\Proyek;
 use App\Models\User;
+use App\Support\ProyekAktif;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -12,7 +14,12 @@ uses(RefreshDatabase::class);
  * menampilkan piutang, kas masuk, dan tunggakan. Artinya admin teknik yang izinnya
  * cuma memperbarui progres bangunan ikut melihat angka keuangan perusahaan.
  */
-beforeEach(fn () => $this->seed());
+beforeEach(function () {
+    $this->seed();
+
+    // Dashboard per role menampilkan data setelah proyek dipilih di sidebar.
+    session([ProyekAktif::SESI => Proyek::first()->id]);
+});
 
 function userDenganRole(string $role): User
 {

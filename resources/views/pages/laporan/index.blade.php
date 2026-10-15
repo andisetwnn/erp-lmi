@@ -62,7 +62,7 @@ new #[Title('Laporan')] class extends Component
 
     public function mount(): void
     {
-        $this->filterProyek = session('active_proyek_id');
+        $this->filterProyek = \App\Support\ProyekAktif::sinkron($this->filterProyek);
         $this->syncTabToCategory();
     }
 

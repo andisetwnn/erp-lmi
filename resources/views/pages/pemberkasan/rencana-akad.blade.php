@@ -7,6 +7,7 @@ use App\Models\Master\RencanaAkad;
 use App\Services\RencanaAkadService;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -43,12 +44,19 @@ new #[Title('Rencana Akad')] class extends Component
 
     public string $formCatatan = '';
 
+    #[On('active-proyek-changed')]
+    public function syncProyek(int $proyekId): void
+    {
+        $this->proyekId = $proyekId;
+        $this->resetPage();
+    }
+
     public function mount(): void
     {
         if ($this->bulan === '') {
             $this->bulan = now()->format('Y-m');
         }
-        $this->proyekId ??= Proyek::query()->value('id');
+        $this->proyekId = \App\Support\ProyekAktif::sinkron($this->proyekId);
     }
 
     public function updated($property): void
@@ -108,7 +116,7 @@ new #[Title('Rencana Akad')] class extends Component
             ->with(['bank:id,nama', 'notaris:id,nama', 'proyek:id,nama_proyek'])
             ->withCount('unit')
             ->when($this->tab !== 'all', fn ($x) => $x->where('status', $this->tab))
-            ->when($this->proyekId, fn ($x) => $x->where('proyek_id', $this->proyekId))
+            ->where('proyek_id', $this->proyekId ?? 0)
             ->when($this->bankId, fn ($x) => $x->where('bank_kpr_id', $this->bankId))
             ->when($this->notarisId, fn ($x) => $x->where('notaris_id', $this->notarisId))
             ->when($this->cari !== '', fn ($x) => $x->where('nomor', 'like', "%{$this->cari}%"));
@@ -134,7 +142,6 @@ new #[Title('Rencana Akad')] class extends Component
 
         return [
             'daftar' => $q->orderByDesc('tanggal_rencana')->orderByDesc('id')->paginate(15),
-            'proyekList' => Proyek::orderBy('nama_proyek')->get(['id', 'nama_proyek']),
             'bankList' => BankKpr::where('is_aktif', true)->orderBy('nama')->get(['id', 'nama']),
             'notarisList' => Notaris::orderBy('nama')->get(['id', 'nama']),
             'jumlahPerTab' => $this->jumlahPerTab(),
@@ -146,7 +153,7 @@ new #[Title('Rencana Akad')] class extends Component
     private function jumlahPerTab(): array
     {
         $dasar = RencanaAkad::query()
-            ->when($this->proyekId, fn ($x) => $x->where('proyek_id', $this->proyekId));
+            ->where('proyek_id', $this->proyekId ?? 0);
 
         $hitung = (clone $dasar)->selectRaw('status, count(*) as n')->groupBy('status')->pluck('n', 'status');
 
@@ -201,6 +208,12 @@ new #[Title('Rencana Akad')] class extends Component
             </div>
         </div>
 
+        @if (! $proyekId)
+            <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                {{ __('Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri.') }}
+            </div>
+        @endif
+
         {{-- TAB STATUS --}}
         @php
             $tabs = [
@@ -233,13 +246,6 @@ new #[Title('Rencana Akad')] class extends Component
         <div class="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
             <div>
                 <flux:input type="month" wire:model.live="bulan" label="Bulan" />
-            </div>
-            <div class="min-w-44">
-                <flux:select wire:model.live="proyekId" label="Proyek">
-                    @foreach ($proyekList as $p)
-                        <option value="{{ $p->id }}">{{ $p->nama_proyek }}</option>
-                    @endforeach
-                </flux:select>
             </div>
             <div class="min-w-44">
                 <flux:select wire:model.live="bankId" label="Bank">

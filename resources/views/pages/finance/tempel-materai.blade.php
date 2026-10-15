@@ -6,6 +6,7 @@ use App\Support\BusinessActivityLogger;
 use App\Support\FileOptimizer;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -15,6 +16,22 @@ use Livewire\WithPagination;
 new #[Title('e-Materai')] class extends Component
 {
     use Sortable, WithFileUploads, WithPagination;
+
+    /** Proyek dari picker sidebar — lihat App\Support\ProyekAktif. */
+    #[Url(as: 'proyek')]
+    public ?int $proyekId = null;
+
+    public function mount(): void
+    {
+        $this->proyekId = \App\Support\ProyekAktif::sinkron($this->proyekId);
+    }
+
+    #[On('active-proyek-changed')]
+    public function syncProyek(int $proyekId): void
+    {
+        $this->proyekId = $proyekId;
+        $this->resetPage();
+    }
 
     #[Url(as: 'q', except: '')]
     public string $search = '';
@@ -113,7 +130,7 @@ new #[Title('e-Materai')] class extends Component
 
     public function with(): array
     {
-        $query = Spr::with([
+        $query = Spr::whereHas('rumah', fn ($r) => $r->where('proyek_id', $this->proyekId ?? 0))->with([
             'prospectCustomer:id,nama_lengkap,hp,nik',
             'rumah:id,blok,nomor_unit,tipe_rumah_id,proyek_id',
             'rumah.proyek:id,nama_proyek',
@@ -180,6 +197,11 @@ new #[Title('e-Materai')] class extends Component
             {{ __('SPR di halaman ini sudah lengkap TTD Sales, Keuangan, Project Manager, dan Konsumen. Bubuhkan e-Materai di aplikasi Peruri, upload PDF ber-materai kembali → SPR selesai.') }}
         </div>
 
+        @if (! $proyekId)
+            <div class="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                {{ __('Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri.') }}
+            </div>
+        @else
         {{-- SEARCH + PER PAGE --}}
         <div class="mb-4 flex flex-wrap items-center gap-3">
             <div class="relative min-w-75 flex-1">
@@ -257,6 +279,7 @@ new #[Title('e-Materai')] class extends Component
             </div>
             <div class="border-t border-zinc-200 px-3 py-3 dark:border-zinc-700">{{ $sprs->links() }}</div>
         </div>
+        @endif
     </div>
 
     {{-- ============ MODAL: Upload Materai ============ --}}
