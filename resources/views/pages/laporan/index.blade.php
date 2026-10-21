@@ -432,7 +432,7 @@ public function setPeriod(string $p): void
         $totalDibayar = 0.0;
 
         foreach ($sprs as $spr) {
-            $umNet = (float) $spr->um_net;
+            $umNet = $spr->umKonsumen();
             $totalUmNet += $umNet;
             $dibayar = (float) SprRealisasiPembayaran::where('spr_id', $spr->id)
                 ->whereIn('jenis', ['bf', 'um'])->sum('jumlah');
@@ -572,7 +572,7 @@ public function setPeriod(string $p): void
         // Summary total (all data, tidak per page)
         $totalSpr = (clone $query)->count();
         $totalNilai = (float) (clone $query)->sum('total_harga');
-        $totalUmNet = (float) (clone $query)->sum('um_net');
+        $totalUmNet = (float) (clone $query)->sum(\Illuminate\Support\Facades\DB::raw('spr.um_net - spr.promo_potongan_um - spr.promo_potongan_utj'));
         $totalBayarAll = (float) SprRealisasiPembayaran::whereIn('spr_id', (clone $query)->pluck('spr.id'))
             ->whereIn('jenis', ['bf', 'um'])->sum('jumlah');
         // Total biaya tambahan periode
@@ -1494,7 +1494,7 @@ public function setPeriod(string $p): void
                                     $totalBf = (float) ($agg->total_bf ?? 0);
                                     $totalUm = (float) ($agg->total_um ?? 0);
                                     $totalBayar = $totalBf + $totalUm;
-                                    $umNet = (float) $spr->um_net;
+                                    $umNet = $spr->umKonsumen();
                                     $sisaUm = max(0, $umNet - $totalBayar);
                                     // Kalau bayarnya lewat dari kewajiban, sisa jadi 0 dan selisihnya lenyap
                                     // dari laporan. Padahal itu yang harus dikembalikan ke konsumen.

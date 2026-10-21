@@ -71,6 +71,7 @@ it('meminta proyek dipilih dulu di setiap halaman per proyek', function (string 
     'e-materai' => 'pages::finance.tempel-materai',
     'input pemberkasan' => 'pages::pemberkasan.input',
     'data rumah teknik' => 'pages::teknik.rumah',
+    'promo penjualan' => 'pages::marketing.promo-penjualan',
 ]);
 
 it('tidak lagi menawarkan pilihan "Semua Proyek" di halaman per proyek', function (string $halaman) {

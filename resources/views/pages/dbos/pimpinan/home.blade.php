@@ -478,6 +478,9 @@ new #[Title('Dashboard Pimpinan'), Layout('layouts.pimpinan')] class extends Com
         </div>
     </div>
 
+    {{-- PROMO PENJUALAN (berjalan & akan datang) --}}
+    <x-promo-dbos class="mb-6" />
+
     {{-- INDIKATOR FOKUS AKTIF --}}
     @if ($fokusSales)
         <div class="mb-4 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs dark:border-amber-900/40 dark:bg-amber-950/30">

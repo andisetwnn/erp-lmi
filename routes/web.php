@@ -188,6 +188,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     // MARKETING — Target/RAB
+    Route::middleware('permission:promo.kelola')->prefix('marketing')->name('marketing.')->group(function () {
+        Route::livewire('promo', 'pages::marketing.promo-penjualan')->name('promo.index');
+    });
+
     Route::middleware('permission:target.kelola')->prefix('marketing')->name('marketing.')->group(function () {
         Route::livewire('target', 'pages::marketing.target')->name('target.index');
     });

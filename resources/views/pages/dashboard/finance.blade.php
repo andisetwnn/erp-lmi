@@ -176,7 +176,7 @@ new #[Title('Dashboard')] class extends Component
         $trendCashTotal = array_sum(array_column($trendCash, 'total'));
 
         // ============ OUTSTANDING & FORECAST ============
-        $totalUmNet = (float) $this->scopedSpr(Spr::query())->where('status', 'approved')->sum('um_net');
+        $totalUmNet = (float) $this->scopedSpr(Spr::query())->where('status', 'approved')->sum(\Illuminate\Support\Facades\DB::raw('um_net - promo_potongan_um - promo_potongan_utj'));
         $totalUmPaid = (float) $this->scopedRealisasi(SprRealisasiPembayaran::query())
             ->whereHas('spr', fn ($s) => $s->where('status', 'approved'))
             ->whereIn('jenis', ['bf', 'um'])->sum('jumlah');
@@ -230,7 +230,7 @@ new #[Title('Dashboard')] class extends Component
             ->get(['id', 'nama_proyek'])
             ->map(function ($p) {
                 $um = (float) Spr::whereHas('rumah', fn ($r) => $r->where('proyek_id', $p->id))
-                    ->where('status', 'approved')->sum('um_net');
+                    ->where('status', 'approved')->sum(\Illuminate\Support\Facades\DB::raw('um_net - promo_potongan_um - promo_potongan_utj'));
                 $paid = (float) SprRealisasiPembayaran::whereHas('spr.rumah', fn ($r) => $r->where('proyek_id', $p->id))
                     ->whereHas('spr', fn ($s) => $s->where('status', 'approved'))
                     ->whereIn('jenis', ['bf', 'um'])->sum('jumlah');

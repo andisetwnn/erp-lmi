@@ -34,6 +34,7 @@ new #[Title('Detail SPR'), Layout('layouts.dbos')] class extends Component
             'bankKpr',
             'sales',
             'utjConfirmedBy',
+            'promoPenjualan',
         ])
             ->where('sales_id', $salesId)
             ->findOrFail($id);
@@ -293,6 +294,17 @@ new #[Title('Detail SPR'), Layout('layouts.dbos')] class extends Component
                             Rp {{ number_format((float) $spr->um_net, 0, ',', '.') }}
                         </dd>
                     </div>
+
+                    {{-- Promo = potongan uang muka yang ditanggung developer; angka SPR di atas tetap. --}}
+                    @if ($spr->promoPenjualan)
+                        <div class="mt-2 space-y-1 rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 dark:border-fuchsia-900/50 dark:bg-fuchsia-950/30">
+                            <div class="flex items-center gap-1.5 font-bold text-fuchsia-800 dark:text-fuchsia-200">
+                                <flux:icon.ticket class="size-3.5" /> {{ $spr->promoPenjualan->nama }}
+                            </div>
+                            <div class="flex justify-between text-fuchsia-800 dark:text-fuchsia-200"><dt>{{ __('Potongan uang muka (promo)') }}</dt><dd class="tabular-nums">− Rp {{ number_format($spr->totalPromo(), 0, ',', '.') }}</dd></div>
+                            <div class="flex justify-between border-t border-fuchsia-200 pt-1 font-bold text-fuchsia-900 dark:border-fuchsia-900 dark:text-fuchsia-100"><dt>{{ __('UM dibayar konsumen') }}</dt><dd class="tabular-nums">Rp {{ number_format($spr->umKonsumen(), 0, ',', '.') }}</dd></div>
+                        </div>
+                    @endif
                 @endif
                 @if ($spr->catatan_angsuran)
                     <div class="mt-2 rounded-md bg-zinc-50 px-2 py-1.5 text-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300">{{ $spr->catatan_angsuran }}</div>
@@ -342,12 +354,15 @@ new #[Title('Detail SPR'), Layout('layouts.dbos')] class extends Component
                     <tbody>
                         @foreach ($termins as $t)
                             @php
-                                $jml = (float) $t->jumlah_jadwal;
-                                $sisaTermin = $jml;
-                                $tglRealisasi = null; // tgl realisasi terakhir yang bantu cover termin ini
-
                                 // Pilih pointer sesuai jenis termin
                                 $isBf = $t->jenis === 'bf';
+
+                                // BF yang wajib dibayar konsumen — dengan promo booking fee lebih kecil dari jadwal di SPR.
+                                $jml = $isBf && (float) $spr->promo_potongan_utj > 0
+                                    ? min((float) $t->jumlah_jadwal, $spr->utjKonsumen())
+                                    : (float) $t->jumlah_jadwal;
+                                $sisaTermin = $jml;
+                                $tglRealisasi = null; // tgl realisasi terakhir yang bantu cover termin ini
                                 $list = $isBf ? $realisasiBfList : $realisasiUmList;
                                 $ptr  = $isBf ? $bfPtr : $umPtr;
                                 $sisa = $isBf ? $bfSisa : $umSisa;
@@ -382,7 +397,12 @@ new #[Title('Detail SPR'), Layout('layouts.dbos')] class extends Component
                                         <span class="text-zinc-300">—</span>
                                     @endif
                                 </td>
-                                <td class="px-3 py-1.5 text-right font-mono">Rp {{ number_format($jml, 0, ',', '.') }}</td>
+                                <td class="px-3 py-1.5 text-right font-mono">
+                                    Rp {{ number_format($jml, 0, ',', '.') }}
+                                    @if ($jml < (float) $t->jumlah_jadwal)
+                                        <span class="block text-[9px] text-fuchsia-600 dark:text-fuchsia-400">UTJ Rp {{ number_format((float) $t->jumlah_jadwal, 0, ',', '.') }} · promo</span>
+                                    @endif
+                                </td>
                                 <td class="px-3 py-1.5 text-center">
                                     @if ($status === 'lunas')
                                         <flux:badge color="green" size="sm">{{ __('Lunas') }}</flux:badge>
@@ -406,6 +426,12 @@ new #[Title('Detail SPR'), Layout('layouts.dbos')] class extends Component
             </div>
             <div class="space-y-1.5 px-4 py-3 text-xs">
                 <div class="flex justify-between"><dt class="text-zinc-500">Nominal</dt><dd class="text-right text-base font-bold tabular-nums text-purple-700 dark:text-purple-300">Rp {{ number_format((float) $spr->utj_nominal, 0, ',', '.') }}</dd></div>
+                @if ((float) $spr->promo_potongan_utj > 0)
+                    <div class="flex items-center justify-between rounded-lg bg-fuchsia-50 px-2 py-1.5 dark:bg-fuchsia-950/30">
+                        <dt class="text-fuchsia-800 dark:text-fuchsia-200">{{ __('Transfer booking fee') }} <span class="block text-[10px]">{{ $spr->promoPenjualan?->nama }}</span></dt>
+                        <dd class="text-right text-base font-extrabold tabular-nums text-fuchsia-800 dark:text-fuchsia-200">Rp {{ number_format($spr->utjKonsumen(), 0, ',', '.') }}</dd>
+                    </div>
+                @endif
                 @if ($spr->utj_confirmed_at)
                     <div class="flex justify-between">
                         <dt class="text-zinc-500">Tgl Diterima</dt>

@@ -80,7 +80,8 @@ new #[Title('Penerimaan Konsumen')] class extends Component
         $spr = Spr::findOrFail($sprId);
         $this->confirmSprId = $spr->id;
         $this->confirmTanggalTransaksi = now()->format('Y-m-d');
-        $this->confirmNominalAktual = (string) $spr->utj_nominal;
+        // Usulan nominal = yang memang ditransfer konsumen, sudah dikurangi promo booking fee.
+        $this->confirmNominalAktual = (string) $spr->utjKonsumen();
         $this->confirmCatatan = null;
         $this->resetErrorBag();
         Flux::modal('konfirmasi-utj')->show();
@@ -204,6 +205,7 @@ new #[Title('Penerimaan Konsumen')] class extends Component
             ? Spr::with([
                 'prospectCustomer:id,nama_lengkap,hp,nik',
                 'rumah:id,blok,nomor_unit',
+                'promoPenjualan:id,nama',
             ])->find($this->confirmSprId)
             : null;
 
@@ -410,6 +412,12 @@ new #[Title('Penerimaan Konsumen')] class extends Component
                                 <div class="mt-0.5 text-base font-bold tabular-nums text-blue-900 dark:text-blue-100">
                                     Rp {{ number_format((float) $confirmSpr->utj_nominal, 0, ',', '.') }}
                                 </div>
+                                @if ((float) $confirmSpr->promo_potongan_utj > 0)
+                                    <div class="mt-1 rounded bg-fuchsia-100 px-1.5 py-1 text-[11px] text-fuchsia-800 dark:bg-fuchsia-950/40 dark:text-fuchsia-200">
+                                        {{ $confirmSpr->promoPenjualan?->nama }} −Rp {{ number_format((float) $confirmSpr->promo_potongan_utj, 0, ',', '.') }}
+                                        <b class="block">{{ __('Seharusnya ditransfer') }} Rp {{ number_format($confirmSpr->utjKonsumen(), 0, ',', '.') }}</b>
+                                    </div>
+                                @endif
                             </div>
                             <div>
                                 <div class="text-blue-700 dark:text-blue-300">SPR dibuat</div>

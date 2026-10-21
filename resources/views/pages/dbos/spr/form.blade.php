@@ -178,9 +178,36 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
      *  UTJ dianggap bagian dari UM Sendiri (bukan tambahan), jadi mengurangi
      *  jumlah yang perlu dicicil. Contoh: UM Sendiri 10jt, UTJ 1jt →
      *  sisa cicilan = 9jt, dibagi 4 termin = 2.25jt per termin. */
+    /**
+     * Promo Penjualan yang berlaku untuk SPR ini, beserta potongannya.
+     *
+     * Dicari di server tiap render — sales tidak memilih sendiri, jadi tidak bisa
+     * terlewat atau salah nominal. Tanggal acuannya hari UTJ diunggah, yaitu
+     * tanggal SPR. Komersial tidak dapat promo karena UTJ/UM-nya ke bank.
+     *
+     * @return array{promo: \App\Models\Master\PromoPenjualan, potongan_utj: float, potongan_um: float, keterangan: string}|null
+     */
+    public function getPromoProperty(): ?array
+    {
+        $rumah = $this->booking?->rumah;
+
+        if (! $rumah || $this->isKomersial || $this->tanggalSpr === '') {
+            return null;
+        }
+
+        return app(\App\Services\PromoPenjualanService::class)->untuk(
+            $rumah,
+            $this->tanggalSpr,
+            $this->booking->prospectCustomer?->tanggal_lahir,
+            (float) $this->utjNominal,
+            $this->umNet,
+        );
+    }
+
     public function getSisaCicilProperty(): float
     {
-        return max(0, $this->umNet - (float) $this->utjNominal);
+        // Promo ditanggung developer: yang dicicil konsumen hanya UM setelah potongan.
+        return max(0, $this->umNet - (float) $this->utjNominal - (float) ($this->promo['potongan_um'] ?? 0));
     }
 
     /** Max termin sesuai jenis pembayaran. Komersial: 0 (tidak dicicil). */
@@ -391,6 +418,10 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                 'dp_nominal' => $dpNominal,
                 'sbum' => $kategori === 'komersial' ? 0 : (float) $this->sbum,
                 'um_net' => $umNet,
+                'promo_penjualan_id' => $umNet > 0 ? $this->promo['promo']?->id : null,
+                'promo_potongan_utj' => $umNet > 0 ? ($this->promo['potongan_utj'] ?? 0) : 0,
+                'promo_potongan_um' => $umNet > 0 ? ($this->promo['potongan_um'] ?? 0) : 0,
+                'promo_at' => $umNet > 0 && $this->promo ? now() : null,
                 'nilai_kpr' => $nilaiKpr,
                 'catatan_angsuran' => $this->catatanAngsuran ?: null,
                 'utj_nominal' => (float) $this->utjNominal,
@@ -820,6 +851,41 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                     Rp {{ number_format($totalHarga, 0, ',', '.') }}
                 </div>
             </div>
+
+            {{-- Promo = potongan uang muka yang ditanggung developer. Angka SPR tetap
+                 normal; kartu ini menunjukkan berapa yang benar-benar dibayar konsumen,
+                 termasuk berapa yang ditransfer saat booking. --}}
+            @if ($this->promo)
+                @php
+                    $pr = $this->promo;
+                    $potonganPromo = $pr['potongan_utj'] + $pr['potongan_um'];
+                @endphp
+                <div class="rounded-2xl border-2 border-fuchsia-300 bg-fuchsia-50 p-4 dark:border-fuchsia-900/50 dark:bg-fuchsia-950/30">
+                    <div class="flex items-center gap-2 text-sm font-bold text-fuchsia-800 dark:text-fuchsia-200">
+                        <flux:icon.ticket class="size-4" />
+                        {{ $pr['keterangan'] }}
+                    </div>
+                    <dl class="mt-2 space-y-1 text-xs text-fuchsia-900 dark:text-fuchsia-100">
+                        <div class="flex justify-between"><dt>{{ __('Uang muka') }}</dt><dd class="font-mono">Rp {{ number_format($this->umNet, 0, ',', '.') }}</dd></div>
+                        <div class="flex justify-between"><dt>{{ __('Potongan uang muka (promo)') }}</dt><dd class="font-mono">− Rp {{ number_format($potonganPromo, 0, ',', '.') }}</dd></div>
+                        <div class="flex justify-between border-t border-fuchsia-200 pt-1 font-bold dark:border-fuchsia-900"><dt>{{ __('Uang muka dibayar konsumen') }}</dt><dd class="font-mono">Rp {{ number_format(max(0, $this->umNet - $potonganPromo), 0, ',', '.') }}</dd></div>
+                    </dl>
+                    <div class="mt-2 flex items-center justify-between rounded-lg bg-white/70 px-3 py-2 text-xs dark:bg-zinc-900/40">
+                        <span class="text-fuchsia-800 dark:text-fuchsia-200">
+                            {{ __('Transfer booking fee') }}
+                            <span class="block text-[11px] text-fuchsia-600 dark:text-fuchsia-400">{{ __('UTJ di SPR') }} Rp {{ number_format((float) $utjNominal, 0, ',', '.') }}</span>
+                        </span>
+                        <span class="font-mono text-sm font-extrabold text-fuchsia-900 dark:text-fuchsia-100">Rp {{ number_format(max(0, (float) $utjNominal - $pr['potongan_utj']), 0, ',', '.') }}</span>
+                    </div>
+                    <p class="mt-2 text-[11px] text-fuchsia-700 dark:text-fuchsia-300">
+                        @if ($pr['potongan_utj'] > 0)
+                            {{ __('Potongan diambil dari booking fee. Angka di dokumen SPR tetap normal; promo ditanggung developer dan terlampir otomatis.') }}
+                        @else
+                            {{ __('Potongan diambil dari cicilan uang muka terakhir. Angka di dokumen SPR tetap normal; promo ditanggung developer dan terlampir otomatis.') }}
+                        @endif
+                    </p>
+                </div>
+            @endif
         </div>
     @endif
 
@@ -1011,6 +1077,13 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                         </div>
                     </flux:field>
 
+                    @if (($this->promo['potongan_utj'] ?? 0) > 0)
+                        <div class="rounded-lg bg-fuchsia-50 px-3 py-2 text-xs text-fuchsia-800 dark:bg-fuchsia-950/30 dark:text-fuchsia-200">
+                            {{ $this->promo['keterangan'] }} —
+                            <b>{{ __('konsumen cukup transfer') }} Rp {{ number_format(max(0, (float) $utjNominal - $this->promo['potongan_utj']), 0, ',', '.') }}</b>
+                        </div>
+                    @endif
+
                     {{-- ============ UPLOAD BUKTI TRANSFER UTJ ============ --}}
                     <div class="rounded-xl border-2 border-amber-300 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/30">
                         <div class="mb-2 flex items-center gap-2">
@@ -1067,10 +1140,16 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                         </tr>
                     </thead>
                     <tbody>
+                        @php $potonganBf = (float) ($this->promo['potongan_utj'] ?? 0); @endphp
                         <tr class="border-t border-purple-100 dark:border-purple-900/30">
                             <td class="px-3 py-1.5 font-mono font-bold">BF (UTJ)</td>
                             <td class="px-3 py-1.5 text-zinc-400 italic">{{ __('Menunggu bayar') }}</td>
-                            <td class="px-3 py-1.5 text-right font-mono">Rp {{ number_format((float) $utjNominal, 0, ',', '.') }}</td>
+                            <td class="px-3 py-1.5 text-right font-mono">
+                                Rp {{ number_format(max(0, (float) $utjNominal - $potonganBf), 0, ',', '.') }}
+                                @if ($potonganBf > 0)
+                                    <span class="block text-[9px] text-fuchsia-600 dark:text-fuchsia-400">UTJ Rp {{ number_format((float) $utjNominal, 0, ',', '.') }} · promo</span>
+                                @endif
+                            </td>
                         </tr>
                         @foreach ($jadwal as $row)
                             <tr class="border-t border-purple-100 dark:border-purple-900/30">
@@ -1128,6 +1207,22 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                         <dt class="text-zinc-600 dark:text-zinc-400">UTJ (BF)</dt>
                         <dd class="font-bold text-zinc-900 dark:text-white">Rp {{ number_format($utjFloatSum, 0, ',', '.') }}</dd>
                     </div>
+
+                    {{-- Promo: angka di atas tetap angka SPR; ini yang benar-benar ditagih ke konsumen. --}}
+                    @if ($this->promo)
+                        @php
+                            $promoRingkas = $this->promo;
+                            $potonganRingkas = $promoRingkas['potongan_utj'] + $promoRingkas['potongan_um'];
+                        @endphp
+                        <div class="space-y-1 rounded-lg bg-fuchsia-50 px-2 py-1.5 dark:bg-fuchsia-950/30">
+                            <div class="flex items-center gap-1 font-bold text-fuchsia-800 dark:text-fuchsia-200">
+                                <flux:icon.ticket class="size-3.5" /> {{ $promoRingkas['keterangan'] }}
+                            </div>
+                            <div class="flex justify-between text-fuchsia-800 dark:text-fuchsia-200"><dt>{{ __('Potongan uang muka') }}</dt><dd class="font-mono">− Rp {{ number_format($potonganRingkas, 0, ',', '.') }}</dd></div>
+                            <div class="flex justify-between font-bold text-fuchsia-900 dark:text-fuchsia-100"><dt>{{ __('Transfer booking fee') }}</dt><dd class="font-mono">Rp {{ number_format(max(0, $utjFloatSum - $promoRingkas['potongan_utj']), 0, ',', '.') }}</dd></div>
+                            <div class="flex justify-between font-bold text-fuchsia-900 dark:text-fuchsia-100"><dt>{{ __('UM dibayar konsumen') }}</dt><dd class="font-mono">Rp {{ number_format(max(0, $umNetSum - $potonganRingkas), 0, ',', '.') }}</dd></div>
+                        </div>
+                    @endif
                 </dl>
             </div>
 

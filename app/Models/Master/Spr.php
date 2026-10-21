@@ -60,6 +60,12 @@ class Spr extends Model
         'sbum',
         'tgl_cair_bum',
         'um_net',
+        'promo_penjualan_id',
+        'promo_potongan_utj',
+        'promo_potongan_um',
+        'promo_alasan',
+        'promo_oleh_user_id',
+        'promo_at',
         'nilai_kpr',
         'tgl_akad',
         'catatan_angsuran',
@@ -145,12 +151,48 @@ class Spr extends Model
         'dp_nominal' => 'decimal:2',
         'sbum' => 'decimal:2',
         'um_net' => 'decimal:2',
+        'promo_potongan_utj' => 'decimal:2',
+        'promo_potongan_um' => 'decimal:2',
+        'promo_at' => 'datetime',
         'nilai_kpr' => 'decimal:2',
         'utj_nominal' => 'decimal:2',
         'utj_nominal_aktual' => 'decimal:2',
     ];
 
     // ====== Relations ======
+    public function promoPenjualan(): BelongsTo
+    {
+        return $this->belongsTo(PromoPenjualan::class);
+    }
+
+    /**
+     * UTJ yang dibayar konsumen: UTJ di dokumen dikurangi promo booking fee.
+     *
+     * Promo ditanggung developer, jadi `utj_nominal` di dokumen tetap.
+     */
+    public function utjKonsumen(): float
+    {
+        return max(0, (float) $this->utj_nominal - (float) $this->promo_potongan_utj);
+    }
+
+    /**
+     * UM yang ditanggung konsumen: UM di dokumen dikurangi seluruh potongan promo.
+     *
+     * UTJ adalah bagian dari UM, jadi potongan booking fee ikut mengurangi di
+     * sini. Seluruh perhitungan sisa, kurang, dan lebih bayar UM memakai angka
+     * ini — bukan `um_net` langsung, yang merupakan angka di dokumen SPR.
+     */
+    public function umKonsumen(): float
+    {
+        return max(0, (float) $this->um_net - (float) $this->promo_potongan_um - (float) $this->promo_potongan_utj);
+    }
+
+    /** Total yang ditanggung developer lewat promo. */
+    public function totalPromo(): float
+    {
+        return (float) $this->promo_potongan_um + (float) $this->promo_potongan_utj;
+    }
+
     public function booking(): BelongsTo
     {
         return $this->belongsTo(Booking::class);

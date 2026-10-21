@@ -1,9 +1,11 @@
 <?php
 
 use App\Models\Master\BiayaTambahanRealisasi;
+use App\Models\Master\PromoPenjualan;
 use App\Models\Master\Spr;
 use App\Models\Master\SprRealisasiPembayaran;
 use App\Models\Master\SprTerminPembayaran;
+use App\Services\PromoPenjualanService;
 use App\Support\BusinessActivityLogger;
 use App\Support\FileOptimizer;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -148,6 +150,93 @@ new #[Title('Detail SPR')] class extends Component
         $this->loadSpr($id);
     }
 
+    // ── Promo susulan ──────────────────────────────────
+    public ?int $promoPilihId = null;
+
+    public string $promoAlasan = '';
+
+    /**
+     * Promo yang bisa dilampirkan susulan: aktif, di proyek unit ini, dan masa
+     * berlakunya mencakup tanggal UTJ SPR. Karena promo dalam satu proyek tidak
+     * boleh beririsan, isinya paling banyak satu.
+     */
+    private function promoTersedia()
+    {
+        $tgl = app(PromoPenjualanService::class)->tanggalAcuan($this->spr);
+
+        if (! $tgl || ! $this->spr->rumah) {
+            return collect();
+        }
+
+        return PromoPenjualan::where('proyek_id', $this->spr->rumah->proyek_id)
+            ->berlakuPada($tgl)
+            ->get()
+            ->filter(fn (PromoPenjualan $p) => $p->mencakup($this->spr->rumah))
+            ->values();
+    }
+
+    /** Pilihan di modal promo susulan — hanya dihitung bagi yang berhak. */
+    public function getDaftarPromoProperty()
+    {
+        return Auth::user()?->can('promo.kelola') && ! $this->spr->promo_penjualan_id
+            ? $this->promoTersedia()
+            : collect();
+    }
+
+    public function bukaPromo(): void
+    {
+        abort_unless(Auth::user()?->can('promo.kelola'), 403);
+
+        $this->promoPilihId = $this->promoTersedia()->first()?->id;
+        $this->promoAlasan = '';
+        $this->resetErrorBag();
+        Flux::modal('promo-susulan')->show();
+    }
+
+    public function lampirkanPromo(): void
+    {
+        abort_unless(Auth::user()?->can('promo.kelola'), 403);
+
+        $this->validate([
+            'promoPilihId' => ['required', 'integer'],
+            'promoAlasan' => ['required', 'string', 'min:5', 'max:255'],
+        ], [], ['promoPilihId' => 'promo', 'promoAlasan' => 'alasan']);
+
+        $promo = $this->promoTersedia()->firstWhere('id', $this->promoPilihId);
+
+        if (! $promo) {
+            $this->addError('promoPilihId', 'Promo ini tidak berlaku untuk SPR ini.');
+
+            return;
+        }
+
+        try {
+            app(PromoPenjualanService::class)->lampirkan($this->spr, $promo, trim($this->promoAlasan), Auth::id());
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->addError('promoPilihId', collect($e->errors())->flatten()->first());
+
+            return;
+        }
+
+        Flux::modal('promo-susulan')->close();
+        $this->loadSpr($this->spr->id);
+        Flux::toast(variant: 'success', text: 'Promo dilampirkan. Termin terakhir yang belum dibayar sudah disesuaikan.');
+    }
+
+    public function lepasPromo(): void
+    {
+        abort_unless(Auth::user()?->can('promo.kelola'), 403);
+
+        $this->validate(['promoAlasan' => ['required', 'string', 'min:5', 'max:255']], [], ['promoAlasan' => 'alasan']);
+
+        app(PromoPenjualanService::class)->lepas($this->spr, trim($this->promoAlasan), Auth::id());
+
+        Flux::modal('promo-lepas')->close();
+        $this->promoAlasan = '';
+        $this->loadSpr($this->spr->id);
+        Flux::toast(variant: 'success', text: 'Promo dilepas.');
+    }
+
     private function loadSpr(int $id): void
     {
         $this->spr = Spr::with([
@@ -165,6 +254,7 @@ new #[Title('Detail SPR')] class extends Component
             'pmApprovedBy',
             'dokumenSignedBy',
             'terminPembayaran',
+            'promoPenjualan',
             'realisasiPembayaran.inputBy',
             'switchedFromSpr.rumah',
             'switchedToSpr.rumah',
@@ -255,7 +345,7 @@ new #[Title('Detail SPR')] class extends Component
     public function prefillLunas(): void
     {
         $totalUmDibayar = (float) $this->spr->realisasiPembayaran->where('jenis', 'um')->sum('jumlah');
-        $sisaUm = max(0, (float) $this->spr->um_net - $totalUmDibayar);
+        $sisaUm = max(0, $this->spr->umKonsumen() - $totalUmDibayar);
         $this->trxJumlah = (string) $sisaUm;
     }
 
@@ -287,7 +377,7 @@ new #[Title('Detail SPR')] class extends Component
         $totalUmDibayar = (float) $this->spr->realisasiPembayaran->where('jenis', 'um')->sum('jumlah');
 
         $jumlah = (float) $validated['trxJumlah'];
-        $lebih = max(0, ($totalUmDibayar + $jumlah) - (float) $this->spr->um_net);
+        $lebih = max(0, ($totalUmDibayar + $jumlah) - $this->spr->umKonsumen());
 
         // Wrap DB::transaction supaya lockForUpdate di generateNextNomor efektif
         // (mencegah race condition pada nomor kwitansi saat concurrent insert).
@@ -362,7 +452,7 @@ new #[Title('Detail SPR')] class extends Component
             ->where('jenis', 'um')
             ->where('id', '!=', $r->id)
             ->sum('jumlah');
-        $lebihSetelahEdit = max(0, ($totalUmLain + $newJumlah) - (float) $this->spr->um_net);
+        $lebihSetelahEdit = max(0, ($totalUmLain + $newJumlah) - $this->spr->umKonsumen());
 
         $old = [
             'tanggal_bayar' => $r->tanggal_bayar?->format('Y-m-d'),
@@ -642,10 +732,11 @@ new #[Title('Detail SPR')] class extends Component
     $totalUmDibayar = (float) $spr->realisasiPembayaran->where('jenis', 'um')->sum('jumlah');
     $utjDibayar = (float) $spr->realisasiPembayaran->where('jenis', 'bf')->sum('jumlah');
     $totalDibayar = $totalUmDibayar + $utjDibayar;
-    $kurangUm = max(0, (float) $spr->um_net - $totalDibayar);
+    // Kewajiban konsumen = UM setelah promo (promo ditanggung developer).
+    $kurangUm = max(0, $spr->umKonsumen() - $totalDibayar);
     // Kelebihan bayar harus ikut terlihat — itu jadi hak refund konsumen, dan kalau
     // cuma ditulis "Lunas" tidak ada yang tahu ada uang yang mesti dikembalikan.
-    $lebihUm = max(0, $totalDibayar - (float) $spr->um_net);
+    $lebihUm = max(0, $totalDibayar - $spr->umKonsumen());
 
     $fmt = fn ($n) => number_format((float) $n, 0, ',', '.');
 @endphp
@@ -1419,6 +1510,41 @@ new #[Title('Detail SPR')] class extends Component
                                     <dt class="font-bold text-orange-900 dark:text-orange-300">UM yang harus dibayar</dt>
                                     <dd class="font-mono font-extrabold tabular-nums text-orange-700 dark:text-orange-300">{{ $fmt($spr->um_net) }}</dd>
                                 </div>
+
+                                {{-- PROMO PENJUALAN — ditanggung developer; angka SPR di atas tetap. --}}
+                                @if ($spr->promoPenjualan)
+                                    <div class="mt-2 rounded-md border border-fuchsia-200 bg-fuchsia-50 px-2 py-1.5 dark:border-fuchsia-900/50 dark:bg-fuchsia-950/30">
+                                        <div class="flex items-center justify-between gap-2">
+                                            <span class="flex items-center gap-1 font-bold text-fuchsia-800 dark:text-fuchsia-200">
+                                                <flux:icon.ticket class="size-3.5" /> {{ $spr->promoPenjualan->nama }}
+                                            </span>
+                                            @can('promo.kelola')
+                                                <button type="button" class="text-[10px] text-fuchsia-700 underline dark:text-fuchsia-300"
+                                                        x-on:click="$flux.modal('promo-lepas').show()">{{ __('Lepas') }}</button>
+                                            @endcan
+                                        </div>
+                                        {{-- Semua promo disajikan sebagai potongan uang muka; yang
+                                             membedakan hanya dari mana potongannya diambil. --}}
+                                        <div class="flex justify-between"><dt class="text-fuchsia-700 dark:text-fuchsia-300">Potongan uang muka (developer)</dt><dd class="font-mono tabular-nums">− {{ $fmt($spr->totalPromo()) }}</dd></div>
+                                        <div class="flex justify-between border-t border-fuchsia-200 pt-1 font-bold dark:border-fuchsia-900"><dt>UM dibayar konsumen</dt><dd class="font-mono tabular-nums">{{ $fmt($spr->umKonsumen()) }}</dd></div>
+                                        <div class="flex justify-between text-fuchsia-700 dark:text-fuchsia-300">
+                                            <dt>Transfer booking fee <span class="text-[10px]">(UTJ {{ $fmt($spr->utj_nominal) }})</span></dt>
+                                            <dd class="font-mono tabular-nums">{{ $fmt($spr->utjKonsumen()) }}</dd>
+                                        </div>
+                                        <p class="text-[10px] text-fuchsia-700 dark:text-fuchsia-300">
+                                            {{ (float) $spr->promo_potongan_utj > 0 ? 'Diambil dari booking fee.' : 'Diambil dari cicilan UM terakhir.' }}
+                                        </p>
+                                        @if ($spr->promo_alasan)
+                                            <p class="mt-1 text-[10px] text-fuchsia-700 dark:text-fuchsia-300">{{ __('Susulan:') }} {{ $spr->promo_alasan }}</p>
+                                        @endif
+                                    </div>
+                                @elseif ($this->daftarPromo->isNotEmpty())
+                                    <button type="button" wire:click="bukaPromo"
+                                            class="mt-2 flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-fuchsia-300 px-2 py-1.5 text-fuchsia-700 hover:bg-fuchsia-50 dark:border-fuchsia-800 dark:text-fuchsia-300 dark:hover:bg-fuchsia-950/30">
+                                        <flux:icon.ticket class="size-3.5" />
+                                        {{ __('Lampirkan promo yang terlewat') }}
+                                    </button>
+                                @endif
                             @endif
                         </div>
                     </div>
@@ -1430,7 +1556,7 @@ new #[Title('Detail SPR')] class extends Component
                     $ums = $termins->where('jenis', 'um')->sortBy('urutan');
                     // um_net = total UM kewajiban customer (sudah termasuk UTJ 500rb di dalamnya).
                     $utjNominal = (float) $spr->utj_nominal;
-                    $totalUm = (float) $spr->um_net;
+                    $totalUm = $spr->umKonsumen();
                     $rencanaUangMasuk = $totalUm + (float) $spr->nilai_kpr + (float) $spr->sbum;
                 @endphp
                 <div class="rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
@@ -1446,16 +1572,25 @@ new #[Title('Detail SPR')] class extends Component
                                 {{ $spr->kategori === 'komersial' ? __('UTJ') : __('Uang Muka') }}
                             </div>
 
-                            {{-- UTJ row: cek berdasarkan realisasi jenis 'bf' --}}
+                            {{-- UTJ row: cek berdasarkan realisasi jenis 'bf'. Patokannya UTJ yang
+                                 wajib dibayar konsumen — dengan promo booking fee lebih kecil dari jadwal di SPR. --}}
                             @if ($bf)
                                 @php
                                     $bfDibayar = (float) $spr->realisasiPembayaran->where('jenis', 'bf')->sum('jumlah');
-                                    $bfCair = $bfDibayar >= (float) $bf->jumlah_jadwal;
+                                    $bfWajib = (float) $spr->promo_potongan_utj > 0
+                                        ? min((float) $bf->jumlah_jadwal, $spr->utjKonsumen())
+                                        : (float) $bf->jumlah_jadwal;
+                                    $bfCair = $bfDibayar >= $bfWajib;
                                 @endphp
                                 <div class="flex items-center justify-between gap-2 border-b border-zinc-100 py-1 dark:border-zinc-800">
                                     <span class="w-14 font-mono text-zinc-600">UTJ</span>
                                     <span class="flex-1 text-zinc-500">{{ $bf->tanggal_jadwal?->format('d/m/Y') ?? '—' }}</span>
-                                    <span class="font-mono tabular-nums">{{ $fmt($bf->jumlah_jadwal) }}</span>
+                                    <div class="flex flex-col items-end">
+                                        <span class="font-mono tabular-nums">{{ $fmt($bfWajib) }}</span>
+                                        @if ($bfWajib < (float) $bf->jumlah_jadwal)
+                                            <span class="font-mono text-[9px] text-fuchsia-600 dark:text-fuchsia-400">UTJ {{ $fmt($bf->jumlah_jadwal) }} · promo</span>
+                                        @endif
+                                    </div>
                                     @if ($bfCair)
                                         <flux:icon.check-circle class="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" title="Sudah cair" />
                                     @else
@@ -1726,9 +1861,19 @@ new #[Title('Detail SPR')] class extends Component
                                     <dt>Total masuk</dt>
                                     <dd class="font-mono tabular-nums">{{ $fmt($totalDibayar) }}</dd>
                                 </div>
+                                @if ($spr->totalPromo() > 0)
+                                    <div class="flex justify-between text-zinc-500">
+                                        <dt>UM di SPR</dt>
+                                        <dd class="font-mono tabular-nums">{{ $fmt($spr->um_net) }}</dd>
+                                    </div>
+                                    <div class="flex justify-between text-fuchsia-700 dark:text-fuchsia-300">
+                                        <dt>Potongan promo (developer)</dt>
+                                        <dd class="font-mono tabular-nums">− {{ $fmt($spr->totalPromo()) }}</dd>
+                                    </div>
+                                @endif
                                 <div class="flex justify-between text-zinc-500">
                                     <dt>Kewajiban UM</dt>
-                                    <dd class="font-mono tabular-nums">{{ $fmt($spr->um_net) }}</dd>
+                                    <dd class="font-mono tabular-nums">{{ $fmt($spr->umKonsumen()) }}</dd>
                                 </div>
                             </div>
 
@@ -2243,6 +2388,43 @@ new #[Title('Detail SPR')] class extends Component
                     <flux:button variant="danger" wire:click="deleteBiayaTambahan">Hapus</flux:button>
                 </div>
             </div>
+        </flux:modal>
+
+        {{-- PROMO SUSULAN --}}
+        <flux:modal name="promo-susulan" class="md:w-lg">
+            <form wire:submit="lampirkanPromo" class="space-y-4">
+                <div>
+                    <flux:heading size="lg">{{ __('Lampirkan promo yang terlewat') }}</flux:heading>
+                    <flux:subheading>{{ __('Harga dan dokumen SPR tidak berubah. Potongan UM dikurangkan dari termin terakhir yang belum dibayar.') }}</flux:subheading>
+                </div>
+                <flux:select wire:model="promoPilihId" :label="__('Promo')">
+                    @foreach ($this->daftarPromo as $p)
+                        <flux:select.option value="{{ $p->id }}">{{ $p->nama }} · {{ $p->labelJenis() }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+                <flux:error name="promoPilihId" />
+                <flux:textarea wire:model="promoAlasan" rows="2" :label="__('Alasan')" placeholder="{{ __('mis. promo belum terinput saat SPR dibuat') }}" />
+                <flux:error name="promoAlasan" />
+                <div class="flex justify-end gap-2">
+                    <flux:modal.close><flux:button variant="filled" type="button">{{ __('Batal') }}</flux:button></flux:modal.close>
+                    <flux:button variant="primary" type="submit">{{ __('Lampirkan') }}</flux:button>
+                </div>
+            </form>
+        </flux:modal>
+
+        <flux:modal name="promo-lepas" class="md:w-lg">
+            <form wire:submit="lepasPromo" class="space-y-4">
+                <div>
+                    <flux:heading size="lg">{{ __('Lepas promo?') }}</flux:heading>
+                    <flux:subheading>{{ __('Potongan dikembalikan ke termin terakhir yang belum dibayar.') }}</flux:subheading>
+                </div>
+                <flux:textarea wire:model="promoAlasan" rows="2" :label="__('Alasan')" />
+                <flux:error name="promoAlasan" />
+                <div class="flex justify-end gap-2">
+                    <flux:modal.close><flux:button variant="filled" type="button">{{ __('Batal') }}</flux:button></flux:modal.close>
+                    <flux:button variant="danger" type="submit">{{ __('Lepas promo') }}</flux:button>
+                </div>
+            </form>
         </flux:modal>
 
     </div>

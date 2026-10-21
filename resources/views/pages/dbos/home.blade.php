@@ -254,6 +254,9 @@ new #[Title('DBOS Home'), Layout('layouts.dbos')] class extends Component {
         </div>
     </div>
 
+    {{-- ============== PROMO PENJUALAN (berjalan & akan datang) ============== --}}
+    <x-promo-dbos class="mb-4" />
+
     {{-- ============== MODAL REMINDER ============== --}}
     <flux:modal name="reminder" class="md:w-md">
         <div class="space-y-4">

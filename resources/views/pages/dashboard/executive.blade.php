@@ -180,9 +180,9 @@ new #[Title('Dashboard')] class extends Component
 
         // Overdue UM: SPR approved dgn realisasi UM < 50% dan umur > 60 hari
         $overdueUm = 0;
-        $sprApprovedList = $this->scoped(Spr::query())->where('spr.status', 'approved')->get(['id', 'um_net', 'utj_tanggal_transaksi', 'tanggal_spr']);
+        $sprApprovedList = $this->scoped(Spr::query())->where('spr.status', 'approved')->get(['id', 'um_net', 'promo_potongan_um', 'promo_potongan_utj', 'utj_tanggal_transaksi', 'tanggal_spr']);
         foreach ($sprApprovedList as $spr) {
-            $umNet = (float) $spr->um_net;
+            $umNet = $spr->umKonsumen();
             if ($umNet <= 0) continue;
             $paid = (float) SprRealisasiPembayaran::where('spr_id', $spr->id)->whereIn('jenis', ['bf', 'um'])->sum('jumlah');
             $ratio = $paid / $umNet;
@@ -206,7 +206,7 @@ new #[Title('Dashboard')] class extends Component
         $avgDaysToAkad = $countAkad > 0 ? round($totalDays / $countAkad) : 0;
 
         // ============ OUTSTANDING UM (total sisa) ============
-        $totalUmNet = (float) $this->scoped(Spr::query())->where('spr.status', 'approved')->sum('spr.um_net');
+        $totalUmNet = (float) $this->scoped(Spr::query())->where('spr.status', 'approved')->sum(\Illuminate\Support\Facades\DB::raw('spr.um_net - spr.promo_potongan_um - spr.promo_potongan_utj'));
         $totalUmPaid = (float) SprRealisasiPembayaran::query()
             ->when($this->filterProyek, fn ($q) => $q->whereHas('spr.rumah', fn ($r) => $r->where('proyek_id', $this->filterProyek)))
             ->whereHas('spr', fn ($s) => $s->where('spr.status', 'approved'))

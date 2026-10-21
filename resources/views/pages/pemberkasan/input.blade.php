@@ -502,7 +502,7 @@ new #[Title('Input Pemberkasan')] class extends Component
                                         default => 'text-zinc-700',
                                     };
                                     // Progress UM (BF + UM) — bantu admin cek DP sebelum acc SP3K
-                                    $umTarget = (float) $s->um_net;
+                                    $umTarget = $s->umKonsumen();
                                     $umTerbayar = (float) $s->realisasiPembayaran->whereIn('jenis', ['bf', 'um'])->sum('jumlah');
                                     $umPersen = $umTarget > 0 ? round($umTerbayar / $umTarget * 100, 1) : 0;
                                     // Kelebihan bayar ditulis nominalnya, bukan cuma jadi persen di atas 100.

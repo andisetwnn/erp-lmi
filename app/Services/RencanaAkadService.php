@@ -60,9 +60,10 @@ class RencanaAkadService
      */
     public function ringkasanUm(Spr $spr): array
     {
-        $seharusnya = (float) $spr->um_net;
+        // Setelah promo — promo ditanggung developer, bukan kewajiban konsumen.
+        $seharusnya = $spr->umKonsumen();
         $um = (float) $spr->realisasiPembayaran()->where('jenis', 'um')->sum('jumlah');
-        $utj = (float) $spr->utj_nominal;
+        $utj = $spr->utjKonsumen();
         $terkumpul = $um + $utj;
 
         return [

@@ -87,7 +87,7 @@ class LaporanSopFormat
             $um = $bayar->where('jenis', '!=', 'bf')->values();
 
             $totalUm = (float) $um->sum('jumlah');
-            $umNet = (float) $s->um_net;
+            $umNet = $s->umKonsumen();
             $sisa = max(0, $umNet - $totalUm);
             $persen = $umNet > 0 ? round($totalUm / $umNet * 100, 1) : 0;
 

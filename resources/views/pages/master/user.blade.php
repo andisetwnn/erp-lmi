@@ -123,6 +123,7 @@ new #[Title('Pengguna Sistem')] class extends Component
         'teknik.rumah.update'       => 'Update Progres Fisik Rumah',
         // Target Marketing
         'target.kelola'             => 'Kelola Target Marketing (RAB)',
+        'promo.kelola'              => 'Kelola Promo Penjualan',
         // Finance
         'pembayaran.kelola'         => 'Kelola Penerimaan Konsumen',
         'pembayaran.approve'        => 'Approve Pembayaran',
@@ -191,6 +192,7 @@ new #[Title('Pengguna Sistem')] class extends Component
         'legal.lihat'               => 'View-only arsip sertifikat beserta statusnya — tidak bisa mengajukan atau mencatat. Cocok untuk Direktur, PM, Finance, dan Admin KPR.',
         'teknik.rumah.lihat'        => 'Akses menu Teknik → Data Rumah. Lihat daftar unit dengan progres fisik, LOT, dan status bangunan (tanpa data harga/finansial). Cocok untuk Admin Teknik, PM, Direktur.',
         'teknik.rumah.update'       => 'Update persentase progres fisik pembangunan unit (0-100%) + nomor LOT sertifikat. Setiap perubahan otomatis tercatat di log audit trail.',
+        'promo.kelola'              => 'Membuat promo penjualan (potongan UM atau booking fee sesuai usia) beserta masa berlaku dan unitnya, serta melampirkan promo susulan ke SPR yang terlewat. Promo ditanggung developer — angka di SPR tidak berubah.',
         'target.kelola'             => 'Input & edit target penjualan/akad per proyek per tahun (RAB tahunan). Angka target akan tampil di matrix Marketing Performance dashboard direksi. Biasanya diinput oleh Direktur di awal tahun.',
         // Finance
         'pembayaran.kelola'         => 'Mengakses menu Penerimaan Konsumen: konfirmasi UTJ, mencatat cicilan Uang Muka, menempelkan e-Materai, dan memproses realisasi pembayaran.',

@@ -143,7 +143,7 @@
                     </flux:sidebar.group>
                 @endcanany
 
-                @canany(['spr.lihat', 'master.kelola', 'master.customer.kelola', 'pembayaran.kelola', 'target.kelola'])
+                @canany(['spr.lihat', 'master.kelola', 'master.customer.kelola', 'pembayaran.kelola', 'target.kelola', 'promo.kelola'])
                     <flux:sidebar.group :heading="__('Marketing')" icon="megaphone" expandable
                                         :expanded="request()->routeIs('marketing.*') || request()->routeIs('master.prospect-customer.*') || request()->routeIs('finance.tempel-materai.*')">
                         @canany(['master.kelola', 'master.customer.kelola'])
@@ -156,6 +156,12 @@
                             <flux:sidebar.item icon="flag" :href="route('marketing.target.index')"
                                                :current="request()->routeIs('marketing.target.*')" wire:navigate>
                                 {{ __('Target / RAB') }}
+                            </flux:sidebar.item>
+                        @endcan
+                        @can('promo.kelola')
+                            <flux:sidebar.item icon="ticket" :href="route('marketing.promo.index')"
+                                               :current="request()->routeIs('marketing.promo.*')" wire:navigate>
+                                {{ __('Promo Penjualan') }}
                             </flux:sidebar.item>
                         @endcan
                         @can('spr.lihat')

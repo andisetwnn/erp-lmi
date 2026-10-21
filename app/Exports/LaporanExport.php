@@ -244,7 +244,7 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
         $sprs = $this->baseSprQuery(['approved'])->get();
         $rows = [];
         foreach ($sprs as $spr) {
-            $umNet = (float) $spr->um_net;
+            $umNet = $spr->umKonsumen();
             if ($umNet <= 0) {
                 continue;
             }
@@ -389,7 +389,7 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
             $totalBf = (float) ($agg->total_bf ?? 0);
             $totalUm = (float) ($agg->total_um ?? 0);
             $totalBayar = $totalBf + $totalUm;
-            $umNet = (float) $s->um_net;
+            $umNet = $s->umKonsumen();
             $sisa = max(0, $umNet - $totalBayar);
             $pct = $umNet > 0
                 ? ($totalBayar > 0 ? max(1, (int) round($totalBayar / $umNet * 100)) : 0)
