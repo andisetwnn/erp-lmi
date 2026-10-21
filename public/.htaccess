@@ -26,12 +26,13 @@
 
 # Instruksi ke proxy/CDN untuk TIDAK mengubah file siteplan.
 # Siteplan butuh resolusi asli untuk fitur polygon mapping (flood-fill).
+#
+# Dibatasi lewat SetEnvIf karena .htaccess tidak mengenal <LocationMatch>, dan
+# <FilesMatch> hanya mencocokkan nama berkas, bukan foldernya. LiteSpeed
+# memberlakukan isi <LocationMatch> ke SEMUA respons — "Header unset
+# Content-Encoding" di dalamnya membuat halaman terkompresi tampil sebagai
+# karakter acak karena browser tidak diberi tahu isinya terkompresi.
 <IfModule mod_headers.c>
-    <FilesMatch "^(storage/proyek-siteplan/).*\.(png|jpe?g|webp|tif|bmp)$">
-        Header set Cache-Control "no-transform, public, max-age=31536000"
-    </FilesMatch>
-    <LocationMatch "/storage/proyek-siteplan/">
-        Header set Cache-Control "no-transform, public, max-age=31536000"
-        Header unset Content-Encoding
-    </LocationMatch>
+    SetEnvIf Request_URI "^/storage/proyek-siteplan/" SITEPLAN_ASLI
+    Header set Cache-Control "no-transform, public, max-age=31536000" env=SITEPLAN_ASLI
 </IfModule>
