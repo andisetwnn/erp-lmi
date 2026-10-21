@@ -37,11 +37,24 @@
     };
 
     // Path TTD dengan fallback:
-    //  1. Kalau snapshot di SPR ada (path terset saat submit/konfirmasi/approve) → pakai snapshot (immutable, historis stabil).
-    //  2. Kalau snapshot null (mis. sales belum register TTD waktu submit SPR) → fallback ke TTD live dari sales/user.
-    $ttdSalesPath = $spr->ttd_sales_path ?: $spr->sales?->tanda_tangan_path;
-    $ttdFinancePath = $spr->ttd_finance_path ?: $spr->utjConfirmedBy?->tanda_tangan_path;
-    $ttdPmPath = $spr->ttd_pm_path ?: $spr->pmApprovedBy?->tanda_tangan_path;
+    //  1. Snapshot di SPR (path terset saat submit/konfirmasi/approve) → dipakai kalau filenya masih ada.
+    //  2. Kalau snapshot null ATAU filenya sudah terhapus → fallback ke TTD live dari sales/user.
+    // Pilih path TTD yang FILE-nya benar-benar ada. Snapshot bisa menunjuk ke
+    // file yang sudah terhapus (sales gambar ulang TTD -> file lama dihapus),
+    // jadi cek null saja tidak cukup — harus cek keberadaan file.
+    $pickTtd = function (?string ...$kandidat): ?string {
+        foreach ($kandidat as $p) {
+            if ($p && is_file(storage_path('app/public/'.$p))) {
+                return $p;
+            }
+        }
+
+        return null;
+    };
+
+    $ttdSalesPath = $pickTtd($spr->ttd_sales_path, $spr->sales?->tanda_tangan_path);
+    $ttdFinancePath = $pickTtd($spr->ttd_finance_path, $spr->utjConfirmedBy?->tanda_tangan_path);
+    $ttdPmPath = $pickTtd($spr->ttd_pm_path, $spr->pmApprovedBy?->tanda_tangan_path);
     // Konsumen TTD ditampilkan di section PEMESAN (bukan di grid otorisasi 3 kolom).
     $ttdKonsumenPath = $spr->konsumen_ttd_path;
 

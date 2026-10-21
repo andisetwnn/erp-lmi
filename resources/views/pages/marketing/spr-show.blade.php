@@ -1192,25 +1192,38 @@ new #[Title('Detail SPR')] class extends Component
 
                 {{-- ============ TANDA TANGAN OTORISASI (Sales / Keuangan / PM) ============ --}}
                 @php
+                    // Pilih TTD yang file-nya benar-benar ada: snapshot SPR dulu,
+                    // fallback ke TTD terdaftar milik sales/user kalau snapshot
+                    // null atau filenya sudah terhapus (sales gambar ulang TTD).
+                    $pickTtd = function (?string ...$kandidat): ?string {
+                        foreach ($kandidat as $p) {
+                            if ($p && is_file(storage_path('app/public/'.$p))) {
+                                return $p;
+                            }
+                        }
+
+                        return null;
+                    };
+
                     $ttdBoxes = [
                         [
                             'role'      => 'Sales',
                             'name'      => $spr->sales?->nama,
-                            'path'      => $spr->ttd_sales_path,
+                            'path'      => $pickTtd($spr->ttd_sales_path, $spr->sales?->tanda_tangan_path),
                             'color'     => 'orange',
                             'stampAt'   => $spr->created_at,
                         ],
                         [
                             'role'      => 'Keuangan',
                             'name'      => $spr->utjConfirmedBy?->name,
-                            'path'      => $spr->ttd_finance_path,
+                            'path'      => $pickTtd($spr->ttd_finance_path, $spr->utjConfirmedBy?->tanda_tangan_path),
                             'color'     => 'emerald',
                             'stampAt'   => $spr->utj_confirmed_at,
                         ],
                         [
                             'role'      => 'Project Manager',
                             'name'      => $spr->pmApprovedBy?->name,
-                            'path'      => $spr->ttd_pm_path,
+                            'path'      => $pickTtd($spr->ttd_pm_path, $spr->pmApprovedBy?->tanda_tangan_path),
                             'color'     => 'violet',
                             'stampAt'   => $spr->pm_approved_at,
                         ],
@@ -1228,7 +1241,7 @@ new #[Title('Detail SPR')] class extends Component
                                 {{ __($ttd['role']) }}
                             </div>
                             <div class="flex h-24 items-center justify-center bg-white p-2 dark:bg-zinc-900">
-                                @if ($ttd['path'])
+                                @if ($ttd['path'] && is_file(storage_path('app/public/'.$ttd['path'])))
                                     <img src="{{ Illuminate\Support\Facades\Storage::disk('public')->url($ttd['path']) }}"
                                          alt="ttd-{{ $ttd['role'] }}"
                                          class="max-h-full max-w-full object-contain">
