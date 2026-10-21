@@ -1,7 +1,9 @@
 <?php
 
 use App\Models\Master\Proyek;
+use App\Support\ProyekAktif;
 use Flux\Flux;
+use Illuminate\Support\Uri;
 use Livewire\Component;
 
 new class extends Component {
@@ -25,16 +27,37 @@ new class extends Component {
         Flux::modal('global-proyek-picker')->show();
     }
 
+    /**
+     * Ganti proyek aktif lalu muat ulang halaman yang sedang dibuka.
+     *
+     * Muat ulang penuh, bukan sekadar event: badge sidebar, ringkasan, dan
+     * komponen yang tidak mendengarkan event tetap menampilkan proyek lama
+     * sampai halamannya dibuka ulang. Parameter ?proyek= dibuang dari URL —
+     * link yang membawanya sengaja mengganti picker (lihat ProyekAktif), jadi
+     * kalau dibiarkan, proyek lama di URL akan menimpa pilihan yang baru.
+     */
     public function selectProyek(int $id): void
     {
-        session(['active_proyek_id' => $id]);
+        if (! Proyek::whereKey($id)->exists()) {
+            return;
+        }
+
+        session([ProyekAktif::SESI => $id]);
         $this->activeProyekId = $id;
 
-        Flux::modal('global-proyek-picker')->close();
-        Flux::toast(variant: 'success', text: 'Proyek aktif diganti.');
+        $this->redirect($this->halamanSaatIni(), navigate: false);
+    }
 
-        // Broadcast ke semua Livewire component yang listen di page yang sama
-        $this->dispatch('active-proyek-changed', proyekId: $id);
+    private function halamanSaatIni(): string
+    {
+        $asal = url()->previous();
+
+        // Hanya halaman aplikasi ini sendiri; selain itu kembali ke dashboard.
+        if (parse_url($asal, PHP_URL_HOST) !== parse_url(url('/'), PHP_URL_HOST)) {
+            return route('dashboard');
+        }
+
+        return (string) Uri::of($asal)->withoutQuery(['proyek']);
     }
 }; ?>
 

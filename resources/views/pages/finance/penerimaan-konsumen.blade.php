@@ -428,30 +428,11 @@ new #[Title('Penerimaan Konsumen')] class extends Component
                         <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                             <flux:field>
                                 <flux:label>{{ __('Tanggal Transaksi') }} <span class="ms-1 text-red-500">*</span></flux:label>
-                                <div x-data="{
-                                    init() {
-                                        this.$nextTick(() => {
-                                            if (typeof flatpickr === 'undefined') {
-                                                console.warn('Flatpickr belum ter-load.');
-                                                return;
-                                            }
-                                            flatpickr(this.$refs.dateInput, {
-                                                locale: 'id',
-                                                dateFormat: 'Y-m-d',
-                                                altInput: true,
-                                                altFormat: 'd/m/Y',
-                                                allowInput: true,
-                                                maxDate: 'today',
-                                            });
-                                        });
-                                    }
-                                }">
-                                    <input type="text" x-ref="dateInput"
-                                           wire:model="confirmTanggalTransaksi"
-                                           class="block w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-xs focus:border-emerald-500 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 dark:border-zinc-700 dark:bg-zinc-800"
-                                           placeholder="dd/mm/yyyy"
-                                           required />
-                                </div>
+                                {{-- Input tanggal bawaan browser, sama seperti halaman lain. Flatpickr di
+                                     sini tidak dibungkus wire:ignore, sehingga tiap render ulang Livewire
+                                     menimpa kotak tanggalnya dan isinya tercampur ("202621/10/"). --}}
+                                <flux:input type="date" wire:model="confirmTanggalTransaksi"
+                                            max="{{ now()->toDateString() }}" required />
                                 <flux:description>{{ __('Tanggal masuk ke rekening sesuai mutasi.') }}</flux:description>
                                 <flux:error name="confirmTanggalTransaksi" />
                             </flux:field>

@@ -94,3 +94,38 @@ it('mengikuti proyek yang dipilih di picker', function () {
         ->assertSet('proyekId', $this->proyek->id)
         ->assertDontSee('Pilih proyek dulu');
 });
+
+it('memuat ulang halaman yang sedang dibuka setelah proyek dipilih di picker', function () {
+    session([ProyekAktif::SESI => 999]);
+
+    // ?proyek= lama dibuang supaya tidak menimpa pilihan baru; filter lain tetap.
+    // Di browser, request Livewire membawa Referer halaman ini; di tes dicadangkan lewat sesi.
+    session()->setPreviousUrl(url('/finance/penerimaan-konsumen?proyek=999&search=rina'));
+
+    Livewire::actingAs($this->admin)
+        ->test('active-proyek')
+        ->call('selectProyek', $this->proyek->id)
+        ->assertRedirect(url('/finance/penerimaan-konsumen?search=rina'));
+
+    expect(session(ProyekAktif::SESI))->toBe($this->proyek->id);
+});
+
+it('kembali ke dashboard kalau halaman asal bukan dari aplikasi ini', function () {
+    session()->setPreviousUrl('https://contoh.example/halaman');
+
+    Livewire::actingAs($this->admin)
+        ->test('active-proyek')
+        ->call('selectProyek', $this->proyek->id)
+        ->assertRedirect(route('dashboard'));
+});
+
+it('mengabaikan pilihan proyek yang tidak ada', function () {
+    session([ProyekAktif::SESI => $this->proyek->id]);
+
+    Livewire::actingAs($this->admin)
+        ->test('active-proyek')
+        ->call('selectProyek', 999999)
+        ->assertNoRedirect();
+
+    expect(session(ProyekAktif::SESI))->toBe($this->proyek->id);
+});
