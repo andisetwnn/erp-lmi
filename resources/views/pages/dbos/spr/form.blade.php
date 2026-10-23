@@ -418,7 +418,9 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                 'dp_nominal' => $dpNominal,
                 'sbum' => $kategori === 'komersial' ? 0 : (float) $this->sbum,
                 'um_net' => $umNet,
-                'promo_penjualan_id' => $umNet > 0 ? $this->promo['promo']?->id : null,
+                // ($this->promo['promo'] ?? null): tanpa promo $this->promo bernilai null,
+                // dan ?-> saja tidak melindungi akses ['promo'] pada null.
+                'promo_penjualan_id' => $umNet > 0 ? ($this->promo['promo'] ?? null)?->id : null,
                 'promo_potongan_utj' => $umNet > 0 ? ($this->promo['potongan_utj'] ?? 0) : 0,
                 'promo_potongan_um' => $umNet > 0 ? ($this->promo['potongan_um'] ?? 0) : 0,
                 'promo_at' => $umNet > 0 && $this->promo ? now() : null,

@@ -16,7 +16,9 @@ use App\Services\PromoPenjualanService;
 use App\Services\RencanaAkadService;
 use Database\Seeders\PromoOktober2026Seeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 uses(RefreshDatabase::class);
@@ -623,4 +625,73 @@ it('tidak menampilkan kartu promo di beranda DBOS kalau tidak ada promo', functi
     Livewire\Livewire::actingAs($this->sales, 'sales')
         ->test('pages::dbos.home')
         ->assertDontSee('Promo Penjualan');
+});
+
+/** Booking aktif di unit subsidi baru, dengan sales yang sudah punya TTD — siap dibuatkan SPR. */
+function bookingSiapSpr(string $blok): Booking
+{
+    $tipe = TipeRumah::where('proyek_id', test()->proyek->id)->where('kategori', 'subsidi')->first();
+    if (! $tipe) {
+        test()->markTestSkipped('Seeder tidak punya tipe subsidi.');
+    }
+
+    test()->sales->forceFill(['tanda_tangan_path' => 'ttd/sales-promo.png'])->save();
+    $rumah = Rumah::create([
+        'proyek_id' => test()->proyek->id, 'tipe_rumah_id' => $tipe->id,
+        'blok' => $blok, 'nomor_unit' => '1', 'status' => 'booking',
+    ]);
+    $prospect = ProspectCustomer::create([
+        'sales_id' => test()->sales->id, 'proyek_id' => test()->proyek->id, 'nama_lengkap' => 'Konsumen '.$blok,
+        'nik' => '32'.str_pad((string) crc32('submit'.$blok), 14, '0'), 'hp' => '628114',
+        'sumber' => 'Walk-in', 'status' => 'booking', 'tanggal_lahir' => '1995-05-17',
+    ]);
+
+    return Booking::create([
+        'sales_id' => test()->sales->id, 'proyek_id' => test()->proyek->id, 'prospect_customer_id' => $prospect->id,
+        'rumah_id' => $rumah->id, 'tanggal_booking' => now(), 'tanggal_expired' => now()->addDay(), 'status' => 'aktif',
+    ]);
+}
+
+function submitSprDbos(Booking $booking): void
+{
+    Livewire\Livewire::actingAs(test()->sales->fresh(), 'sales')
+        ->test('pages::dbos.spr.form', ['bookingId' => $booking->id])
+        ->set('jenisPembayaran', 'kpr')
+        ->set('jumlahTerminUm', 1)
+        ->set('utjBukti', UploadedFile::fake()->image('bukti-utj.jpg'))
+        ->call('submit')
+        ->assertHasNoErrors();
+}
+
+it('menyimpan SPR dari DBOS walau tidak ada promo yang berlaku', function () {
+    Storage::fake('public');
+    Storage::fake('local');
+
+    $booking = bookingSiapSpr('SN');
+    submitSprDbos($booking);
+
+    $spr = Spr::where('booking_id', $booking->id)->sole();
+
+    expect($spr->promo_penjualan_id)->toBeNull()
+        ->and((float) $spr->promo_potongan_utj)->toBe(0.0)
+        ->and($spr->status)->toBe('submitted');
+});
+
+it('menyimpan SPR dari DBOS beserta promonya kalau ada promo yang berlaku', function () {
+    Storage::fake('public');
+    Storage::fake('local');
+
+    $promo = $this->svc->simpan([
+        'proyek_id' => $this->proyek->id, 'nama' => 'Promo Hari Ini', 'jenis' => 'booking_fee_tetap',
+        'berlaku_mulai' => now()->toDateString(), 'berlaku_sampai' => now()->addDays(2)->toDateString(),
+        'booking_fee_tetap' => 101_000, 'semua_unit' => true,
+    ], [], [], $this->admin->id);
+
+    $booking = bookingSiapSpr('SP');
+    submitSprDbos($booking);
+
+    $spr = Spr::where('booking_id', $booking->id)->sole();
+
+    expect($spr->promo_penjualan_id)->toBe($promo->id)
+        ->and($spr->utjKonsumen())->toBe(101_000.0);
 });
