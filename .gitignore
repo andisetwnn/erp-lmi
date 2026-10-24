@@ -28,6 +28,7 @@
 /database/*.sqlite*
 .env
 .env.backup
+.env.local
 .env.production
 .phpactor.json
 .phpunit.result.cache
