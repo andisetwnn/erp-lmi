@@ -44,7 +44,11 @@ class AppServiceProvider extends ServiceProvider
     {
         Date::use(CarbonImmutable::class);
 
-        // Format tanggal pakai bahasa Indonesia ("Senin", "Februari", dll)
+        // Format tanggal pakai bahasa Indonesia ("Senin", "Februari", dll).
+        // Locale aplikasi ikut diset: Livewire mengeset ulang locale aplikasi di
+        // setiap request update dan Carbon ikut, jadi kalau masih "en" waktu
+        // relatif berubah jadi "23 hours from now" begitu tombol ditekan.
+        app()->setLocale('id');
         Carbon::setLocale('id');
         CarbonImmutable::setLocale('id');
 
