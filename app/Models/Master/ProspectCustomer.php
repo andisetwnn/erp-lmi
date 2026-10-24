@@ -10,6 +10,9 @@ class ProspectCustomer extends Model
 {
     protected $table = 'prospect_customer';
 
+    /** Jumlah kontak darurat minimal supaya prospect bisa naik ke FINISH. */
+    public const MIN_KONTAK_DARURAT = 2;
+
     /** Sumber info pilihan (untuk dropdown). */
     public const SUMBER_OPTIONS = [
         'Instagram',
@@ -166,7 +169,7 @@ class ProspectCustomer extends Model
             ['label' => 'BI Checking KOL',         'ok' => $this->bi_kol !== null],
             ['label' => 'BI Checking DBR',         'ok' => $this->bi_dbr !== null],
             ['label' => 'Perusahaan',              'ok' => ! empty($this->tempat_kerja_id)],
-            ['label' => 'Kontak Darurat (min 3)',  'ok' => $kontakCount >= 3],
+            ['label' => 'Kontak Darurat (min '.self::MIN_KONTAK_DARURAT.')', 'ok' => $kontakCount >= self::MIN_KONTAK_DARURAT],
         ];
     }
 

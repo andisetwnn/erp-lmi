@@ -80,9 +80,8 @@ new #[Title('Tambah Database Konsumen'), Layout('layouts.dbos')] class extends C
 
     public ?string $rekeningAtasNama = null;
 
-    // Kontak Darurat — default 3 row kosong (min 3 untuk FINISH)
+    // Kontak Darurat — default 2 row kosong (min ProspectCustomer::MIN_KONTAK_DARURAT untuk FINISH)
     public array $kontakDarurat = [
-        ['nama' => '', 'hubungan' => '', 'nomor_telepon' => ''],
         ['nama' => '', 'hubungan' => '', 'nomor_telepon' => ''],
         ['nama' => '', 'hubungan' => '', 'nomor_telepon' => ''],
     ];
@@ -156,13 +155,13 @@ new #[Title('Tambah Database Konsumen'), Layout('layouts.dbos')] class extends C
 
             $this->alamatExpanded = (bool) ($p->alamat || $p->provinsi_code);
 
-            // Load kontak darurat — minimal 3 row (kalau lebih sedikit, pad dengan empty)
+            // Load kontak darurat — minimal sebanyak syarat FINISH (kalau kurang, pad dengan baris kosong)
             $existing = $p->kontakDarurat->map(fn ($k) => [
                 'nama' => $k->nama,
                 'hubungan' => $k->hubungan,
                 'nomor_telepon' => preg_replace('/^62/', '', $k->nomor_telepon),
             ])->toArray();
-            while (count($existing) < 3) {
+            while (count($existing) < ProspectCustomer::MIN_KONTAK_DARURAT) {
                 $existing[] = ['nama' => '', 'hubungan' => '', 'nomor_telepon' => ''];
             }
             $this->kontakDarurat = $existing;
@@ -1216,7 +1215,7 @@ new #[Title('Tambah Database Konsumen'), Layout('layouts.dbos')] class extends C
                 <div class="flex flex-1 items-center gap-2">
                     <h2 class="text-sm font-bold text-zinc-900 dark:text-white">{{ __('Kontak Darurat') }}</h2>
                     <span class="inline-flex items-center rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
-                        {{ __('Min 3 untuk FINISH') }}
+                        {{ __('Min :n untuk FINISH', ['n' => \App\Models\Master\ProspectCustomer::MIN_KONTAK_DARURAT]) }}
                     </span>
                 </div>
             </div>
