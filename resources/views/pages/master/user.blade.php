@@ -711,8 +711,25 @@ new #[Title('Pengguna Sistem')] class extends Component
                 <table class="w-full text-sm">
                     <thead class="bg-zinc-50/80 dark:bg-zinc-800/60">
                         <tr class="border-b border-zinc-200 text-left text-[10px] font-bold uppercase tracking-wider text-zinc-500 dark:border-zinc-700">
+                            {{-- Tombol urut langsung di <th>: x-sortable-column membuat <th> sendiri,
+                                 dan <th> bersarang dipecah browser jadi dua kolom judul. --}}
                             <th class="px-4 py-3">
-                                <x-sortable-column field="name" :sort-by="$sortBy" :sort-dir="$sortDir">{{ __('User') }}</x-sortable-column>
+                                <button type="button" wire:click="sort('name')"
+                                        @class([
+                                            '-mx-1 -my-0.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 uppercase text-inherit transition hover:bg-zinc-100 dark:hover:bg-zinc-800',
+                                            'text-zinc-900 dark:text-white' => $sortBy === 'name',
+                                        ])>
+                                    <span>{{ __('User') }}</span>
+                                    @if ($sortBy === 'name')
+                                        @if ($sortDir === 'asc')
+                                            <flux:icon.chevron-up class="size-3" />
+                                        @else
+                                            <flux:icon.chevron-down class="size-3" />
+                                        @endif
+                                    @else
+                                        <flux:icon.chevron-up-down class="size-3 opacity-40" />
+                                    @endif
+                                </button>
                             </th>
                             <th class="px-4 py-3">{{ __('Role') }}</th>
                             <th class="px-4 py-3 text-center">{{ __('TTD') }}</th>
@@ -826,6 +843,9 @@ new #[Title('Pengguna Sistem')] class extends Component
                                                     <flux:icon.lock-open class="size-4" />
                                                 @endif
                                             </button>
+                                        @else
+                                            {{-- Akun sendiri tak bisa dinonaktifkan; ruang kosong menjaga ikon lain tetap sejajar. --}}
+                                            <span class="inline-block h-8 w-8" aria-hidden="true"></span>
                                         @endif
                                     </div>
                                 </td>
