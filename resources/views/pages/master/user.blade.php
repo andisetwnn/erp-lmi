@@ -635,7 +635,12 @@ new #[Title('Pengguna Sistem')] class extends Component
         'project-manager' => ['label' => 'Project Manager', 'cls' => 'bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300'],
         'finance'         => ['label' => 'Keuangan',        'cls' => 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'],
         'admin-kpr'       => ['label' => 'Admin KPR',       'cls' => 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300'],
+        'admin-sales'     => ['label' => 'Admin Sales',     'cls' => 'bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300'],
+        'admin-teknik'    => ['label' => 'Admin Teknik',    'cls' => 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'],
+        'admin-legal'     => ['label' => 'Admin Legal',     'cls' => 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-300'],
     ];
+    // Role baru yang belum masuk daftar di atas tetap tampil rapi ("admin-gudang" → "Admin Gudang").
+    $labelRole = fn (string $nama) => $roleBadgeMap[$nama]['label'] ?? ucwords(str_replace('-', ' ', $nama));
 @endphp
 
 <section class="w-full">
@@ -687,11 +692,11 @@ new #[Title('Pengguna Sistem')] class extends Component
                             :placeholder="__('Cari nama / email / username...')" />
             </div>
             <div class="md:col-span-3">
-                <flux:select wire:model.live="filterRole" :placeholder="__('Semua Role')">
+                <flux:select wire:model.live="filterRole">
                     <flux:select.option value="">{{ __('Semua Role') }}</flux:select.option>
                     @foreach ($roles as $r)
                         <flux:select.option value="{{ $r->name }}">
-                            {{ $roleBadgeMap[$r->name]['label'] ?? $r->name }}
+                            {{ $labelRole($r->name) }}
                         </flux:select.option>
                     @endforeach
                 </flux:select>
@@ -775,7 +780,7 @@ new #[Title('Pengguna Sistem')] class extends Component
                                 {{-- Role --}}
                                 <td class="whitespace-nowrap px-4 py-3">
                                     @if ($roleName)
-                                        @php $b = $roleBadgeMap[$roleName] ?? ['label' => $roleName, 'cls' => 'bg-zinc-100 text-zinc-700']; @endphp
+                                        @php $b = $roleBadgeMap[$roleName] ?? ['label' => $labelRole($roleName), 'cls' => 'bg-zinc-100 text-zinc-700']; @endphp
                                         <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider {{ $b['cls'] }}">
                                             <span class="size-1.5 rounded-full bg-current opacity-70"></span>
                                             {{ $b['label'] }}
@@ -1177,11 +1182,11 @@ new #[Title('Pengguna Sistem')] class extends Component
 
             <flux:field>
                 <flux:label>{{ __('Role') }} <span class="text-red-500">*</span></flux:label>
-                <flux:select wire:model="selectedRole" :placeholder="__('— Pilih Role —')">
+                <flux:select wire:model="selectedRole">
                     <flux:select.option value="">{{ __('— Pilih Role —') }}</flux:select.option>
                     @foreach ($roles as $r)
                         <flux:select.option value="{{ $r->name }}">
-                            {{ $roleBadgeMap[$r->name]['label'] ?? $r->name }}
+                            {{ $labelRole($r->name) }}
                         </flux:select.option>
                     @endforeach
                 </flux:select>
