@@ -6,6 +6,7 @@ use App\Models\Master\ProspectCustomer;
 use App\Models\Master\ProspectCustomerStatusLog;
 use App\Models\Master\Proyek;
 use App\Models\Master\Sales;
+use App\Models\Master\SalesGrup;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Flux\Flux;
 use Livewire\Attributes\On;
@@ -34,6 +35,10 @@ new #[Title('Prospect Customer')] class extends Component
 
     #[Url(as: 'sales')]
     public string $filterSales = '';
+
+    /** Tim sales (grup yang dipimpin seorang ketua) — menyaring prospect milik anggotanya. */
+    #[Url(as: 'tim')]
+    public string $filterTim = '';
 
     #[Url(as: 'proyek')]
     public string $filterProyek = '';
@@ -90,7 +95,10 @@ new #[Title('Prospect Customer')] class extends Component
             ->pluck('cnt', 'status')
             ->toArray();
 
+        $salesTim = $this->salesTim();
+
         $listQuery = (clone $base)
+            ->when($this->filterTim !== '', fn ($q) => $q->whereIn('sales_id', $salesTim))
             ->when($this->filterSales, fn ($q) => $q->where('sales_id', $this->filterSales))
             ->when($this->filterProyek, fn ($q) => $q->where('proyek_id', $this->filterProyek))
             ->when($this->filterStatus, fn ($q) => $q->where('status', $this->filterStatus))
@@ -125,7 +133,11 @@ new #[Title('Prospect Customer')] class extends Component
             ->orderBy('sumber')
             ->pluck('sumber');
 
-        $salesOptions = Sales::orderBy('nama')->get(['id', 'kode', 'nama']);
+        // Tim terpilih → pilihan sales menyempit ke anggotanya saja.
+        $salesOptions = Sales::orderBy('nama')
+            ->when($this->filterTim !== '', fn ($q) => $q->whereIn('id', $salesTim))
+            ->get(['id', 'kode', 'nama']);
+        $timOptions = SalesGrup::with('pimpinan:id,nama')->orderBy('nama')->get(['id', 'nama', 'pimpinan_id']);
         $proyekOptions = Proyek::orderBy('nama_proyek')->get(['id', 'nama_proyek']);
 
         $riwayatLogs = $this->riwayatProspectId
@@ -149,6 +161,7 @@ new #[Title('Prospect Customer')] class extends Component
         return [
             'rows' => $listQuery->paginate((int) $this->perPage),
             'salesOptions' => $salesOptions,
+            'timOptions' => $timOptions,
             'proyekOptions' => $proyekOptions,
             'sumberOptions' => $sumberOptions,
             'riwayatLogs' => $riwayatLogs,
@@ -170,6 +183,33 @@ new #[Title('Prospect Customer')] class extends Component
     public function updatingFilterSales(): void
     {
         $this->resetPage();
+    }
+
+    public function updatingFilterTim(): void
+    {
+        // Sales yang sudah dipilih belum tentu anggota tim baru.
+        $this->filterSales = '';
+        $this->resetPage();
+    }
+
+    /**
+     * Sales anggota tim terpilih, termasuk ketuanya sendiri.
+     *
+     * @return list<int>
+     */
+    protected function salesTim(): array
+    {
+        $grup = $this->filterTim !== '' ? SalesGrup::find((int) $this->filterTim) : null;
+        if (! $grup) {
+            return [];
+        }
+
+        return Sales::where('sales_grup_id', $grup->id)->pluck('id')
+            ->push($grup->pimpinan_id)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 
     public function updatingFilterProyek(): void
@@ -210,7 +250,7 @@ new #[Title('Prospect Customer')] class extends Component
 
     public function resetFilters(): void
     {
-        $this->reset(['search', 'filterSales', 'filterStatus', 'filterSumber', 'filterTanggalFrom', 'filterTanggalTo']);
+        $this->reset(['search', 'filterTim', 'filterSales', 'filterStatus', 'filterSumber', 'filterTanggalFrom', 'filterTanggalTo']);
         $this->sort = 'terbaru';
         $this->resetPage();
     }
@@ -239,6 +279,8 @@ new #[Title('Prospect Customer')] class extends Component
     {
         return [
             'search' => $this->search,
+            // Tim tanpa anggota → [0] supaya ekspor kosong, bukan malah tanpa saringan.
+            'sales_in' => $this->filterTim !== '' ? ($this->salesTim() ?: [0]) : null,
             'filterSales' => $this->filterSales,
             'filterProyek' => $this->filterProyek,
             'filterStatus' => $this->filterStatus,
@@ -257,6 +299,12 @@ new #[Title('Prospect Customer')] class extends Component
         $parts = [];
         if ($this->search) {
             $parts[] = 'Cari "'.$this->search.'"';
+        }
+        if ($this->filterTim !== '') {
+            $tim = SalesGrup::with('pimpinan:id,nama')->find((int) $this->filterTim);
+            if ($tim) {
+                $parts[] = 'Tim: '.$tim->nama.($tim->pimpinan ? ' (Ketua '.$tim->pimpinan->nama.')' : '');
+            }
         }
         if ($this->filterSales) {
             $salesName = Sales::where('id', $this->filterSales)->value('nama');
@@ -412,6 +460,17 @@ new #[Title('Prospect Customer')] class extends Component
                     <flux:input wire:model.live.debounce.400ms="search"
                                 placeholder="{{ __('Nama, NIK, atau HP...') }}"
                                 icon="magnifying-glass" />
+                </flux:field>
+
+                {{-- Tim sales (ketua) --}}
+                <flux:field>
+                    <flux:label>{{ __('Tim Sales') }}</flux:label>
+                    <flux:select wire:model.live="filterTim">
+                        <flux:select.option value="">{{ __('Semua tim') }}</flux:select.option>
+                        @foreach ($timOptions as $t)
+                            <flux:select.option value="{{ $t->id }}">{{ $t->nama }}{{ $t->pimpinan ? ' · Ketua '.$t->pimpinan->nama : '' }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
                 </flux:field>
 
                 {{-- Sales --}}
