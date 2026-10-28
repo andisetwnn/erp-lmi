@@ -160,7 +160,7 @@ new #[Title('Pengguna Sistem')] class extends Component
         'master.proyek.kelola'      => 'Menambah / mengubah data proyek (cluster, alamat, siteplan). PM biasanya butuh ini.',
         'master.tipe.kelola'        => 'Menambah / mengubah data tipe rumah (harga jual, harga all-in, luas, spesifikasi). PM biasanya butuh ini untuk atur harga per tipe.',
         'master.rumah.kelola'       => 'Menambah / mengubah unit rumah (blok, nomor, biaya tambahan). PM butuh untuk buka blok baru.',
-        'master.customer.kelola'    => 'Menambah / mengubah data customer (KTP, NPWP, alamat). Admin KPR biasanya butuh ini.',
+        'master.customer.kelola'    => 'Menambah / mengubah data customer (KTP, NPWP, alamat), sekaligus membuka halaman Prospect Customer di menu Marketing. Admin KPR biasanya butuh ini.',
         'master.sales.kelola'       => 'Menambah / mengubah data sales lapangan beserta akun DBOS-nya.',
         'master.notaris.kelola'     => 'Menambah / mengubah data notaris beserta biaya jasa. Finance biasanya butuh ini.',
         'master.subcon.kelola'      => 'Menambah / mengubah data subkontraktor beserta dokumen dan rekeningnya.',
