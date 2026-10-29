@@ -50,6 +50,19 @@ class SprRealisasiPembayaran extends Model
     }
 
     /**
+     * Urutan pembayaran ini di antara pembayaran sejenis pada SPR yang sama,
+     * menurut tanggal bayar — dipakai kuitansi untuk "UM ke-5".
+     */
+    public function urutanSejenis(): int
+    {
+        return static::where('spr_id', $this->spr_id)
+            ->where('jenis', $this->jenis)
+            ->where(fn ($q) => $q->where('tanggal_bayar', '<', $this->tanggal_bayar)
+                ->orWhere(fn ($q) => $q->where('tanggal_bayar', $this->tanggal_bayar)->where('id', '<=', $this->id)))
+            ->count();
+    }
+
+    /**
      * Generate nomor kuitansi berikutnya (5-digit sequential global).
      *
      * Bisa di-boost dari data legacy lewat env LEGACY_MAX_NOMOR_KWITANSI

@@ -43,162 +43,103 @@
     $rumah = $spr->rumah;
     $proyek = $rumah?->proyek;
     $tipe = $rumah?->tipeRumah;
-    $sales = $spr->sales;
 
+    // Mengikuti kuitansi cetak Grha Aryana: "UM 5" = pembayaran UM ke-5 pada SPR ini.
     $gunaPembayaran = match ($realisasi->jenis) {
-        'bf' => 'Uang Tanda Jadi (UTJ)',
-        'um' => 'Uang Muka (UM)',
-        'sbum' => 'SBUM (Subsidi Bantuan Uang Muka)',
-        'kpr' => 'Pencairan KPR',
+        'bf' => 'UANG TANDA JADI (UTJ)',
+        'um' => 'UANG MUKA (UM) KE-'.$realisasi->urutanSejenis(),
+        'sbum' => 'SBUM',
+        'kpr' => 'PENCAIRAN KPR',
         default => strtoupper($realisasi->jenis),
     };
 
-    $metode = $realisasi->metode === 'tunai' ? 'Tunai' : 'Transfer Bank';
-
     $nominal = (float) $realisasi->jumlah;
-    $terbilangStr = ucfirst(trim(kuitansi_terbilang((int) $nominal))).' Rupiah';
+    $terbilang = strtoupper(trim(kuitansi_terbilang((int) $nominal))).' RUPIAH';
+    $tunai = $realisasi->metode === 'tunai';
 
-    $blokUnit = trim(($rumah?->kode_unit ?? ''), '-');
-
-    $namaPerusahaan = $perusahaan?->nama ?? 'PT LANGIT MEMBANGUN INDONESIA';
-    $alamatPerusahaan = $perusahaan?->alamat ?? '';
-    $teleponPerusahaan = $perusahaan?->no_telepon ?? '';
-
-    $kotaTtd = $proyek?->kota;
-    $tanggalTtd = $realisasi->tanggal_bayar?->translatedFormat('d F Y');
-    $placeDate = trim(($kotaTtd ? $kotaTtd.', ' : '').$tanggalTtd);
-
-    $penerimaUser = $realisasi->inputBy;
-    $penerimaNama = $penerimaUser?->name ?? $sales?->nama ?? '—';
-    $penerimaTtdPath = $penerimaUser?->tanda_tangan_path ?? $sales?->tanda_tangan_path;
-    $penerimaTtdUrl = ($penerimaTtdPath && file_exists(storage_path('app/public/'.$penerimaTtdPath)))
-        ? asset('storage/'.$penerimaTtdPath)
-        : null;
-
-    $kodeSeed = $spr->id.'|KWT|'.($realisasi->id).'|'.$penerimaNama;
-    $kodeKwitansi = 'KWT-'.str_pad((string) $spr->id, 5, '0', STR_PAD_LEFT).'-'.strtoupper(substr(hash('sha256', $kodeSeed), 0, 6));
+    $namaPerusahaan = strtoupper($perusahaan?->nama ?? 'PT Langit Membangun Indonesia');
+    $namaProyek = $proyek?->nama_proyek ?? 'Grha Aryana';
+    $kota = $proyek?->kota_kabupaten;
 
     $logoUrl = ($proyek?->logo && file_exists(storage_path('app/public/'.$proyek->logo)))
         ? asset('storage/'.$proyek->logo)
         : null;
 @endphp
 <!DOCTYPE html>
-<html lang="id" class="light" style="color-scheme: light;">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
     <title>Kwitansi {{ $realisasi->nomor_kwitansi ?? $spr->nomor_display }}</title>
-    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-    <script>
-        tailwind.config = { darkMode: 'class' };
-    </script>
     <style>
         @page { size: A5 landscape; margin: 6mm; }
-        html, body { margin: 0; padding: 0; background: #e5e5e5; font-family: 'Inter', 'Segoe UI', Arial, sans-serif; color: #111; }
-        html.light { color-scheme: light !important; }
-        .paper [class*="dark:bg-"] { background-color: revert !important; }
-        .paper [class*="dark:text-"] { color: revert !important; }
-        .paper [class*="dark:border-"] { border-color: revert !important; }
-        .paper .bg-white { background-color: #ffffff !important; }
-        .paper .bg-zinc-50 { background-color: #fafafa !important; }
-        .paper { color: #111 !important; }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; background: #e5e5e5; color: #1a1a1a; }
+        body { font-family: 'Times New Roman', Times, Georgia, serif; }
 
-        .print-toolbar {
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 10px;
-            padding: 10px;
-            background: #ffffff;
-            border-bottom: 1px solid #ddd;
-            box-shadow: 0 1px 3px rgba(0,0,0,.05);
-        }
-        .print-toolbar .btn {
-            border: 1px solid #d4d4d4;
-            background: #ffffff;
-            padding: 6px 16px;
-            font-size: 13px;
-            font-weight: 600;
-            border-radius: 6px;
-            cursor: pointer;
-            color: #333;
-        }
-        .print-toolbar .btn:hover { background: #f5f5f5; }
+        .print-toolbar { position: sticky; top: 0; z-index: 10; display: flex; justify-content: center; gap: 10px; padding: 10px; background: #fff; border-bottom: 1px solid #ddd; font-family: 'Segoe UI', Arial, sans-serif; }
+        .print-toolbar .btn { border: 1px solid #d4d4d4; background: #fff; padding: 6px 16px; font-size: 13px; font-weight: 600; border-radius: 6px; cursor: pointer; color: #333; }
         .print-toolbar .btn-primary { background: #059669; color: #fff; border-color: #059669; }
-        .print-toolbar .btn-primary:hover { background: #047857; }
 
-        .paper {
-            width: 210mm;
-            margin: 12px auto;
-            background: transparent;
-        }
+        .kertas { width: 198mm; margin: 14px auto; background: #fff; }
 
-        /* ============ WATERMARK LOGO BERULANG ============ */
-        .doc-wrapper {
-            position: relative;
-            overflow: hidden;
-        }
-        .doc-wrapper::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            @if ($logoUrl)
-                background-image: url('{{ $logoUrl }}');
-            @endif
-            background-repeat: repeat;
-            background-size: 100px auto;
-            background-position: 0 0;
-            opacity: 0.12;
-            pointer-events: none;
-            z-index: 0;
-            /* Rotate untuk efek watermark diagonal */
-            transform: rotate(-20deg) scale(1.5);
-            transform-origin: center;
-        }
-        .doc-wrapper > * {
-            position: relative;
-            z-index: 1;
-        }
+        .kuitansi { display: flex; border: 1.6px solid #222; min-height: 118mm; }
+
+        /* Pita kiri: nama perumahan + kantor pemasaran, dibaca dari bawah ke atas */
+        .pita { width: 27mm; flex: none; border-right: 1.6px solid #222; position: relative; }
+        /* Diputar -90°: atas bingkai jadi kiri, jadi nama di kiri dan alamat kantor di sebelah kanannya */
+        .pita-isi { position: absolute; left: 50%; top: 50%; width: 112mm; transform: translate(-50%, -50%) rotate(-90deg); display: flex; flex-direction: column; align-items: center; gap: 1.2mm; text-align: center; }
+        .pita-nama { font-size: 27pt; letter-spacing: 1px; line-height: 1; white-space: nowrap; }
+        .pita-kantor { font-size: 7.4pt; line-height: 1.3; }
+        .pita-kantor b { display: block; font-size: 9pt; letter-spacing: .5px; }
+
+        .isi { flex: 1; padding: 5mm 6mm 4mm 7mm; position: relative; }
+        .kepala { display: flex; justify-content: space-between; align-items: flex-start; }
+        .judul { font-size: 24pt; font-weight: 700; letter-spacing: 1px; line-height: 1; }
+        .nomor { font-size: 17pt; margin-top: 1.5mm; }
+        /* Logo kepala dicetak hitam seperti di kertas — warna hanya pada stempel di bawah */
+        .logo { max-height: 15mm; max-width: 62mm; object-fit: contain; margin-top: 3mm; filter: brightness(0); opacity: .88; }
+        .logo-teks { font-size: 20pt; letter-spacing: 2px; margin-top: 4mm; }
+
+        /* Nilai isian ditulis tegak dengan tinta biru tua, seperti diisi tangan */
+        .nilai { font-family: Arial, 'Segoe UI', sans-serif; font-weight: 700; color: #1c2a5e; text-transform: uppercase; }
+
+        .baris { display: flex; align-items: flex-end; gap: 3mm; margin-top: 2.6mm; font-size: 11pt; }
+        .baris .label { width: 33mm; flex: none; }
+        .garis { flex: 1; border-bottom: 1px solid #222; padding: 0 2mm 0.6mm; min-height: 6mm; font-size: 10.5pt; }
+        .kotak-terbilang { flex: 1; border: 1.4px solid #222; padding: 1.2mm 2.5mm; min-height: 8mm; font-size: 10.5pt; }
+
+        .unit { display: flex; gap: 4mm; align-items: flex-end; margin-top: 3.4mm; font-size: 11pt; }
+        .unit span.titik { display: inline-block; min-width: 17mm; border-bottom: 1px dotted #222; padding: 0 1.5mm 0.4mm; text-align: center; font-size: 10.5pt; }
+
+        .tengah { display: flex; justify-content: space-between; align-items: flex-start; margin-top: 4mm; gap: 6mm; }
+        .nominal-label { font-style: italic; font-size: 11pt; margin-left: 3mm; }
+        .nominal { width: 84mm; height: 10mm; border: 1.6px solid #222; transform: skewX(-14deg); margin: 0.5mm 0 0 3mm; display: flex; align-items: center; padding-left: 5mm; }
+        .nominal > div { transform: skewX(14deg); font-size: 11pt; display: flex; align-items: baseline; gap: 2mm; width: 100%; }
+        .nominal .nilai { font-size: 14pt; border-bottom: 1px dotted #222; flex: 1; margin-right: 6mm; padding-bottom: .3mm; text-transform: none; }
+
+        .kotak-transfer { width: 76mm; border: 1.4px solid #222; padding: 1.5mm 3mm; font-size: 10pt; }
+        .kotak-transfer .baris-transfer { display: flex; gap: 2mm; align-items: flex-end; }
+        .kotak-transfer .baris-transfer + .baris-transfer { margin-top: 1mm; }
+        .kotak-transfer .label { width: 31mm; flex: none; }
+        .kotak-transfer .garis { font-size: 10pt; min-height: 5mm; }
+
+        .bawah { display: flex; justify-content: space-between; align-items: flex-start; margin-top: 3mm; gap: 6mm; }
+        .info { font-size: 9.6pt; line-height: 1.3; }
+        .info .catatan { font-size: 8pt; margin-top: 1.5mm; line-height: 1.25; }
+        .info .catatan div { padding-left: 2.6mm; text-indent: -2.6mm; }
+
+        .pengesahan { width: 76mm; flex: none; text-align: center; font-size: 11pt; }
+        .tanggal { display: flex; gap: 1.5mm; align-items: flex-end; }
+        .tanggal .garis { text-align: center; font-size: 10.5pt; min-height: 5.5mm; border-bottom-style: dotted; }
+        .atas-nama { font-size: 14pt; margin-top: 2mm; }
+        .stempel { display: block; margin: 1mm auto 0; max-width: 52mm; max-height: 17mm; object-fit: contain; transform: rotate(-4deg); opacity: .92; mix-blend-mode: multiply; }
+        .stempel-teks { display: inline-block; margin-top: 2mm; padding: 1.5mm 4mm; border: 2px solid #2f7d32; border-radius: 3mm; color: #2f7d32; font-size: 13pt; letter-spacing: 2px; transform: rotate(-4deg); }
 
         @media print {
-            html, body { background: #ffffff; }
+            html, body { background: #fff; }
             .print-toolbar { display: none !important; }
-            .paper {
-                width: auto;
-                margin: 0;
-                zoom: 0.90;
-            }
+            .kertas { margin: 0; width: auto; }
             * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-            .paper .rounded-2xl { border-radius: 0 !important; box-shadow: none !important; }
-            .paper > div { page-break-inside: avoid; }
-            /* Watermark tetap muncul di print */
-            .doc-wrapper::before {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-                opacity: 0.10 !important;
-            }
-
-            /* PAKSA layout multi-kolom karena media query `md:` tidak apply di print viewport */
-            .paper [class*="md:grid-cols-2"] {
-                display: grid !important;
-                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            }
-            .paper [class*="md:grid-cols-5"] {
-                display: grid !important;
-                grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
-            }
-            .paper .md\:text-right { text-align: right !important; }
-            .paper .md\:col-span-2 { grid-column: span 2 / span 2 !important; }
-            .paper .md\:col-span-3 { grid-column: span 3 / span 3 !important; }
-
-            /* Rapatkan spacing supaya muat 1 halaman A5 landscape */
-            .paper .px-6 { padding-left: 14px !important; padding-right: 14px !important; }
-            .paper .py-5 { padding-top: 8px !important; padding-bottom: 8px !important; }
-            .paper .py-3 { padding-top: 4px !important; padding-bottom: 4px !important; }
-            .paper .gap-y-5 { row-gap: 8px !important; }
-            .paper .h-24 { height: 60px !important; } /* TTD sig area lebih pendek */
         }
     </style>
 </head>
@@ -209,146 +150,95 @@
     <button type="button" class="btn btn-primary" onclick="window.print()">Cetak</button>
 </div>
 
-<div class="paper">
-    {{-- Logo proyek di pojok kanan atas --}}
-    @if ($logoUrl || $proyek?->nama_proyek)
-        <div style="display: flex; justify-content: flex-end; padding: 0 6px 8px; align-items: center;">
-            @if ($logoUrl)
-                <img src="{{ $logoUrl }}" alt="{{ $proyek->nama_proyek }}"
-                     style="max-height: 40px; max-width: 200px; object-fit: contain;">
-            @else
-                <div style="font-size: 14px; font-weight: 800; color: #111; letter-spacing: 1px;">
-                    {{ strtoupper($proyek->nama_proyek) }}
+<div class="kertas">
+    <div class="kuitansi">
+        <div class="pita">
+            <div class="pita-isi">
+                <div class="pita-nama">{{ strtoupper($namaProyek) }}</div>
+                <div class="pita-kantor">
+                    <b>KANTOR PEMASARAN :</b>
+                    Jampang, Kec. Gn. Sindur, Kabupaten Bogor, Jawa Barat<br>
+                    Telp. 081196961402
                 </div>
-            @endif
-        </div>
-    @endif
-
-    <div class="doc-wrapper overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-
-        {{-- Document title --}}
-        <div class="border-b border-zinc-200 px-6 py-5 text-center">
-            <h2 class="text-base font-extrabold uppercase tracking-wide text-zinc-900 underline decoration-2 underline-offset-4">
-                Kwitansi Pembayaran
-            </h2>
-        </div>
-
-        {{-- Meta bar: No + Ref SPR --}}
-        <div class="grid grid-cols-1 gap-3 border-b border-zinc-200 bg-zinc-50/50 px-6 py-3 text-xs md:grid-cols-2">
-            <div>
-                <span class="text-zinc-500">No. Kwitansi :</span>
-                <span class="ms-2 font-mono font-bold text-zinc-900">{{ $realisasi->nomor_kwitansi ?? '—' }}</span>
-            </div>
-            <div class="md:text-right">
-                <span class="text-zinc-500">Ref. SPR :</span>
-                <span class="ms-2 font-mono font-bold text-zinc-900">{{ $spr->nomor_display }}</span>
             </div>
         </div>
 
-        {{-- 2-column: Body kiri + Signature kanan --}}
-        <div class="grid grid-cols-1 gap-x-8 gap-y-5 px-6 py-5 md:grid-cols-5">
-
-            {{-- LEFT: Body kuitansi --}}
-            <div class="md:col-span-3">
-                <div class="rounded-lg border border-zinc-200">
-                    <h3 class="border-b border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-bold text-zinc-900">
-                        Detail Pembayaran
-                    </h3>
-                    <table class="w-full text-xs">
-                        <tbody class="divide-y divide-zinc-100">
-                            <tr>
-                                <td class="w-40 px-3 py-2 align-top text-zinc-600">Telah diterima dari</td>
-                                <td class="px-3 py-2 align-top text-zinc-400">:</td>
-                                <td class="px-3 py-2 font-semibold text-zinc-900">{{ strtoupper($prospect?->nama_lengkap ?? '—') }}</td>
-                            </tr>
-                            <tr>
-                                <td class="px-3 py-2 align-top text-zinc-600">Uang sejumlah</td>
-                                <td class="px-3 py-2 align-top text-zinc-400">:</td>
-                                <td class="px-3 py-2 italic text-zinc-800">{{ $terbilangStr }}</td>
-                            </tr>
-                            <tr>
-                                <td class="px-3 py-2 align-top text-zinc-600">Untuk pembayaran</td>
-                                <td class="px-3 py-2 align-top text-zinc-400">:</td>
-                                <td class="px-3 py-2 font-semibold text-zinc-900">{{ $gunaPembayaran }}</td>
-                            </tr>
-                            <tr>
-                                <td class="px-3 py-2 align-top text-zinc-600">Unit / Proyek</td>
-                                <td class="px-3 py-2 align-top text-zinc-400">:</td>
-                                <td class="px-3 py-2 text-zinc-800">
-                                    @if ($tipe?->tipe)Type <b>{{ $tipe->tipe }}</b>@endif
-                                    @if ($blokUnit) · Blok <b>{{ $blokUnit }}</b>@endif
-                                    @if ($proyek?->nama_proyek) · <b>{{ $proyek->nama_proyek }}</b>@endif
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="px-3 py-2 align-top text-zinc-600">Metode</td>
-                                <td class="px-3 py-2 align-top text-zinc-400">:</td>
-                                <td class="px-3 py-2 font-semibold text-zinc-900">{{ $metode }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+        <div class="isi">
+            <div class="kepala">
+                <div>
+                    <div class="judul">KWITANSI</div>
+                    <div class="nomor">No. : <span class="nilai" style="font-family: 'Times New Roman', serif; color: #1a1a1a;">{{ $realisasi->nomor_kwitansi ?? '—' }}</span></div>
                 </div>
-
-                {{-- Amount box (mirroring UTJ row style di SPR) --}}
-                <div class="mt-3 rounded-lg border border-zinc-200">
-                    <div class="flex items-center justify-between bg-zinc-50 px-3 py-2">
-                        <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-600">
-                            Nominal Diterima
-                        </span>
-                        <span class="font-mono text-lg font-extrabold tabular-nums text-zinc-900">
-                            Rp {{ number_format($nominal, 0, ',', '.') }}
-                        </span>
-                    </div>
-                </div>
-
-                <div class="mt-4 text-[11px] italic text-zinc-600">
-                    Kwitansi ini merupakan bukti sah pembayaran. Simpan baik-baik untuk keperluan verifikasi.
-                </div>
-            </div>
-
-            {{-- RIGHT: TTD Penerima --}}
-            <div class="md:col-span-2">
-                @if ($placeDate)
-                    <div class="mb-2 text-center text-[11px] italic text-zinc-600">
-                        {{ $placeDate }}
-                    </div>
+                @if ($logoUrl)
+                    <img class="logo" src="{{ $logoUrl }}" alt="{{ $namaProyek }}">
+                @else
+                    <div class="logo-teks">{{ strtoupper($namaProyek) }}</div>
                 @endif
-                <div class="overflow-hidden rounded-lg border border-zinc-300 bg-white">
-                    <div class="border-b border-zinc-300 px-3 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-zinc-700">
-                        Penerima
-                    </div>
-                    <div class="flex h-24 items-center justify-center bg-white p-2">
-                        @if ($penerimaTtdUrl)
-                            <img src="{{ $penerimaTtdUrl }}" alt="ttd-penerima"
-                                 class="max-h-full max-w-full object-contain">
-                        @else
-                            <div class="flex flex-col items-center gap-1 text-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5 text-zinc-300">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                                </svg>
-                                <span class="text-[9px] italic text-zinc-400">belum ditandatangani</span>
-                            </div>
-                        @endif
-                    </div>
-                    <div class="border-t border-zinc-300 bg-white px-3 py-1.5 text-center">
-                        <div class="text-[11px] font-bold text-zinc-900">
-                            ( {{ $penerimaNama }} )
-                        </div>
-                        <div class="mt-0.5 font-mono text-[8px] tracking-wider text-zinc-500">
-                            {{ $kodeKwitansi }}
-                        </div>
+            </div>
+
+            <div class="baris">
+                <div class="label">Telah diterima dari</div>
+                <div class="garis nilai">{{ $prospect?->nama_lengkap ?? '—' }}</div>
+            </div>
+            <div class="baris">
+                <div class="label">Uang Sebanyak</div>
+                <div class="kotak-terbilang nilai">{{ $terbilang }}</div>
+            </div>
+            <div class="baris">
+                <div class="label">Guna Pembayaran</div>
+                <div class="garis nilai">{{ $gunaPembayaran }}</div>
+            </div>
+
+            <div class="unit">
+                <span>Blok : <span class="titik nilai">{{ $rumah?->blok }}</span></span>
+                <span>No : <span class="titik nilai">{{ $rumah?->nomor_unit_padded }}</span></span>
+                <span>Type : <span class="titik nilai">{{ $tipe?->nama_tipe ?: $tipe?->tipe }}</span></span>
+                <span>No. SPR : <span class="titik nilai">{{ $spr->nomor_display }}</span></span>
+            </div>
+
+            <div class="tengah">
+                <div>
+                    <div class="nominal-label">{{ strtoupper($namaProyek) }}</div>
+                    <div class="nominal">
+                        <div>Rp. <span class="nilai">{{ number_format($nominal, 0, ',', '.') }},-</span></div>
                     </div>
                 </div>
+                <div class="kotak-transfer">
+                    <div class="baris-transfer">
+                        <div class="label">Metode Bayar :</div>
+                        <div class="garis nilai">{{ $tunai ? 'Tunai' : 'Transfer' }}</div>
+                    </div>
+                    <div class="baris-transfer">
+                        <div class="label">{{ $tunai ? 'Tanggal Bayar' : 'Tanggal Transfer' }} :</div>
+                        <div class="garis nilai">{{ $realisasi->tanggal_bayar?->format('d/m/y') }}</div>
+                    </div>
+                </div>
+            </div>
 
-                <div class="mt-3 text-center text-[9px] italic text-zinc-500">
-                    a/n {{ strtoupper($namaPerusahaan) }}
+            <div class="bawah">
+                <div class="info">
+                    Pembayaran dapat di Transfer melalui Bank<br>
+                    A/N {{ $namaPerusahaan }}<br>
+                    Bank BTN Cabang Ciputat : 000.4401.3000.09130
+                    <div class="catatan">
+                        <div>- Pembayaran melalui Transfer harap di Whatsapp Ke No. 0811 9696 1402 dengan mencantumkan Nama/Blok/Nomor/Type.</div>
+                        <div>- Semua Pembayaran Tunai dan Transfer yang dilakukan tanpa melalui rekening atau kasir pengembang {{ $perusahaan?->nama ?? 'PT Langit Membangun Indonesia' }} adalah <b>TIDAK SAH &amp; TIDAK AKAN DIAKUI OLEH PENGEMBANG.</b></div>
+                    </div>
+                </div>
+                <div class="pengesahan">
+                    <div class="tanggal">
+                        <span>{{ $kota ?: '' }},</span>
+                        <div class="garis nilai" style="text-transform: none;">{{ $realisasi->tanggal_bayar?->translatedFormat('d F Y') }}</div>
+                    </div>
+                    <div class="atas-nama">{{ $namaProyek }}</div>
+                    @if ($logoUrl)
+                        <img class="stempel" src="{{ $logoUrl }}" alt="Stempel {{ $namaProyek }}">
+                    @else
+                        <span class="stempel-teks">{{ strtoupper($namaProyek) }}</span>
+                    @endif
                 </div>
             </div>
         </div>
-    </div>
-
-    <div class="mx-auto mt-2 text-right text-[9px] italic text-zinc-500">
-        Dicetak pada {{ now()->translatedFormat('d/m/Y H:i') }}
     </div>
 </div>
 
