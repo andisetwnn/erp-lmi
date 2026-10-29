@@ -92,7 +92,7 @@
         .pita-kantor { font-size: 7.4pt; line-height: 1.3; }
         .pita-kantor b { display: block; font-size: 9pt; letter-spacing: .5px; }
 
-        .isi { flex: 1; padding: 5mm 6mm 4mm 7mm; position: relative; }
+        .isi { flex: 1; min-width: 0; padding: 5mm 6mm 4mm 7mm; position: relative; }
         .kepala { display: flex; justify-content: space-between; align-items: flex-start; }
         .judul { font-size: 24pt; font-weight: 700; letter-spacing: 1px; line-height: 1; }
         .nomor { font-size: 17pt; margin-top: 1.5mm; }
@@ -106,6 +106,7 @@
         .baris { display: flex; align-items: flex-end; gap: 3mm; margin-top: 2.6mm; font-size: 11pt; }
         .baris .label { width: 33mm; flex: none; }
         .garis { flex: 1; border-bottom: 1px solid #222; padding: 0 2mm 0.6mm; min-height: 6mm; font-size: 10.5pt; }
+        .baris.terbilang { align-items: center; }
         .kotak-terbilang { flex: 1; border: 1.4px solid #222; padding: 1.2mm 2.5mm; min-height: 8mm; font-size: 10.5pt; }
 
         .unit { display: flex; gap: 4mm; align-items: flex-end; margin-top: 3.4mm; font-size: 11pt; }
@@ -113,14 +114,14 @@
 
         .tengah { display: flex; justify-content: space-between; align-items: flex-start; margin-top: 4mm; gap: 6mm; }
         .nominal-label { font-style: italic; font-size: 11pt; margin-left: 3mm; }
-        .nominal { width: 84mm; height: 10mm; border: 1.6px solid #222; transform: skewX(-14deg); margin: 0.5mm 0 0 3mm; display: flex; align-items: center; padding-left: 5mm; }
+        .nominal { width: 74mm; height: 10mm; border: 1.6px solid #222; transform: skewX(-14deg); margin: 0.5mm 0 0 3mm; display: flex; align-items: center; padding-left: 5mm; }
         .nominal > div { transform: skewX(14deg); font-size: 11pt; display: flex; align-items: baseline; gap: 2mm; width: 100%; }
         .nominal .nilai { font-size: 14pt; border-bottom: 1px dotted #222; flex: 1; margin-right: 6mm; padding-bottom: .3mm; text-transform: none; }
 
-        .kotak-transfer { width: 76mm; border: 1.4px solid #222; padding: 1.5mm 3mm; font-size: 10pt; }
+        .kotak-transfer { width: 66mm; flex: none; border: 1.4px solid #222; padding: 1.5mm 3mm; font-size: 10pt; }
         .kotak-transfer .baris-transfer { display: flex; gap: 2mm; align-items: flex-end; }
         .kotak-transfer .baris-transfer + .baris-transfer { margin-top: 1mm; }
-        .kotak-transfer .label { width: 31mm; flex: none; }
+        .kotak-transfer .label { width: 29mm; flex: none; }
         .kotak-transfer .garis { font-size: 10pt; min-height: 5mm; }
 
         .bawah { display: flex; justify-content: space-between; align-items: flex-start; margin-top: 3mm; gap: 6mm; }
@@ -128,7 +129,7 @@
         .info .catatan { font-size: 8pt; margin-top: 1.5mm; line-height: 1.25; }
         .info .catatan div { padding-left: 2.6mm; text-indent: -2.6mm; }
 
-        .pengesahan { width: 76mm; flex: none; text-align: center; font-size: 11pt; }
+        .pengesahan { width: 66mm; flex: none; text-align: center; font-size: 11pt; }
         .tanggal { display: flex; gap: 1.5mm; align-items: flex-end; }
         .tanggal .garis { text-align: center; font-size: 10.5pt; min-height: 5.5mm; border-bottom-style: dotted; }
         .atas-nama { font-size: 14pt; margin-top: 2mm; }
@@ -180,7 +181,7 @@
                 <div class="label">Telah diterima dari</div>
                 <div class="garis nilai">{{ $prospect?->nama_lengkap ?? '—' }}</div>
             </div>
-            <div class="baris">
+            <div class="baris terbilang">
                 <div class="label">Uang Sebanyak</div>
                 <div class="kotak-terbilang nilai">{{ $terbilang }}</div>
             </div>
