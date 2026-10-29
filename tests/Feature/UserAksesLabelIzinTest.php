@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -58,19 +59,64 @@ it('tidak menyimpan label untuk izin yang sudah tidak ada', function () {
 });
 
 it('menamai grup izin dengan kata yang terbaca', function () {
-    // Judul grup diambil dari awalan nama izin. Awalan yang satu kata tapi dua
-    // suku harus dipetakan, kalau tidak terbaca "RENCANAAKAD".
+    // Judul grup diambil dari awalan nama izin. Awalan gabungan ("neracalajur",
+    // "kasbank") harus dipetakan, kalau tidak judulnya terbaca "NERACALAJUR".
+    // Izin baru dengan awalan baru wajib diputuskan grupnya — tambahkan ke
+    // daftar ini kalau memang grup sendiri yang namanya sudah terbaca.
+    $terbaca = ['user', 'ttd', 'master', 'spr', 'promo', 'biaya tambahan', 'pemberkasan', 'rencana akad',
+        'matrix', 'legal', 'teknik', 'target', 'pembayaran', 'akunting', 'laporan', 'log', 'monitoring'];
+
     $isi = file_get_contents(resource_path('views/pages/master/user.blade.php'));
-
     preg_match("/public const PERMISSION_GROUP_MAP = \[(.*?)\n    \];/s", $isi, $blok);
+    preg_match_all("/'([a-z]+)'\s*=>\s*'([a-z ]+)'/", $blok[1], $pasangan);
+    $peta = array_combine($pasangan[1], $pasangan[2]);
 
-    expect($blok[1])->toContain("'rencanaakad' => 'rencana akad'");
+    $grup = array_unique(array_map(
+        fn ($izin) => $peta[explode('.', $izin)[0]] ?? explode('.', $izin)[0],
+        RolePermissionSeeder::daftarIzin(),
+    ));
+
+    expect(array_values(array_diff($grup, $terbaca)))->toBe([]);
+});
+
+it('menandai izin yang belum dipakai fitur mana pun', function () {
+    // Izin yang tidak diperiksa di kode mana pun tidak berpengaruh apa-apa saat
+    // dicentang. Keterangannya harus mengatakan begitu, supaya super-admin tidak
+    // mengira sudah membatasi atau memberi akses. Begitu fiturnya dibuat, tanda
+    // itu dicabut. (Jurnal Bank & Kas Kecil sudah disebut di menu tapi halamannya
+    // belum ada, jadi ditandai manual — pemindai ini tidak bisa menangkapnya.)
+    $isiHalaman = file_get_contents(resource_path('views/pages/master/user.blade.php'));
+    preg_match("/public const PERMISSION_DESC = \[(.*?)\n    \];/s", $isiHalaman, $blokDesc);
+    preg_match_all("/^\s*'([a-z0-9._-]+)'\s*=>\s*'(.*)',\s*$/m", $blokDesc[1], $desc);
+    $ditandai = array_keys(array_filter(
+        array_combine($desc[1], $desc[2]),
+        fn ($teks) => str_starts_with($teks, 'Fiturnya belum tersedia'),
+    ));
+
+    $kode = '';
+    foreach ([app_path(), base_path('routes'), resource_path('views')] as $folder) {
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($folder)) as $berkas) {
+            if (str_ends_with($berkas->getFilename(), '.php')) {
+                $kode .= file_get_contents($berkas->getPathname());
+            }
+        }
+    }
+    // Daftar label & keterangan sendiri bukan pemakaian.
+    $kode = preg_replace("/public const PERMISSION_(LABEL|DESC) = \[.*?\n    \];/s", '', $kode);
+
+    $tidakDipakai = array_values(array_filter(
+        RolePermissionSeeder::daftarIzin(),
+        fn ($izin) => ! str_contains($kode, "'{$izin}'") && ! preg_match('/[\'|:]'.preg_quote($izin, '/').'[\'|]/', $kode),
+    ));
+
+    expect(array_values(array_diff($tidakDipakai, $ditandai)))->toBe([])
+        ->and($ditandai)->toContain('jurnal.bank.kelola', 'jurnal.kaskecil.kelola');
 });
 
 it('menampilkan label, bukan nama teknis, di layarnya', function () {
     $this->seed();
 
-    $admin = App\Models\User::factory()->create();
+    $admin = User::factory()->create();
     $admin->assignRole('super-admin');
 
     $html = Livewire::actingAs($admin)->test('pages::master.user')

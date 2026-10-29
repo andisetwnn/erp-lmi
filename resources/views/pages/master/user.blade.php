@@ -196,11 +196,11 @@ new #[Title('Pengguna Sistem')] class extends Component
         'target.kelola'             => 'Input & edit target penjualan/akad per proyek per tahun (RAB tahunan). Angka target akan tampil di matrix Marketing Performance dashboard direksi. Biasanya diinput oleh Direktur di awal tahun.',
         // Finance
         'pembayaran.kelola'         => 'Mengakses menu Penerimaan Konsumen: konfirmasi UTJ, mencatat cicilan Uang Muka, menempelkan e-Materai, dan memproses realisasi pembayaran.',
-        'pembayaran.approve'        => 'Menyetujui pengembalian dana (refund) & reversal realisasi pembayaran — biasanya finance-manager.',
+        'pembayaran.approve'        => 'Fiturnya belum tersedia — dicentang atau tidak belum berpengaruh. Rencananya: menyetujui pengembalian dana (refund) & reversal realisasi pembayaran.',
         // Akunting
         'jurnal.umum.kelola'        => 'Input, edit jurnal umum (semua kategori bukti: KAS, BANK, PENJ, HPP, AKM, RJE, dsb) di modul Akunting.',
-        'jurnal.bank.kelola'        => 'Input jurnal khusus transaksi bank (transfer masuk/keluar, kliring, biaya administrasi bank).',
-        'jurnal.kaskecil.kelola'    => 'Input jurnal khusus kas kecil (petty cash) untuk operasional harian.',
+        'jurnal.bank.kelola'        => 'Fiturnya belum tersedia — dicentang atau tidak belum berpengaruh. Rencananya: input jurnal khusus transaksi bank (transfer masuk/keluar, kliring, biaya administrasi bank).',
+        'jurnal.kaskecil.kelola'    => 'Fiturnya belum tersedia — dicentang atau tidak belum berpengaruh. Rencananya: input jurnal khusus kas kecil (petty cash) untuk operasional harian.',
         'jurnal.post'               => 'Memposting jurnal dari status draft menjadi posted (masuk ke buku besar). Biasanya level finance-manager / kepala akunting.',
         'jurnal.delete'             => 'Menghapus jurnal yang sudah tercatat (baik draft maupun posted). Biasanya finance-manager only.',
         'bukubesar.lihat'           => 'Melihat Buku Besar per akun COA: mutasi debet/kredit + running balance per periode.',
@@ -226,6 +226,8 @@ new #[Title('Pengguna Sistem')] class extends Component
         'labarugi'    => 'akunting',
         'neraca'      => 'akunting',
         'neracasaldo' => 'akunting',
+        'neracalajur' => 'akunting',
+        'kasbank'     => 'akunting',
         'aruskas'     => 'akunting',
         'aktivatetap' => 'akunting',
         // Awalan yang satu kata tapi dua suku — tanpa ini judulnya terbaca
