@@ -29,6 +29,7 @@
 .env
 .env.backup
 .env.local
+.env.elevenlabs
 .env.production
 .phpactor.json
 .phpunit.result.cache
