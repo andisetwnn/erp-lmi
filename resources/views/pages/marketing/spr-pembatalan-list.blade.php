@@ -214,9 +214,11 @@ new #[Title('Pembatalan SPR')] class extends Component
                         {{ __('Kelola Alasan') }}
                     </flux:button>
                 @endcan
-                <flux:button variant="primary" icon="plus" :href="route('marketing.spr-batal.input')" wire:navigate>
-                    {{ __('Input Pembatalan') }}
-                </flux:button>
+                @can('spr.batal')
+                    <flux:button variant="primary" icon="plus" :href="route('marketing.spr-batal.input')" wire:navigate>
+                        {{ __('Input Pembatalan') }}
+                    </flux:button>
+                @endcan
             </div>
         </div>
 

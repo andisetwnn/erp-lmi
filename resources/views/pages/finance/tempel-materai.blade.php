@@ -309,7 +309,7 @@ new #[Title('e-Materai')] class extends Component
                 </p>
             </div>
 
-            @if ($materaiSprId)
+            @if ($materaiSprId && auth()->user()?->can('spr.cetak'))
                 <a href="{{ route('marketing.spr.print', $materaiSprId) }}" target="_blank"
                    class="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-blue-500 bg-white py-2.5 text-sm font-bold text-blue-700 shadow-sm transition hover:bg-blue-50 dark:border-blue-600 dark:bg-zinc-900 dark:text-blue-300 dark:hover:bg-blue-950/30">
                     <flux:icon.arrow-down-tray class="size-4" />

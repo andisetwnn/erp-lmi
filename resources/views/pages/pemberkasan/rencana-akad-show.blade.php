@@ -276,8 +276,22 @@ new #[Title('Detail Rencana Akad')] class extends Component
      * Link universal — siapa pun dari Direksi (Haryanto/Julianto Boentaran)
      * boleh menerima; mereka gambar TTD langsung di halaman.
      */
+    /**
+     * Link ini memfinalkan rencana atas nama Direksi, jadi pembuatnya harus pihak
+     * alur (penyusun, PM, Direksi) — bukan peran yang hanya melihat (Keuangan).
+     */
+    private function pastikanBolehKirimDireksi(): void
+    {
+        $user = Auth::user();
+        $boleh = collect(['rencanaakad.kelola', 'rencanaakad.mengetahui', 'rencanaakad.approve'])
+            ->contains(fn ($izin) => (bool) $user?->can($izin));
+
+        abort_unless($boleh, 403);
+    }
+
     public function openKirimDireksi(): void
     {
+        $this->pastikanBolehKirimDireksi();
         abort_unless($this->rencana->status === 'diketahui', 409);
 
         // Auto-generate link begitu modal dibuka — user tinggal copy/kirim WA.
@@ -300,6 +314,7 @@ new #[Title('Detail Rencana Akad')] class extends Component
      */
     public function regenerateLinkDireksi(): void
     {
+        $this->pastikanBolehKirimDireksi();
         abort_unless($this->rencana->status === 'diketahui', 409);
 
         $this->rencana->update([
@@ -668,7 +683,10 @@ new #[Title('Detail Rencana Akad')] class extends Component
                     @endif
                 @elseif ($rencana->status === 'diketahui')
                     @if ($bolehKelola || $bolehMengetahui || $bolehApprove)
-                        <flux:button variant="ghost" wire:click="openAksi('draft')">Kembalikan ke Draft</flux:button>
+                        {{-- Server hanya membolehkan PM/Direksi mengembalikan ke draft. --}}
+                        @if ($bolehMengetahui || $bolehApprove)
+                            <flux:button variant="ghost" wire:click="openAksi('draft')">Kembalikan ke Draft</flux:button>
+                        @endif
                         <flux:button variant="primary" icon="paper-airplane" wire:click="openKirimDireksi">
                             Kirim Persetujuan ke Direksi
                         </flux:button>

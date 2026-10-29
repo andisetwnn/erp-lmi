@@ -269,6 +269,8 @@ new #[Title('Detail SPR')] class extends Component
 
     public function printPdf()
     {
+        abort_unless(Auth::user()?->can('spr.cetak'), 403);
+
         if ($this->spr->status !== 'approved') {
             Flux::toast(variant: 'warning', text: 'Hanya SPR berstatus Disetujui yang bisa dicetak.');
             return null;
@@ -292,6 +294,8 @@ new #[Title('Detail SPR')] class extends Component
 
     public function openTambahTransaksi(): void
     {
+        abort_unless(Auth::user()?->can('pembayaran.kelola'), 403);
+
         $this->reset(['trxTanggal', 'trxJumlah', 'trxMetode', 'trxKeterangan']);
         $this->trxTanggal = now()->format('Y-m-d');
         $this->trxMetode = 'transfer';
@@ -302,6 +306,8 @@ new #[Title('Detail SPR')] class extends Component
     /** Upload dokumen SPR yang sudah TTD + tempel meterai oleh customer. */
     public function uploadDokumenSigned(): void
     {
+        abort_unless(Auth::user()?->can('pembayaran.kelola'), 403);
+
         $this->validate([
             'dokumenSignedFile' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
         ]);
@@ -327,6 +333,8 @@ new #[Title('Detail SPR')] class extends Component
     /** Hapus dokumen SPR TTD (kalau salah upload). */
     public function hapusDokumenSigned(): void
     {
+        abort_unless(Auth::user()?->can('pembayaran.kelola'), 403);
+
         if ($this->spr->dokumen_signed_path && Storage::disk('public')->exists($this->spr->dokumen_signed_path)) {
             Storage::disk('public')->delete($this->spr->dokumen_signed_path);
         }
@@ -344,6 +352,8 @@ new #[Title('Detail SPR')] class extends Component
      */
     public function prefillLunas(): void
     {
+        abort_unless(Auth::user()?->can('pembayaran.kelola'), 403);
+
         $totalUmDibayar = (float) $this->spr->realisasiPembayaran->where('jenis', 'um')->sum('jumlah');
         $sisaUm = max(0, $this->spr->umKonsumen() - $totalUmDibayar);
         $this->trxJumlah = (string) $sisaUm;
@@ -351,6 +361,9 @@ new #[Title('Detail SPR')] class extends Component
 
     public function saveTransaksi(): void
     {
+        // Input realisasi = tugas Keuangan; yang lain (Direktur, PM, Admin) hanya melihat.
+        abort_unless(Auth::user()?->can('pembayaran.kelola'), 403);
+
         // Komersial: UM langsung ke bank, bukan ke developer. Block realisasi UM.
         if ($this->spr->kategori === 'komersial') {
             Flux::toast(variant: 'danger', text: 'SPR komersial tidak menerima realisasi UM ke developer.');
@@ -1284,6 +1297,7 @@ new #[Title('Detail SPR')] class extends Component
                         @endif
                     </div>
 
+                @can('spr.cetak')
                 <div class="flex flex-wrap items-center gap-2">
                     @if ($spr->materai_stamped_at && $spr->materai_file_path)
                         <a href="{{ route('marketing.spr.materai-pdf', $spr->id) }}" target="_blank" rel="noopener"
@@ -1309,6 +1323,7 @@ new #[Title('Detail SPR')] class extends Component
                         </flux:button>
                     @endif
                 </div>
+                @endcan
             </div>
 
             {{-- Card "Dokumen SPR TTD + Meterai" dihilangkan — flow baru pakai TTD digital konsumen + e-Materai Peruri lewat menu terpisah --}}
@@ -1722,7 +1737,7 @@ new #[Title('Detail SPR')] class extends Component
 
                 {{-- ===== REALISASI PEMBAYARAN ===== --}}
                 @php
-                    $canAddTrx = in_array($spr->status, ['approved', 'submitted']);
+                    $canAddTrx = auth()->user()?->can('pembayaran.kelola') && in_array($spr->status, ['approved', 'submitted']);
                     // Komersial: UM cicilan langsung ke bank (bukan ke developer) → tidak boleh input realisasi UM
                     $canAddUmTrx = $canAddTrx && $spr->kategori !== 'komersial';
                 @endphp

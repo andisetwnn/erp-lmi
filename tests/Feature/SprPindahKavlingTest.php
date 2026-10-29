@@ -211,7 +211,10 @@ it('menampilkan pemilih SPR yang bisa dicari di halaman pembatalan', function ()
     // mount() mengambil proyek dari sesi, jadi propertinya diisi setelah komponen jalan.
     sprSelesai(unitKosong('EC', '01'), 'I');
 
-    $this->actingAs($this->pm);
+    // Halaman input pembatalan khusus pemegang spr.batal (Admin KPR), bukan PM.
+    $adminKpr = User::factory()->create();
+    $adminKpr->assignRole('admin-kpr');
+    $this->actingAs($adminKpr);
 
     $html = Livewire::test('pages::marketing.spr-pembatalan-input')
         ->set('proyekId', $this->proyek->id)

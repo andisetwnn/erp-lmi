@@ -100,6 +100,8 @@ new #[Title('Data SPR')] class extends Component
 
     public function printSpr(int $sprId)
     {
+        abort_unless(auth()->user()?->can('spr.cetak'), 403);
+
         $spr = Spr::with([
             'rumah.tipeRumah',
             'rumah.proyek',

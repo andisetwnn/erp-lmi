@@ -36,6 +36,9 @@ new #[Title('Input Pembatalan SPR')] class extends Component
 
     public function mount(): void
     {
+        // Rute daftar pembatalan cukup spr.lihat; halaman input ini khusus yang berwenang membatalkan.
+        abort_unless(Auth::user()?->can('spr.batal'), 403);
+
         $this->proyekId = \App\Support\ProyekAktif::sinkron($this->proyekId);
         if ($this->sprId) {
             $this->loadSpr($this->sprId);
@@ -79,6 +82,8 @@ new #[Title('Input Pembatalan SPR')] class extends Component
 
     public function submit(): void
     {
+        abort_unless(Auth::user()?->can('spr.batal'), 403);
+
         $validated = $this->validate([
             'sprId' => ['required', 'exists:spr,id'],
             'alasanId' => ['required', 'exists:alasan_pembatalan,id'],

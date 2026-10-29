@@ -383,7 +383,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             // meskipun PM belum approve. Tampilan draft/final dibedakan lewat watermark di dokumen.
 
             return view('exports.spr-print', ['spr' => $spr]);
-        })->where('id', '[0-9]+')->name('spr.print');
+        })->where('id', '[0-9]+')->middleware('permission:spr.cetak')->name('spr.print');
         Route::get('spr/{id}/kuitansi/{realisasiId}', function (int $id, int $realisasiId) {
             $spr = Spr::with([
                 'prospectCustomer',
@@ -407,7 +407,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             abort_unless(is_file($path), 404, 'File tidak ditemukan.');
 
             return response()->file($path, ['Content-Type' => 'application/pdf']);
-        })->where('id', '[0-9]+')->name('spr.materai-pdf');
+        })->where('id', '[0-9]+')->middleware('permission:spr.cetak')->name('spr.materai-pdf');
         // Pembatalan SPR
         Route::livewire('spr-batal', 'pages::marketing.spr-pembatalan-list')->name('spr-batal.list');
         Route::livewire('spr-batal/input', 'pages::marketing.spr-pembatalan-input')->name('spr-batal.input');

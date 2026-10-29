@@ -86,8 +86,15 @@ new #[Title('Aktiva Tetap')] class extends Component
         return (float) str_replace(['.', ','], ['', '.'], trim($v));
     }
 
+    /** Rute halaman ini juga dibuka aktivatetap.lihat (Direktur); tulis hanya untuk aktivatetap.kelola. */
+    private function pastikanBolehKelola(): void
+    {
+        abort_unless(auth()->user()?->can('aktivatetap.kelola'), 403);
+    }
+
     public function openCreate(): void
     {
+        $this->pastikanBolehKelola();
         $this->reset(['editId', 'kode', 'nama', 'lokasi', 'keterangan', 'harga_perolehan', 'nilai_residu', 'akumulasi_penyusutan']);
         $this->kategori = 'Inventaris Kantor';
         $this->tgl_perolehan = now()->toDateString();
@@ -100,6 +107,7 @@ new #[Title('Aktiva Tetap')] class extends Component
 
     public function openEdit(int $id): void
     {
+        $this->pastikanBolehKelola();
         $a = AktivaTetap::findOrFail($id);
         $this->editId = $a->id;
         $this->kode = (string) $a->kode;
@@ -120,6 +128,7 @@ new #[Title('Aktiva Tetap')] class extends Component
 
     public function simpan(): void
     {
+        $this->pastikanBolehKelola();
         $this->validate([
             'nama' => 'required|string|max:255',
             'kategori' => 'required|string|max:50',
@@ -169,6 +178,7 @@ new #[Title('Aktiva Tetap')] class extends Component
 
     public function openConfirmDelete(int $id, string $label): void
     {
+        $this->pastikanBolehKelola();
         $this->confirmDeleteId = $id;
         $this->confirmDeleteLabel = $label;
         Flux::modal('confirm-delete-aktiva')->show();
@@ -176,6 +186,7 @@ new #[Title('Aktiva Tetap')] class extends Component
 
     public function hapus(): void
     {
+        $this->pastikanBolehKelola();
         if (! $this->confirmDeleteId) {
             return;
         }
