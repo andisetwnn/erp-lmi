@@ -70,6 +70,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Kwitansi {{ $realisasi->nomor_kwitansi ?? $spr->nomor_display }}</title>
+    <link rel="icon" href="/favicon.ico?v=2" sizes="any">
     <style>
         @page { size: A5 landscape; margin: 6mm; }
         * { box-sizing: border-box; }

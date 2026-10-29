@@ -63,7 +63,9 @@ it('mencetak isian kuitansi seperti kuitansi kertas', function () {
         ->assertOk()
         ->assertSeeInOrder(['KWITANSI', '00849', 'Telah diterima dari', 'Noerainie', 'Uang Sebanyak', 'SATU JUTA RUPIAH',
             'Guna Pembayaran', 'UANG MUKA (UM) KE-2', 'Blok', 'AD', 'No', '09', 'No. SPR', '00197', '1.000.000,-'])
-        ->assertSee('Bank BTN Cabang Ciputat : 000.4401.3000.09130');
+        ->assertSee('Bank BTN Cabang Ciputat : 000.4401.3000.09130')
+        // Ikon tab aplikasi, bukan ikon bawaan Laravel
+        ->assertSee('<link rel="icon" href="/favicon.ico?v=2"', false);
 });
 
 it('menomori UM menurut tanggal bayar', function () {

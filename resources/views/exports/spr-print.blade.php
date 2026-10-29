@@ -8,6 +8,7 @@
 <head>
     <meta charset="UTF-8">
     <title>SPR {{ $spr->nomor_spr }}</title>
+    <link rel="icon" href="/favicon.ico?v=2" sizes="any">
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
     <script>
         // Config dark-mode Tailwind ke 'class' (bukan 'media') supaya tidak auto-follow OS.
