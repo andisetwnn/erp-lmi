@@ -5,6 +5,7 @@ use App\Models\Master\ProspectCustomer;
 use App\Models\Master\ProspectCustomerStatusLog;
 use App\Models\Master\Sales;
 use App\Models\Master\SalesGrup;
+use App\Models\Master\Spr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
@@ -128,6 +129,18 @@ new #[Title('DBOS Home'), Layout('layouts.dbos')] class extends Component {
                 'icon' => 'clock',
                 'text' => $bookingExpiringSoon.' booking akan expired dalam 24 jam.',
                 'route' => route('dbos.booking.index'),
+            ];
+        }
+
+        $sprTertahan = Spr::where('sales_id', $sales->id)->tertahanDataKantor()->pluck('id');
+        if ($sprTertahan->isNotEmpty()) {
+            $alerts[] = [
+                'level' => 'urgent',
+                'icon' => 'building-office',
+                'text' => $sprTertahan->count().' SPR belum bisa dikirim TTD: data tempat kerja belum lengkap.',
+                'route' => $sprTertahan->count() === 1
+                    ? route('dbos.spr.show', $sprTertahan->first())
+                    : route('dbos.spr.index'),
             ];
         }
 
@@ -300,6 +313,7 @@ new #[Title('DBOS Home'), Layout('layouts.dbos')] class extends Component {
                                     <div @class(['mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white shadow-sm', $alertStyle['iconBg']])>
                                         @switch($a['icon'])
                                             @case('clock')        <flux:icon.clock class="size-4" /> @break
+                                            @case('building-office') <flux:icon.building-office class="size-4" /> @break
                                             @case('fire')         <flux:icon.fire class="size-4" /> @break
                                             @case('snowflake')    <flux:icon.cloud class="size-4" /> @break
                                             @case('archive-box')  <flux:icon.archive-box class="size-4" /> @break

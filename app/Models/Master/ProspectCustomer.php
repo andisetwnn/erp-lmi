@@ -2,6 +2,7 @@
 
 namespace App\Models\Master;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -12,6 +13,9 @@ class ProspectCustomer extends Model
 
     /** Jumlah kontak darurat minimal supaya prospect bisa naik ke FINISH. */
     public const MIN_KONTAK_DARURAT = 2;
+
+    /** Nilai pilihan "(Data Menyusul)" di dropdown perusahaan; bukan baris di master tempat kerja. */
+    public const TEMPAT_KERJA_MENYUSUL = 'menyusul';
 
     /** Sumber info pilihan (untuk dropdown). */
     public const SUMBER_OPTIONS = [
@@ -47,6 +51,7 @@ class ProspectCustomer extends Model
         'npwp',
         'foto_ktp',
         'tempat_kerja_id',
+        'tempat_kerja_menyusul',
         'bank_id',
         'nomor_rekening',
         'rekening_atas_nama',
@@ -75,6 +80,7 @@ class ProspectCustomer extends Model
         'bi_dbr' => 'decimal:2',
         'penghasilan_bulanan' => 'decimal:2',
         'tanggal_lahir' => 'date',
+        'tempat_kerja_menyusul' => 'boolean',
     ];
 
     public function sales(): BelongsTo
@@ -168,9 +174,31 @@ class ProspectCustomer extends Model
             ['label' => 'Alamat KTP',              'ok' => ! empty($this->alamat)],
             ['label' => 'BI Checking KOL',         'ok' => $this->bi_kol !== null],
             ['label' => 'BI Checking DBR',         'ok' => $this->bi_dbr !== null],
-            ['label' => 'Perusahaan',              'ok' => ! empty($this->tempat_kerja_id)],
+            ['label' => 'Perusahaan',              'ok' => ! empty($this->tempat_kerja_id) || $this->tempat_kerja_menyusul],
             ['label' => 'Kontak Darurat (min '.self::MIN_KONTAK_DARURAT.')', 'ok' => $kontakCount >= self::MIN_KONTAK_DARURAT],
         ];
+    }
+
+    /**
+     * Data kantor yang tercetak di SPR, wajib lengkap sebelum link TTD dibuat.
+     * Nama dan alamat satu paket karena keduanya tampil di dokumen.
+     *
+     * @return list<string>
+     */
+    public function missingForTtd(): array
+    {
+        if (! $this->tempatKerja) {
+            return ['Perusahaan', 'Alamat Kantor'];
+        }
+
+        return filled($this->tempatKerja->alamat) ? [] : ['Alamat Kantor'];
+    }
+
+    /** Prospect yang perusahaan atau alamat kantornya belum lengkap. */
+    public function scopeTempatKerjaBelumLengkap(Builder $query): Builder
+    {
+        return $query->where(fn ($q) => $q->whereNull('tempat_kerja_id')
+            ->orWhereHas('tempatKerja', fn ($tk) => $tk->tanpaAlamat()));
     }
 
     /**

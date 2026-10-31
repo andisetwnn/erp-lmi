@@ -67,13 +67,18 @@ new #[Title('Dashboard')] class extends Component
             ->limit(10)
             ->get(['id', 'blok', 'nomor_unit', 'biaya_tambahan']);
 
+        // SPR yang belum bisa dikirim TTD; yang paling lama di atas.
+        $sprTertahan = $this->batasiProyek(Spr::tertahanDataKantor()->with(['rumah', 'prospectCustomer.tempatKerja', 'sales']))
+            ->orderBy('tanggal_spr')->orderBy('id')
+            ->get();
+
         $sprTerbaru = $this->batasiProyek(Spr::with(['rumah', 'prospectCustomer', 'sales']))
             ->orderByDesc('tanggal_spr')->orderByDesc('id')
             ->limit(8)->get();
 
         return compact(
             'sprApproved', 'sprAkad', 'sprBulanIni',
-            'plafon', 'terbayar', 'unitAdaBiaya', 'belumTertagih', 'sprTerbaru'
+            'plafon', 'terbayar', 'unitAdaBiaya', 'belumTertagih', 'sprTerbaru', 'sprTertahan'
         );
     }
 }; ?>
@@ -127,6 +132,72 @@ new #[Title('Dashboard')] class extends Component
                 <div class="mt-1 font-mono text-xl font-bold tabular-nums text-amber-900 dark:text-amber-100">Rp {{ number_format($sisaBiaya, 0, ',', '.') }}</div>
                 <div class="mt-2 text-[10px] text-zinc-500">dari plafon Rp {{ number_format($plafon, 0, ',', '.') }} · {{ number_format($unitAdaBiaya) }} unit</div>
             </div>
+        </div>
+
+        {{-- PERLU DITINDAK --}}
+        <div class="mb-6 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+            <div class="mb-1 flex items-center gap-2">
+                <flux:icon.exclamation-triangle class="size-5 text-amber-600" />
+                <h2 class="text-base font-bold">Perlu Ditindak</h2>
+                @if ($sprTertahan->isNotEmpty())
+                    <span class="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">{{ $sprTertahan->count() }} SPR</span>
+                @endif
+            </div>
+            <p class="mb-3 text-xs text-zinc-500">SPR yang belum bisa dikirim ke konsumen karena data tempat kerja belum lengkap.</p>
+
+            @if ($sprTertahan->isEmpty())
+                <div class="py-6 text-center text-sm text-zinc-500">Semua SPR berjalan datanya sudah lengkap.</div>
+            @else
+                <div class="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-700">
+                    <table class="w-full text-xs">
+                        <thead class="bg-zinc-50 text-[10px] uppercase text-zinc-500 dark:bg-zinc-800">
+                            <tr>
+                                <th class="px-3 py-2 text-left font-semibold">No SPR</th>
+                                <th class="px-3 py-2 text-left font-semibold">Unit</th>
+                                <th class="px-3 py-2 text-left font-semibold">Konsumen</th>
+                                <th class="px-3 py-2 text-left font-semibold">Sales</th>
+                                <th class="px-3 py-2 text-left font-semibold">Data Kurang</th>
+                                <th class="px-3 py-2 text-left font-semibold">Tahap</th>
+                                <th class="px-3 py-2 text-right font-semibold">Umur</th>
+                                <th class="px-3 py-2"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
+                            @foreach ($sprTertahan as $s)
+                                @php
+                                    $kurang = implode(', ', $s->missingForKonsumenSigning());
+                                    $umur = (int) $s->tanggal_spr?->diffInDays(now());
+                                    $nomorSales = \App\Support\PhoneNumber::sanitize($s->sales?->telepon);
+                                    $pesanWa = "Halo {$s->sales?->nama},\n\nSPR {$s->nomor_display} unit {$s->rumah?->kode_unit} atas nama {$s->prospectCustomer?->nama_lengkap} belum bisa dikirim TTD. Data yang belum diisi: {$kurang}.\n\nMohon dilengkapi di DBOS. Terima kasih.";
+                                @endphp
+                                <tr wire:key="tertahan-{{ $s->id }}" class="hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
+                                    <td class="whitespace-nowrap px-3 py-2 font-mono font-semibold">
+                                        <a href="{{ route('marketing.spr.show', $s->id) }}" wire:navigate class="hover:underline">{{ $s->nomor_display }}</a>
+                                    </td>
+                                    <td class="whitespace-nowrap px-3 py-2">{{ $s->rumah?->kode_unit }}</td>
+                                    <td class="px-3 py-2 text-zinc-600 dark:text-zinc-400">{{ $s->prospectCustomer?->nama_lengkap ?? '–' }}</td>
+                                    <td class="whitespace-nowrap px-3 py-2 text-zinc-500">{{ $s->sales?->nama ?? '–' }}</td>
+                                    <td class="px-3 py-2 font-semibold text-amber-700 dark:text-amber-400">{{ $kurang }}</td>
+                                    <td class="whitespace-nowrap px-3 py-2 text-zinc-500">{{ $s->tahapMenujuTtd() }}</td>
+                                    <td @class([
+                                        'whitespace-nowrap px-3 py-2 text-right tabular-nums',
+                                        'font-semibold text-rose-600 dark:text-rose-400' => $umur > 3,
+                                        'text-zinc-500' => $umur <= 3,
+                                    ])>{{ $umur === 0 ? 'Hari ini' : $umur.' hari' }}</td>
+                                    <td class="whitespace-nowrap px-3 py-2 text-right">
+                                        @if ($nomorSales)
+                                            <a href="https://wa.me/62{{ substr($nomorSales, 1) }}?text={{ urlencode($pesanWa) }}" target="_blank"
+                                               class="font-semibold text-emerald-700 hover:underline dark:text-emerald-400">WA Sales</a>
+                                        @else
+                                            <span class="text-zinc-500">HP sales kosong</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
         </div>
 
         <div class="grid gap-4 lg:grid-cols-3">

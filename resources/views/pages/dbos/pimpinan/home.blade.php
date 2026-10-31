@@ -7,6 +7,7 @@ use App\Models\Master\ProspectCustomerStatusLog;
 use App\Models\Master\Proyek;
 use App\Models\Master\Sales;
 use App\Models\Master\SalesTarget;
+use App\Models\Master\Spr;
 use Flux\Flux;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -343,6 +344,17 @@ new #[Title('Dashboard Pimpinan'), Layout('layouts.pimpinan')] class extends Com
             ->reverse()
             ->values();
 
+        $sprTertahanTim = Spr::whereIn('sales_id', $allBawahanIds)->tertahanDataKantor()->count();
+        if ($sprTertahanTim > 0 && ! in_array('spr-data-kantor', $dismissedKeys)) {
+            $checklist[] = [
+                'key' => 'spr-data-kantor',
+                'icon' => 'building-office',
+                'color' => 'amber',
+                'text' => 'Ingatkan anggota: '.$sprTertahanTim.' SPR belum bisa dikirim TTD, data tempat kerja belum lengkap',
+                'route' => route('dbos.pimpinan.spr.index'),
+            ];
+        }
+
         // Tambah ke checklist kalau ada
         if ($loginPerluPerhatian->count() > 0 && ! in_array('login-stagnan', $dismissedKeys)) {
             $checklist[] = [
@@ -525,6 +537,7 @@ new #[Title('Dashboard Pimpinan'), Layout('layouts.pimpinan')] class extends Com
                                 @switch($item['icon'])
                                     @case('fire') <flux:icon.fire class="size-4" /> @break
                                     @case('clock') <flux:icon.clock class="size-4" /> @break
+                                    @case('building-office') <flux:icon.building-office class="size-4" /> @break
                                     @case('user') <flux:icon.user class="size-4" /> @break
                                     @case('target') <flux:icon.cursor-arrow-rays class="size-4" /> @break
                                     @case('computer-desktop') <flux:icon.computer-desktop class="size-4" /> @break

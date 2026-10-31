@@ -117,6 +117,10 @@ new #[Title('Detail SPR'), Layout('layouts.dbos')] class extends Component
             return;
         }
 
+        if (! $this->dataSiapTtd()) {
+            return;
+        }
+
         $hash = Spr::generateSigningLinkHash();
         $expiresAt = now()->addDay();
 
@@ -133,8 +137,28 @@ new #[Title('Detail SPR'), Layout('layouts.dbos')] class extends Component
         );
     }
 
+    protected function dataSiapTtd(): bool
+    {
+        $kurang = $this->spr->missingForKonsumenSigning();
+
+        if ($kurang !== []) {
+            Flux::toast(
+                variant: 'danger',
+                heading: 'Data konsumen belum lengkap',
+                text: 'Lengkapi dulu: '.implode(', ', $kurang).'.',
+            );
+        }
+
+        return $kurang === [];
+    }
+
     public function regenerateSigningLink(): void
     {
+        // Dicek sebelum link lama dihapus, supaya penolakan tidak mematikan link yang ada.
+        if (! $this->dataSiapTtd()) {
+            return;
+        }
+
         // Reset dulu, lalu generate baru — supaya sales bisa perbarui link yang expired.
         $this->spr->update([
             'konsumen_signing_link_hash' => null,
@@ -530,6 +554,24 @@ new #[Title('Detail SPR'), Layout('layouts.dbos')] class extends Component
             </div>
         @endif
 
+        @php
+            $kurangTtd = in_array($spr->status, ['submitted', 'approved'], true) && ! $spr->konsumen_signed_at
+                ? $spr->missingForKonsumenSigning()
+                : [];
+        @endphp
+        @if ($kurangTtd !== [])
+            <div class="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+                <p class="text-sm font-bold text-amber-900 dark:text-amber-100">{{ __('Data konsumen belum lengkap') }}</p>
+                <p class="mt-1 text-xs text-amber-800 dark:text-amber-200">
+                    {{ __('Link TTD baru bisa dibuat setelah data ini diisi: :data.', ['data' => implode(', ', $kurangTtd)]) }}
+                </p>
+                <a href="{{ route('dbos.database.edit', $spr->prospect_customer_id) }}" wire:navigate
+                   class="mt-3 flex items-center justify-center gap-2 rounded-lg bg-amber-500 py-2.5 text-xs font-bold text-white shadow active:scale-95">
+                    {{ __('Lengkapi Data Konsumen') }}
+                </a>
+            </div>
+        @endif
+
         {{-- ============ FITUR #6: TTD Digital Konsumen (Card) ============ --}}
         @if ($spr->konsumen_signed_at)
             {{-- Sudah TTD --}}
@@ -556,7 +598,7 @@ new #[Title('Detail SPR'), Layout('layouts.dbos')] class extends Component
                     </div>
                 </div>
             </div>
-        @elseif ($spr->isReadyForKonsumenSigning() || $spr->hasActiveSigningLink())
+        @elseif (($spr->isReadyForKonsumenSigning() && $kurangTtd === []) || $spr->hasActiveSigningLink())
             {{-- Siap generate link atau link aktif --}}
             <div class="overflow-hidden rounded-2xl border-2 border-blue-300 bg-white shadow-sm dark:border-blue-800 dark:bg-zinc-900">
                 <div class="flex items-center gap-2 border-b border-blue-100 bg-blue-500/10 px-4 py-2.5 dark:border-blue-900/50">

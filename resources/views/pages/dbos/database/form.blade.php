@@ -10,6 +10,7 @@ use App\Services\KtpOcrService;
 use App\Support\FileOptimizer;
 use App\Support\PhoneNumber;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -63,6 +64,9 @@ new #[Title('Tambah Database Konsumen'), Layout('layouts.dbos')] class extends C
 
     // Pekerjaan
     public ?string $tempatKerjaId = null;
+
+    /** Diisi hanya kalau perusahaan terpilih belum punya alamat di master. */
+    public ?string $alamatKantor = null;
 
     public ?string $penghasilanBulanan = null;
 
@@ -138,7 +142,11 @@ new #[Title('Tambah Database Konsumen'), Layout('layouts.dbos')] class extends C
             $this->rtRw = $p->rt_rw;
             $this->npwp = $p->npwp;
             $this->fotoKtpPath = $p->foto_ktp;
-            $this->tempatKerjaId = $p->tempat_kerja_id ? (string) $p->tempat_kerja_id : null;
+            $this->tempatKerjaId = match (true) {
+                (bool) $p->tempat_kerja_id => (string) $p->tempat_kerja_id,
+                $p->tempat_kerja_menyusul => ProspectCustomer::TEMPAT_KERJA_MENYUSUL,
+                default => null,
+            };
             $this->penghasilanBulanan = $p->penghasilan_bulanan ? (string) $p->penghasilan_bulanan : null;
             $this->bankId = $p->bank_id ? (string) $p->bank_id : null;
             $this->nomorRekening = $p->nomor_rekening;
@@ -174,6 +182,7 @@ new #[Title('Tambah Database Konsumen'), Layout('layouts.dbos')] class extends C
             'sumberOptions' => ProspectCustomer::SUMBER_OPTIONS,
             'proyekOptions' => Proyek::orderBy('nama_proyek')->get(['id', 'nama_proyek', 'nama_perumahan']),
             'tempatKerjaOptions' => TempatKerja::orderBy('nama')->get(['id', 'nama']),
+            'perluAlamatKantor' => $this->perusahaanTerpilih()?->tanpaAlamat()->exists() ?? false,
             'bankOptions' => Bank::orderBy('nama')->get(['id', 'nama']),
             'hubunganOptions' => ProspectCustomerKontakDarurat::HUBUNGAN_OPTIONS,
             'provinsiOptions' => Province::orderBy('name')->get(['code', 'name']),
@@ -197,6 +206,14 @@ new #[Title('Tambah Database Konsumen'), Layout('layouts.dbos')] class extends C
         $this->newTempatKerjaAlamat = null;
         $this->resetErrorBag(['newTempatKerjaNama', 'newTempatKerjaBidang', 'newTempatKerjaAlamat']);
         Flux::modal('tempat-kerja-quick-add')->show();
+    }
+
+    /** Query perusahaan yang dipilih di dropdown; null kalau kosong atau (Data Menyusul). */
+    protected function perusahaanTerpilih(): ?Builder
+    {
+        return ctype_digit((string) $this->tempatKerjaId)
+            ? TempatKerja::whereKey($this->tempatKerjaId)
+            : null;
     }
 
     public function saveQuickTempatKerja(): void
@@ -511,7 +528,10 @@ new #[Title('Tambah Database Konsumen'), Layout('layouts.dbos')] class extends C
             'nik' => ['nullable', 'string', 'max:32'],
             'npwp' => ['nullable', 'string', 'max:32'],
             'fotoKtp' => ['nullable', 'image', 'max:4096'],
-            'tempatKerjaId' => ['nullable', 'exists:tempat_kerja,id'],
+            'tempatKerjaId' => $this->tempatKerjaId === ProspectCustomer::TEMPAT_KERJA_MENYUSUL
+                ? ['string']
+                : ['nullable', 'exists:tempat_kerja,id'],
+            'alamatKantor' => ['nullable', 'string', 'max:500'],
             'penghasilanBulanan' => ['nullable', 'numeric', 'min:0'],
             'bankId' => ['nullable', 'exists:bank,id'],
             'nomorRekening' => ['nullable', 'string', 'max:50'],
@@ -544,6 +564,7 @@ new #[Title('Tambah Database Konsumen'), Layout('layouts.dbos')] class extends C
             'npwp' => 'NPWP',
             'fotoKtp' => 'foto KTP',
             'tempatKerjaId' => 'perusahaan',
+            'alamatKantor' => 'alamat kantor',
             'bankId' => 'bank',
             'nomorRekening' => 'nomor rekening',
             'rekeningAtasNama' => 'atas nama rekening',
@@ -588,7 +609,8 @@ new #[Title('Tambah Database Konsumen'), Layout('layouts.dbos')] class extends C
                 'status_perkawinan' => $this->statusPerkawinan ?: null,
                 'pekerjaan_ktp' => $this->pekerjaanKtp ?: null,
                 'npwp' => $validated['npwp'] ?: null,
-                'tempat_kerja_id' => $validated['tempatKerjaId'] ? (int) $validated['tempatKerjaId'] : null,
+                'tempat_kerja_id' => $this->perusahaanTerpilih() ? (int) $validated['tempatKerjaId'] : null,
+                'tempat_kerja_menyusul' => $validated['tempatKerjaId'] === ProspectCustomer::TEMPAT_KERJA_MENYUSUL,
                 'penghasilan_bulanan' => $validated['penghasilanBulanan'] !== null && $validated['penghasilanBulanan'] !== '' ? (float) $validated['penghasilanBulanan'] : null,
                 'bank_id' => $validated['bankId'] ? (int) $validated['bankId'] : null,
                 'nomor_rekening' => $validated['nomorRekening'] ?: null,
@@ -637,6 +659,11 @@ new #[Title('Tambah Database Konsumen'), Layout('layouts.dbos')] class extends C
                     'catatan' => 'Prospect baru ditambahkan.',
                     'changed_by_sales_id' => Auth::guard('sales')->id(),
                 ]);
+            }
+
+            // Alamat di master dipakai bersama, jadi hanya boleh mengisi yang masih kosong.
+            if (filled($validated['alamatKantor'])) {
+                $this->perusahaanTerpilih()?->tanpaAlamat()->update(['alamat' => trim($validated['alamatKantor'])]);
             }
 
             // Sync kontak darurat — delete-recreate pattern (simpler, idempotent)
@@ -1085,14 +1112,31 @@ new #[Title('Tambah Database Konsumen'), Layout('layouts.dbos')] class extends C
             <div class="space-y-2 p-4">
                 <flux:field>
                     <flux:label>{{ __('Perusahaan / Tempat Kerja') }}</flux:label>
-                    <flux:select wire:model="tempatKerjaId">
+                    <flux:select wire:model.live="tempatKerjaId">
                         <flux:select.option value="">{{ __('— Pilih Perusahaan —') }}</flux:select.option>
+                        <flux:select.option value="{{ \App\Models\Master\ProspectCustomer::TEMPAT_KERJA_MENYUSUL }}">{{ __('(Data Menyusul)') }}</flux:select.option>
                         @foreach ($tempatKerjaOptions as $tk)
                             <flux:select.option value="{{ $tk->id }}">{{ $tk->nama }}</flux:select.option>
                         @endforeach
                     </flux:select>
                     <flux:error name="tempatKerjaId" />
+                    @if ($tempatKerjaId === \App\Models\Master\ProspectCustomer::TEMPAT_KERJA_MENYUSUL)
+                        <p class="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                            {{ __('Konsumen tetap bisa booking. Perusahaan dan alamat kantor wajib diisi sebelum link TTD dikirim.') }}
+                        </p>
+                    @endif
                 </flux:field>
+
+                @if ($perluAlamatKantor)
+                    <flux:field>
+                        <flux:label>{{ __('Alamat Kantor') }}</flux:label>
+                        <flux:textarea wire:model="alamatKantor" rows="2" placeholder="{{ __('Alamat lengkap perusahaan') }}" />
+                        <p class="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                            {{ __('Alamat perusahaan ini belum ada. Wajib diisi sebelum link TTD dikirim.') }}
+                        </p>
+                        <flux:error name="alamatKantor" />
+                    </flux:field>
+                @endif
 
                 <button type="button" wire:click="openQuickAddTempatKerja"
                         class="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-indigo-300 bg-indigo-50/50 px-3 py-2.5 text-xs font-semibold text-indigo-700 transition hover:border-indigo-500 hover:bg-indigo-50 dark:border-indigo-900/50 dark:bg-indigo-950/20 dark:text-indigo-300">

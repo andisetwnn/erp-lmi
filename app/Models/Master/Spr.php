@@ -5,6 +5,7 @@ namespace App\Models\Master;
 use App\Models\User;
 use App\Observers\SprObserver;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -462,6 +463,34 @@ class Spr extends Model
         return $this->status === 'approved'
             && $this->pm_approved_at !== null
             && $this->konsumen_signed_at === null;
+    }
+
+    /**
+     * Data konsumen yang masih harus dilengkapi sebelum link TTD dibuat.
+     *
+     * @return list<string>
+     */
+    public function missingForKonsumenSigning(): array
+    {
+        return $this->prospectCustomer?->missingForTtd() ?? ['Data konsumen'];
+    }
+
+    /** SPR berjalan yang belum bisa dikirim TTD karena data kantor konsumen belum lengkap. */
+    public function scopeTertahanDataKantor(Builder $query): Builder
+    {
+        return $query->whereIn('status', ['submitted', 'approved'])
+            ->whereNull('konsumen_signed_at')
+            ->whereHas('prospectCustomer', fn ($q) => $q->tempatKerjaBelumLengkap());
+    }
+
+    /** Posisi SPR dalam perjalanan menuju TTD konsumen. */
+    public function tahapMenujuTtd(): string
+    {
+        return match (true) {
+            $this->status === 'submitted' => 'Menunggu konfirmasi UTJ',
+            $this->pm_approved_at === null => 'Menunggu acc PM',
+            default => 'Siap TTD, tertahan data',
+        };
     }
 
     /** Link TTD konsumen masih valid (belum expire + belum di-sign). */

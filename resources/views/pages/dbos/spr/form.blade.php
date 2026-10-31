@@ -706,7 +706,7 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                     </div>
                     <div class="flex justify-between gap-2">
                         <dt class="text-zinc-500">Perusahaan</dt>
-                        <dd class="text-right font-semibold text-zinc-900 dark:text-white">{{ $prospect->tempatKerja?->nama ?? '—' }}</dd>
+                        <dd class="text-right font-semibold text-zinc-900 dark:text-white">{{ $prospect->tempatKerja?->nama ?? ($prospect->tempat_kerja_menyusul ? __('Data menyusul') : '—') }}</dd>
                     </div>
                     <div class="flex justify-between gap-2">
                         <dt class="text-zinc-500">Penghasilan / bln</dt>

@@ -46,6 +46,12 @@ new #[Title('Tanda Tangan SPR'), Layout('layouts.public')] class extends Compone
             return;
         }
 
+        // Data dikosongkan lagi setelah link dibuat: sales harus melengkapi dan membuat link baru.
+        if ($this->spr->missingForKonsumenSigning() !== []) {
+            $this->status = 'invalid';
+            return;
+        }
+
         $this->status = 'ready';
     }
 
