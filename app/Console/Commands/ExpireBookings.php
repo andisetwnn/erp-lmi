@@ -16,22 +16,16 @@ class ExpireBookings extends Command
 
     public function handle(): int
     {
-        $now = Carbon::now();
+        $count = DB::transaction(function () {
+            // Dikunci supaya tidak balapan dengan sales yang sedang menyimpan SPR dari booking yang sama.
+            $stale = Booking::query()
+                ->where('status', 'aktif')
+                ->whereNotNull('tanggal_expired')
+                ->where('tanggal_expired', '<=', Carbon::now())
+                ->whereNull('unit_dilepas_at')
+                ->lockForUpdate()
+                ->get();
 
-        $stale = Booking::query()
-            ->where('status', 'aktif')
-            ->whereNotNull('tanggal_expired')
-            ->where('tanggal_expired', '<=', $now)
-            ->whereNull('unit_dilepas_at')
-            ->get();
-
-        if ($stale->isEmpty()) {
-            $this->info('Tidak ada booking yang perlu di-expire.');
-            return self::SUCCESS;
-        }
-
-        $count = 0;
-        DB::transaction(function () use ($stale, &$count) {
             foreach ($stale as $booking) {
                 // unit_dilepas_at = tanggal_expired itself (tanggal unit conceptually dilepas)
                 $booking->update([
@@ -39,15 +33,22 @@ class ExpireBookings extends Command
                 ]);
 
                 // Lepas unit kembali ke available, hanya kalau status rumah masih 'booking'
-                if ($booking->rumah && $booking->rumah->status === 'booking') {
-                    Rumah::where('id', $booking->rumah_id)->update(['status' => 'available']);
-                }
-
-                $count++;
+                Rumah::where('id', $booking->rumah_id)
+                    ->where('status', 'booking')
+                    ->update(['status' => 'available']);
             }
+
+            return $stale->count();
         });
 
+        if ($count === 0) {
+            $this->info('Tidak ada booking yang perlu di-expire.');
+
+            return self::SUCCESS;
+        }
+
         $this->info("Berhasil expire {$count} booking.");
+
         return self::SUCCESS;
     }
 }

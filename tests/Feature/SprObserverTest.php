@@ -146,6 +146,15 @@ test('SPR approved → cancelled akan release rumah ke available (bukan booking)
     expect($this->rumah->fresh()->status)->toBe('available');
 });
 
+test('SPR submitted → cancelled melepas rumah yang masih booking', function () {
+    $this->rumah->update(['status' => 'booking']);
+    $spr = makeSpr('submitted');
+
+    $spr->update(['status' => 'cancelled']);
+
+    expect($this->rumah->fresh()->status)->toBe('available');
+});
+
 test('SPR yang langsung dibuat berstatus akad ikut lock rumah ke terjual', function () {
     // Import historis membuat 58 SPR langsung berstatus akad. Observer versi lama hanya
     // mengenali 'approved', jadi unit yang sudah akad tertinggal 'available'.

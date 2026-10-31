@@ -17,7 +17,7 @@ class SprObserver
      * Sinkronkan rumah.status mengikuti status SPR.
      * - approved / akad            → rumah 'terjual'
      * - approved → akad            → tetap 'terjual' (dua-duanya mengunci)
-     * - mengunci → cancelled       → rumah 'available' (unit benar-benar dilepas)
+     * - apa pun → cancelled        → rumah 'available' (unit benar-benar dilepas)
      * - mengunci → rejected/draft  → rumah 'booking' (booking masih aktif, bisa re-submit)
      */
     public function saved(Spr $spr): void
@@ -40,8 +40,9 @@ class SprObserver
 
         if ($this->mengunci($baru) && ! $this->mengunci($lama)) {
             $this->lockRumah($spr);
-        } elseif ($this->mengunci($lama) && $baru === 'cancelled') {
-            // Pembatalan: unit dilepas total
+        } elseif ($baru === 'cancelled') {
+            // Pembatalan: unit dilepas total, termasuk SPR yang UTJ-nya belum dikonfirmasi.
+            // Booking-nya sudah 'sukses', jadi job pelepasan tidak akan menyentuhnya.
             $this->releaseRumah($spr);
         } elseif ($this->mengunci($lama) && ! $this->mengunci($baru)) {
             // Reject / revert: kembali ke booking

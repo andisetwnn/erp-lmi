@@ -77,8 +77,8 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
             return;
         }
 
-        if ($this->booking->status !== 'aktif') {
-            session()->flash('toast', 'Booking tidak aktif, tidak bisa buat SPR.');
+        if ($this->booking->status !== 'aktif' || $this->booking->isExpired()) {
+            session()->flash('toast', 'Booking tidak aktif atau sudah lewat 24 jam, tidak bisa buat SPR.');
             $this->redirect(route('dbos.booking.index'), navigate: true);
             return;
         }
@@ -397,6 +397,13 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
         }
 
         $sprId = DB::transaction(function () use ($totalHarga, $nilaiKpr, $dpNominal, $dpPersen, $umNet, $jadwalTermin, $kategori, $jenisPembayaran) {
+            // Booking dikunci dan dicek ulang: form bisa saja terbuka melewati batas 24 jam,
+            // sementara unitnya sudah dilepas dan diambil sales lain.
+            $booking = Booking::whereKey($this->booking->id)->lockForUpdate()->first();
+            if ($booking->status !== 'aktif' || $booking->isExpired()) {
+                return null;
+            }
+
             $spr = Spr::create([
                 'booking_id' => $this->booking->id,
                 'sales_id' => $this->booking->sales_id,
@@ -472,6 +479,13 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
 
             return $spr->id;
         });
+
+        if ($sprId === null) {
+            session()->flash('toast', 'Booking tidak aktif atau sudah lewat 24 jam, SPR tidak tersimpan.');
+            $this->redirect(route('dbos.booking.index'), navigate: true);
+
+            return;
+        }
 
         BusinessActivityLogger::sprSubmitted(
             Spr::with('rumah', 'prospectCustomer', 'sales')->find($sprId)
