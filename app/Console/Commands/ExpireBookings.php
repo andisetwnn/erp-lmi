@@ -27,9 +27,9 @@ class ExpireBookings extends Command
                 ->get();
 
             foreach ($stale as $booking) {
-                // unit_dilepas_at = tanggal_expired itself (tanggal unit conceptually dilepas)
+                // Cooldown dihitung dari batas waktu booking, bukan dari saat job ini berjalan.
                 $booking->update([
-                    'unit_dilepas_at' => $booking->tanggal_expired->toDateString(),
+                    'unit_dilepas_at' => $booking->tanggal_expired,
                 ]);
 
                 // Lepas unit kembali ke available, hanya kalau status rumah masih 'booking'

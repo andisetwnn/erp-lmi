@@ -91,6 +91,110 @@ it('tidak menyentuh booking yang sudah jadi SPR', function () {
     expect($booking->rumah->fresh()->status)->toBe('booking');
 });
 
+function unitTersedia(): Rumah
+{
+    return Rumah::create([
+        'proyek_id' => test()->proyek->id, 'tipe_rumah_id' => test()->tipe->id,
+        'blok' => 'LQ', 'nomor_unit' => (string) (Rumah::where('blok', 'LQ')->count() + 1), 'status' => 'available',
+    ]);
+}
+
+function bookingLewatForm(Rumah $rumah, ProspectCustomer $prospect, ?Sales $sales = null): void
+{
+    Livewire::actingAs(($sales ?? test()->sales)->fresh(), 'sales')
+        ->test('pages::dbos.booking.form', ['id' => $rumah->id])
+        ->call('pickProspect', $prospect->id)
+        ->call('save');
+}
+
+function bookingKedaluwarsa(): Booking
+{
+    $booking = bookingPelepasan(['tanggal_expired' => now()->subHour()]);
+    $booking->prospectCustomer->update(['bi_kol' => '1', 'bi_dbr' => 30]);
+
+    test()->artisan('bookings:expire')->assertSuccessful();
+
+    return $booking->fresh();
+}
+
+it('mencatat waktu pelepasan dari batas waktu booking', function () {
+    $booking = bookingKedaluwarsa();
+
+    expect($booking->unit_dilepas_at->equalTo($booking->tanggal_expired))->toBeTrue();
+});
+
+it('mencatat jam saat sales membatalkan booking', function () {
+    $booking = bookingPelepasan();
+
+    Livewire::actingAs($this->sales, 'sales')
+        ->test('pages::dbos.booking.index')
+        ->call('openCancel', $booking->id)
+        ->set('cancelKeterangan', 'Konsumen mundur')
+        ->call('confirmCancel')
+        ->assertHasNoErrors();
+
+    expect($booking->fresh()->unit_dilepas_at->diffInMinutes(now(), true))->toBeLessThan(1.0);
+});
+
+it('menahan booking ulang unit yang sama sampai tepat 48 jam', function () {
+    $booking = bookingKedaluwarsa();
+    $dilepas = $booking->unit_dilepas_at;
+
+    $this->travelTo($dilepas->copy()->addHours(48)->subMinute());
+    bookingLewatForm($booking->rumah, $booking->prospectCustomer);
+    expect(Booking::where('rumah_id', $booking->rumah_id)->count())->toBe(1);
+
+    $this->travelTo($dilepas->copy()->addHours(48));
+    bookingLewatForm($booking->rumah, $booking->prospectCustomer);
+    expect(Booking::where('rumah_id', $booking->rumah_id)->count())->toBe(2);
+});
+
+it('menampilkan jam berakhirnya cooldown', function () {
+    $booking = bookingKedaluwarsa();
+
+    Livewire::actingAs($this->sales, 'sales')
+        ->test('pages::dbos.booking.unit', ['id' => $this->proyek->id, 'blok' => 'LP'])
+        ->assertSee('Bisa booking ulang:')
+        ->assertSee($booking->rebookingAllowedAt()->translatedFormat('d M Y H:i'));
+});
+
+it('tidak menahan sales lain saat cooldown berjalan', function () {
+    $booking = bookingKedaluwarsa();
+
+    $salesLain = Sales::create([
+        'kode' => 'SLS-LN', 'nama' => 'Sales Lain', 'is_aktif' => true,
+        'dbos_username' => 'sales-lain', 'dbos_password' => 'rahasia123',
+    ]);
+    $prospectLain = ProspectCustomer::create([
+        'sales_id' => $salesLain->id, 'proyek_id' => $this->proyek->id, 'nama_lengkap' => 'Konsumen Lain',
+        'nik' => '3201000000004444', 'hp' => '628120000004', 'sumber' => 'Walk-in', 'status' => 'finish',
+        'bi_kol' => '1', 'bi_dbr' => 30,
+    ]);
+
+    bookingLewatForm($booking->rumah, $prospectLain, $salesLain);
+
+    expect(Booking::where('rumah_id', $booking->rumah_id)->where('sales_id', $salesLain->id)->count())->toBe(1);
+});
+
+it('membolehkan konsumen dibooking lagi di unit lain setelah bookingnya kedaluwarsa', function () {
+    $booking = bookingKedaluwarsa();
+    $unitLain = unitTersedia();
+
+    bookingLewatForm($unitLain, $booking->prospectCustomer);
+
+    expect(Booking::where('rumah_id', $unitLain->id)->count())->toBe(1);
+});
+
+it('tetap menolak konsumen yang bookingnya masih berlaku', function () {
+    $booking = bookingPelepasan();
+    $booking->prospectCustomer->update(['bi_kol' => '1', 'bi_dbr' => 30]);
+    $unitLain = unitTersedia();
+
+    bookingLewatForm($unitLain, $booking->prospectCustomer);
+
+    expect(Booking::where('rumah_id', $unitLain->id)->count())->toBe(0);
+});
+
 it('menjalankan pelepasan tiap 10 menit', function () {
     $this->artisan('schedule:list')->expectsOutputToContain('*/10 * * * *');
 });

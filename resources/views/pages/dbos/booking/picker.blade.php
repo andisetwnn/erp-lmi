@@ -54,7 +54,7 @@ new #[Title('Booking Baru'), Layout('layouts.dbos')] class extends Component
 
             // Cek cooldown untuk hasil pencarian
             if ($searchResults->isNotEmpty()) {
-                $today = Carbon::today();
+                $sekarang = Carbon::now();
                 $salesId = Auth::guard('sales')->id();
 
                 $cooldownByRumahId = Booking::where('sales_id', $salesId)
@@ -64,10 +64,10 @@ new #[Title('Booking Baru'), Layout('layouts.dbos')] class extends Component
                     ->selectRaw('rumah_id, MAX(unit_dilepas_at) as latest_dilepas')
                     ->groupBy('rumah_id')
                     ->get()
-                    ->mapWithKeys(function ($row) use ($today) {
+                    ->mapWithKeys(function ($row) use ($sekarang) {
                         $dilepas = Carbon::parse($row->latest_dilepas);
-                        $allowedAt = $dilepas->copy()->addDays(2);
-                        return $today->lt($allowedAt) ? [$row->rumah_id => $allowedAt] : [];
+                        $allowedAt = $dilepas->copy()->addHours(Booking::COOLDOWN_JAM);
+                        return $sekarang->lt($allowedAt) ? [$row->rumah_id => $allowedAt] : [];
                     });
             }
         }
@@ -168,7 +168,7 @@ new #[Title('Booking Baru'), Layout('layouts.dbos')] class extends Component
                                     'avatar' => 'bg-zinc-400',
                                     'badgeClr' => 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
                                     'badgeIcon' => 'lock-closed',
-                                    'badgeLabel' => $cooldownUntil->translatedFormat('d M'),
+                                    'badgeLabel' => $cooldownUntil->translatedFormat('d M H:i'),
                                     'opacity' => 'opacity-70',
                                 ];
                             } else {

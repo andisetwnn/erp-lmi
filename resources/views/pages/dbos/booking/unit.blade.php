@@ -35,8 +35,8 @@ new #[Title('Booking — Pilih Unit'), Layout('layouts.dbos')] class extends Com
             ->get();
 
         // Cooldown re-booking: kalau sales saat ini pernah batal/expired
-        // unit yg sama < 2 hari kerja yg lalu, blokir di list.
-        $today = Carbon::today();
+        // unit yg sama < 48 jam yg lalu, blokir di list.
+        $sekarang = Carbon::now();
         $salesId = Auth::guard('sales')->id();
 
         $cooldowns = Booking::where('sales_id', $salesId)
@@ -46,10 +46,10 @@ new #[Title('Booking — Pilih Unit'), Layout('layouts.dbos')] class extends Com
             ->selectRaw('rumah_id, MAX(unit_dilepas_at) as latest_dilepas')
             ->groupBy('rumah_id')
             ->get()
-            ->mapWithKeys(function ($row) use ($today) {
+            ->mapWithKeys(function ($row) use ($sekarang) {
                 $dilepas = Carbon::parse($row->latest_dilepas);
-                $allowedAt = $dilepas->copy()->addDays(2);
-                return $today->lt($allowedAt) ? [$row->rumah_id => $allowedAt] : [];
+                $allowedAt = $dilepas->copy()->addHours(Booking::COOLDOWN_JAM);
+                return $sekarang->lt($allowedAt) ? [$row->rumah_id => $allowedAt] : [];
             });
 
         return compact('units', 'cooldowns');
@@ -114,7 +114,7 @@ new #[Title('Booking — Pilih Unit'), Layout('layouts.dbos')] class extends Com
                     @if ($cooldownUntil)
                         <div class="-mt-2 mb-1 ml-3 inline-flex items-center gap-1 rounded-b-lg bg-zinc-100 px-2 py-1 text-[10px] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
                             <flux:icon.clock class="size-3" />
-                            {{ __('Bisa booking ulang:') }} {{ $cooldownUntil->translatedFormat('D, d M Y') }}
+                            {{ __('Bisa booking ulang:') }} {{ $cooldownUntil->translatedFormat('D, d M Y H:i') }}
                         </div>
                     @endif
                 @endif

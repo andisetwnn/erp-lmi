@@ -44,7 +44,7 @@ new #[Title('Form Booking'), Layout('layouts.dbos')] class extends Component {
                 ->where('sales_id', Auth::guard('sales')->id())
                 ->where('proyek_id', $this->rumah->proyek_id)
                 ->where('status', 'finish')
-                ->whereDoesntHave('booking', fn ($q) => $q->where('status', 'aktif'))
+                ->whereDoesntHave('booking', fn ($q) => $q->masihBerlaku())
                 ->when($this->searchProspect, function ($q) {
                     $term = '%'.$this->searchProspect.'%';
                     $q->where(function ($qq) use ($term) {
@@ -66,7 +66,7 @@ new #[Title('Form Booking'), Layout('layouts.dbos')] class extends Component {
             'availableCount' => ProspectCustomer::where('sales_id', Auth::guard('sales')->id())
                 ->where('proyek_id', $this->rumah->proyek_id)
                 ->where('status', 'finish')
-                ->whereDoesntHave('booking', fn ($q) => $q->where('status', 'aktif'))
+                ->whereDoesntHave('booking', fn ($q) => $q->masihBerlaku())
                 ->count(),
         ];
     }
@@ -131,7 +131,7 @@ new #[Title('Form Booking'), Layout('layouts.dbos')] class extends Component {
         $salesId = Auth::guard('sales')->id();
 
         // Cooldown re-booking: sales yang sama tidak boleh booking ulang unit yg sama
-        // dalam 2 hari kerja sejak unit terakhir dilepas (batal / expired).
+        // dalam 48 jam sejak unit terakhir dilepas (batal / expired).
         $cooldown = Booking::where('sales_id', $salesId)
             ->where('rumah_id', $this->rumah->id)
             ->whereNotNull('unit_dilepas_at')
@@ -139,12 +139,12 @@ new #[Title('Form Booking'), Layout('layouts.dbos')] class extends Component {
             ->orderByDesc('unit_dilepas_at')
             ->first();
         if ($cooldown) {
-            $allowedAt = $cooldown->unit_dilepas_at->copy()->addDays(2);
-            if (\Illuminate\Support\Carbon::today()->lt($allowedAt)) {
+            $allowedAt = $cooldown->rebookingAllowedAt();
+            if (now()->lt($allowedAt)) {
                 Flux::toast(
                     variant: 'danger',
                     heading: 'Cooldown aktif',
-                    text: 'Booking ulang unit ini baru bisa pada '.$allowedAt->translatedFormat('d M Y').'.',
+                    text: 'Booking ulang unit ini baru bisa pada '.$allowedAt->translatedFormat('d M Y H:i').'.',
                 );
                 $this->redirect(route('dbos.booking.unit', [
                     'id' => $this->rumah->proyek_id,
@@ -169,7 +169,7 @@ new #[Title('Form Booking'), Layout('layouts.dbos')] class extends Component {
 
                 // Cek prospect sudah punya booking aktif?
                 $existing = Booking::where('prospect_customer_id', $prospect->id)
-                    ->where('status', 'aktif')
+                    ->masihBerlaku()
                     ->lockForUpdate()
                     ->exists();
                 if ($existing) {

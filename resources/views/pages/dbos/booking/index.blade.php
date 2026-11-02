@@ -69,7 +69,7 @@ new #[Title('Daftar Booking'), Layout('layouts.dbos')] class extends Component
             $booking->update([
                 'status' => 'batal',
                 'keterangan_batal' => $this->cancelKeterangan,
-                'unit_dilepas_at' => Carbon::today()->toDateString(),
+                'unit_dilepas_at' => Carbon::now(),
             ]);
 
             // Lepas unit kembali jadi available
@@ -475,11 +475,11 @@ new #[Title('Daftar Booking'), Layout('layouts.dbos')] class extends Component
                             <div class="flex items-center gap-2">
                                 <p class="text-sm font-bold text-zinc-900 dark:text-white">{{ __('Cooldown Re-booking') }}</p>
                                 <span class="rounded-md bg-zinc-200 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">
-                                    {{ __('2 hari kerja') }}
+                                    {{ __('48 jam') }}
                                 </span>
                             </div>
                             <p class="mt-1 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
-                                {{ __('Jika booking dibatalkan atau expired, sales yang sama harus menunggu 2 hari kerja sebelum dapat booking ulang unit yang sama. Sales lain dapat langsung booking unit tersebut tanpa menunggu.') }}
+                                {{ __('Jika booking dibatalkan atau expired, sales yang sama harus menunggu 48 jam sebelum dapat booking ulang unit yang sama. Sales lain dapat langsung booking unit tersebut tanpa menunggu.') }}
                             </p>
                         </div>
                     </div>

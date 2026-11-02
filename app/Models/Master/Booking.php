@@ -2,13 +2,19 @@
 
 namespace App\Models\Master;
 
+use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
 
 class Booking extends Model
 {
     protected $table = 'booking';
+
+    /** Lama sales yang sama tidak bisa booking ulang unit yang sama setelah unit dilepas. */
+    public const COOLDOWN_JAM = 48;
 
     protected $fillable = [
         'sales_id',
@@ -29,7 +35,7 @@ class Booking extends Model
     protected $casts = [
         'tanggal_booking' => 'date',
         'tanggal_expired' => 'datetime',
-        'unit_dilepas_at' => 'date',
+        'unit_dilepas_at' => 'datetime',
     ];
 
     /** Booking aktif yang sudah lewat tanggal expired (derived). */
@@ -37,19 +43,30 @@ class Booking extends Model
     {
         return $this->status === 'aktif'
             && $this->tanggal_expired
-            && $this->tanggal_expired->lte(\Illuminate\Support\Carbon::now());
+            && $this->tanggal_expired->lte(Carbon::now());
     }
 
     /**
-     * Tanggal sales boleh booking ulang unit ini lagi (cooldown 2 hari = 48 jam
-     * sejak unit dilepas). Null kalau tidak ada cooldown aktif.
+     * Booking yang masih memegang unit. Booking yang lewat batas waktu tetap
+     * berstatus 'aktif', jadi status saja tidak cukup untuk membedakannya.
      */
-    public function rebookingAllowedAt(): ?\Carbon\CarbonInterface
+    public function scopeMasihBerlaku(Builder $query): Builder
+    {
+        return $query->where('status', 'aktif')
+            ->where(fn ($q) => $q->whereNull('tanggal_expired')->orWhere('tanggal_expired', '>', Carbon::now()));
+    }
+
+    /**
+     * Waktu sales boleh booking ulang unit ini lagi (48 jam sejak unit dilepas).
+     * Null kalau tidak ada cooldown aktif.
+     */
+    public function rebookingAllowedAt(): ?CarbonInterface
     {
         if (! $this->unit_dilepas_at) {
             return null;
         }
-        return $this->unit_dilepas_at->copy()->addDays(2);
+
+        return $this->unit_dilepas_at->copy()->addHours(self::COOLDOWN_JAM);
     }
 
     public function sales(): BelongsTo
