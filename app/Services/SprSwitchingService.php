@@ -410,6 +410,10 @@ class SprSwitchingService
             'draft', 'submitted' => 'booking',
             default => 'booking',
         };
-        $rumahBaru->update(['status' => $status]);
+
+        // Lewat query, bukan $rumahBaru->update(): saat swap, model ini dimuat sebelum
+        // pembatalan SPR lama melepas unitnya. Statusnya di memori masih 'terjual',
+        // sehingga update() menganggap tidak ada perubahan dan unit tertinggal 'available'.
+        Rumah::whereKey($rumahBaru->id)->update(['status' => $status]);
     }
 }

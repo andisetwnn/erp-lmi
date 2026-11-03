@@ -265,6 +265,30 @@ it('mengembalikan unit lama ke tersedia tanpa mengubah harganya', function () {
         ->and((float) $rumahLama->fresh()->tipeRumah->harga_jual)->toBe($hargaDaftarLama);
 });
 
+it('mengunci kedua unit sebagai terjual setelah tukar unit', function () {
+    $rumahA = unitKosong('CF', '01');
+    $rumahB = unitKosong('CF', '02');
+    $sprA = sprSelesai($rumahA, 'KUNCIA');
+    $sprB = sprSelesai($rumahB, 'KUNCIB');
+
+    $this->svc->swapSpr($sprA->fresh(), $sprB->fresh(), 'Tukar kavling', $this->pm->id);
+
+    expect($rumahA->fresh()->status)->toBe('terjual')
+        ->and($rumahB->fresh()->status)->toBe('terjual');
+});
+
+it('tidak melepas unit yang masih dipegang SPR lain saat sebuah SPR dibatalkan', function () {
+    $rumah = unitKosong('CF', '03');
+    $lama = sprSelesai($rumah, 'LAMA');
+    $baru = sprSelesai(unitKosong('CF', '04'), 'BARU');
+    $baru->update(['rumah_id' => $rumah->id]);
+    $rumah->update(['status' => 'terjual']);
+
+    $lama->update(['status' => 'cancelled']);
+
+    expect($rumah->fresh()->status)->toBe('terjual');
+});
+
 it('membuat kedua peserta swap tetap di harganya masing-masing', function () {
     $rumahA = unitKosong('CE', '01');
     $rumahB = unitKosong('CE', '02');

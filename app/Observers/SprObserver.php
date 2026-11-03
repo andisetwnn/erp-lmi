@@ -73,6 +73,16 @@ class SprObserver
 
     private function releaseRumah(Spr $spr): void
     {
+        // Unit yang sudah dipegang SPR lain (mis. hasil pindah/tukar unit) tidak boleh ikut lepas.
+        $masihDipegang = Spr::where('rumah_id', $spr->rumah_id)
+            ->whereKeyNot($spr->id)
+            ->whereIn('status', ['submitted', 'approved', 'akad'])
+            ->exists();
+
+        if ($masihDipegang) {
+            return;
+        }
+
         Rumah::where('id', $spr->rumah_id)
             ->whereIn('status', ['terjual', 'booking'])
             ->update(['status' => 'available']);
