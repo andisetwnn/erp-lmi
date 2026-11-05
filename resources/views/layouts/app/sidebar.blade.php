@@ -421,19 +421,12 @@
 
                 @endcan
 
-                @can('monitoring.lihat')
+                @canany(['monitoring.lihat', 'log.lihat'])
                     <flux:sidebar.item icon="radio" :href="route('monitoring.index')"
                                        :current="request()->routeIs('monitoring.*')" wire:navigate>
                         {{ __('Monitoring') }}
                     </flux:sidebar.item>
-                @endcan
-
-                @can('log.lihat')
-                    <flux:sidebar.item icon="clipboard-document-list" :href="route('log-user.index')"
-                                       :current="request()->routeIs('log-user.*')" wire:navigate>
-                        {{ __('Log User') }}
-                    </flux:sidebar.item>
-                @endcan
+                @endcanany
 
                 @can('user.kelola')
                     <flux:sidebar.item icon="shield-check" :href="route('user-akses.index')"

@@ -1,11 +1,18 @@
 <?php
 
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use App\Exports\AktivitasExport;
+use App\Models\Master\Sales;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Maatwebsite\Excel\Facades\Excel;
 use Spatie\Activitylog\Models\Activity;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 new #[Title('Monitoring')] class extends Component
 {
@@ -16,10 +23,14 @@ new #[Title('Monitoring')] class extends Component
     public string $category = '';
 
     #[Url(as: 'range')]
-    public string $range = '7d';
+    public string $range = 'today';
 
     #[Url(as: 'event')]
     public string $eventFilter = '';
+
+    /** Pencarian bebas: isi deskripsi aktivitas atau nama orang yang melakukannya. */
+    #[Url(as: 'q')]
+    public string $cari = '';
 
     /** ID activity terbaru saat terakhir user lihat (untuk deteksi new events). */
     public int $lastSeenId = 0;
@@ -27,16 +38,38 @@ new #[Title('Monitoring')] class extends Component
     /** Jumlah aktivitas baru sejak lastSeenId (di-update tiap poll). */
     public int $newCount = 0;
 
+    /** Kunci => [label, ikon, warna saluran]. */
     public const CATEGORIES = [
-        '' => ['Semua', 'squares-2x2', 'zinc'],
-        'penjualan' => ['Penjualan', 'chart-bar', 'emerald'],
-        'keuangan' => ['Keuangan', 'banknotes', 'purple'],
-        'kpr' => ['Pemberkasan', 'folder-open', 'green'],
-        'akunting' => ['Akunting', 'calculator', 'indigo'],
-        'unit' => ['Unit', 'home-modern', 'blue'],
-        'legal' => ['Legal', 'document-text', 'amber'],
-        'akses' => ['Akses', 'shield-check', 'rose'],
+        '' => ['Semua', 'squares-2x2', '#18181b'],
+        'penjualan' => ['Penjualan', 'chart-bar', '#ea580c'],
+        'keuangan' => ['Keuangan', 'banknotes', '#9333ea'],
+        'kpr' => ['Pemberkasan', 'folder-open', '#0d9488'],
+        'akunting' => ['Akunting', 'calculator', '#4f46e5'],
+        'unit' => ['Unit', 'home-modern', '#0284c7'],
+        'legal' => ['Legal', 'document-text', '#d97706'],
+        'akses' => ['Akses', 'shield-check', '#e11d48'],
     ];
+
+    /** Warna label event, sesuai nama warna di EVENT_LABELS. */
+    public const NADA = [
+        'orange' => '#c2410c', 'emerald' => '#047857', 'green' => '#15803d', 'teal' => '#0f766e',
+        'cyan' => '#0e7490', 'blue' => '#1d4ed8', 'indigo' => '#4338ca', 'violet' => '#6d28d9',
+        'purple' => '#7e22ce', 'amber' => '#b45309', 'rose' => '#be123c', 'zinc' => '#52525b',
+    ];
+
+    /**
+     * Event yang membatalkan, mengoreksi, atau menghapus sesuatu. Dikumpulkan di
+     * panel tersendiri supaya tidak tenggelam di antara aktivitas rutin.
+     */
+    private const PERLU_DILIHAT = [
+        'spr.rejected', 'spr.cancelled', 'realisasi.updated', 'realisasi.deleted', 'refund.processed',
+        'biaya_tambahan.dikoreksi', 'biaya_tambahan.dihapus', 'biaya_tambahan.direfund',
+        'tipe.deleted', 'sertifikat.bast_dibatalkan', 'rencana_akad.dikembalikan', 'rencana_akad.batal',
+        'jurnal.dibalik', 'jurnal.dihapus', 'user.dinonaktifkan', 'user.sandi_direset', 'peran.dihapus', 'izin.dicabut',
+    ];
+
+    /** Jam kerja kantor, ditandai di grafik denyut supaya aktivitas di luar jam kerja mudah terlihat. */
+    private const JAM_KERJA = [8, 17];
 
     /** Nama log lain yang ikut terbaca di sebuah kategori (perubahan tipe rumah tercatat sebagai 'tipe_rumah'). */
     private const LOG_TAMBAHAN = ['unit' => ['tipe_rumah']];
@@ -205,13 +238,29 @@ new #[Title('Monitoring')] class extends Component
 
     public function kategoriLabel(?string $logName): string
     {
+        return self::CATEGORIES[$this->kategoriKunci($logName)][0] ?? ucfirst((string) $logName);
+    }
+
+    public function kategoriKunci(?string $logName): string
+    {
         foreach (self::LOG_TAMBAHAN as $kategori => $nama) {
             if (in_array($logName, $nama, true)) {
-                $logName = $kategori;
+                return $kategori;
             }
         }
 
-        return self::CATEGORIES[$logName ?? ''][0] ?? ucfirst((string) $logName);
+        return (string) $logName;
+    }
+
+    public function warnaKategori(?string $logName): string
+    {
+        return self::CATEGORIES[$this->kategoriKunci($logName)][2] ?? self::NADA['zinc'];
+    }
+
+    public function pilihEvent(string $event): void
+    {
+        $this->eventFilter = $this->eventFilter === $event ? '' : $event;
+        $this->resetPage();
     }
 
     public function setCategory(string $c): void
@@ -234,6 +283,44 @@ new #[Title('Monitoring')] class extends Component
         $this->resetPage();
     }
 
+    /**
+     * Mencari biasanya untuk menelusuri riwayat (pergerakan sebuah unit, satu
+     * konsumen), jadi begitu mulai mencari periodenya dibuka ke Semua.
+     */
+    public function updatedCari(string $nilai): void
+    {
+        $this->cari = trim($nilai);
+        if ($this->cari !== '' && $this->range !== 'all') {
+            $this->range = 'all';
+        }
+        $this->resetPage();
+    }
+
+    /** Unduh aktivitas sesuai saringan yang sedang tampil, tanpa batas halaman. */
+    public function unduhExcel(): BinaryFileResponse
+    {
+        $labelKategori = collect($this->logTerpantau())->mapWithKeys(fn ($log) => [$log => $this->kategoriLabel($log)])->all();
+
+        return Excel::download(
+            new AktivitasExport($this->saring(Activity::query()->with('causer'))->orderByDesc('created_at')->orderByDesc('id'), $labelKategori),
+            'aktivitas_'.now()->format('Y-m-d_His').'.xlsx',
+        );
+    }
+
+    /** @param  Builder<Activity>  $query */
+    private function cocokkanCari(Builder $query): Builder
+    {
+        if ($this->cari === '') {
+            return $query;
+        }
+
+        $pola = '%'.addcslashes($this->cari, '%_\\').'%';
+
+        return $query->where(fn ($q) => $q
+            ->where('description', 'like', $pola)
+            ->orWhereHasMorph('causer', [User::class, Sales::class], fn ($c, $tipe) => $c->where($tipe === User::class ? 'name' : 'nama', 'like', $pola)));
+    }
+
     public function mount(): void
     {
         // Set baseline: ID activity paling baru saat page loaded
@@ -247,7 +334,7 @@ new #[Title('Monitoring')] class extends Component
      */
     public function checkNewActivities(): void
     {
-        $query = Activity::query()
+        $query = $this->cocokkanCari(Activity::query())
             ->when($this->category !== '',
                 fn ($q) => $q->whereIn('log_name', $this->logNames($this->category)),
                 fn ($q) => $q->whereIn('log_name', $this->logTerpantau()))
@@ -278,53 +365,126 @@ new #[Title('Monitoring')] class extends Component
         $this->resetPage();
     }
 
+    /** Periode dihitung per hari kalender, supaya "7 Hari" sama dengan tujuh baris di grafik denyut. */
     private function rangeStart(): ?CarbonInterface
     {
         return match ($this->range) {
             'today' => now()->startOfDay(),
-            '7d' => now()->subDays(7),
-            '30d' => now()->subDays(30),
+            '7d' => now()->subDays(6)->startOfDay(),
+            '30d' => now()->subDays(29)->startOfDay(),
             default => null,
         };
     }
 
+    /** Batasi ke kategori yang dipilih, pencarian, dan periode aktif. */
+    private function saring(Builder $query, bool $denganEvent = true): Builder
+    {
+        return $this->cocokkanCari($query)
+            ->whereIn('log_name', $this->category !== '' ? $this->logNames($this->category) : $this->logTerpantau())
+            ->when($this->rangeStart(), fn ($q, $mulai) => $q->where('created_at', '>=', $mulai))
+            ->when($denganEvent && $this->eventFilter, fn ($q) => $q->where('event', $this->eventFilter));
+    }
+
     public function with(): array
     {
-        $query = Activity::query()->with(['causer', 'subject']);
+        $activities = $this->saring(Activity::query()->with(['causer', 'subject']))
+            ->orderByDesc('created_at')->orderByDesc('id')
+            ->paginate(30);
 
-        if ($this->category !== '') {
-            $query->whereIn('log_name', $this->logNames($this->category));
-        } else {
-            $query->whereIn('log_name', $this->logTerpantau());
-        }
+        // Saluran selalu menghitung semua kategori, supaya yang tidak sedang dipilih tetap terbaca angkanya.
+        $perLog = $this->cocokkanCari(Activity::query())
+            ->whereIn('log_name', $this->logTerpantau())
+            ->when($this->rangeStart(), fn ($q, $mulai) => $q->where('created_at', '>=', $mulai))
+            ->selectRaw('log_name, COUNT(*) as cnt')->groupBy('log_name')
+            ->pluck('cnt', 'log_name');
 
-        if ($start = $this->rangeStart()) {
-            $query->where('created_at', '>=', $start);
-        }
+        $terakhirLog = $this->cocokkanCari(Activity::query())
+            ->whereIn('log_name', $this->logTerpantau())
+            ->selectRaw('log_name, MAX(created_at) as terakhir')->groupBy('log_name')
+            ->pluck('terakhir', 'log_name');
 
-        if ($this->eventFilter) {
-            $query->where('event', $this->eventFilter);
-        }
+        $saluran = collect(self::CATEGORIES)->except('')->map(function ($kategori, $kunci) use ($perLog, $terakhirLog) {
+            $logs = $this->logNames($kunci);
+            $terakhir = collect($logs)->map(fn ($log) => $terakhirLog[$log] ?? null)->filter()->max();
 
-        $activities = $query->orderByDesc('created_at')->orderByDesc('id')->paginate(25);
+            return [
+                'jumlah' => (int) collect($logs)->sum(fn ($log) => $perLog[$log] ?? 0),
+                'terakhir' => $terakhir ? CarbonImmutable::parse($terakhir) : null,
+            ];
+        });
 
-        // Ringkasan count per event untuk periode aktif (independen dari eventFilter)
-        $summaryQuery = Activity::query()
-            ->when($this->category !== '',
-                fn ($q) => $q->whereIn('log_name', $this->logNames($this->category)),
-                fn ($q) => $q->whereIn('log_name', $this->logTerpantau()))
-            ->when($start = $this->rangeStart(), fn ($q) => $q->where('created_at', '>=', $start));
-
-        $summary = $summaryQuery
-            ->selectRaw('event, COUNT(*) as cnt')
-            ->groupBy('event')
+        // Rincian event hanya untuk saluran yang dipilih; tidak terpengaruh event yang sedang disaring.
+        $perEvent = $this->category === '' ? collect() : $this->saring(Activity::query(), denganEvent: false)
+            ->selectRaw('event, COUNT(*) as cnt')->groupBy('event')
+            ->orderByDesc('cnt')
             ->pluck('cnt', 'event');
 
-        return compact('activities', 'summary');
+        $perluDilihat = $this->saring(Activity::query()->with('causer'), denganEvent: false)
+            ->where(fn ($q) => $q->whereIn('event', self::PERLU_DILIHAT)
+                ->orWhere(fn ($q) => $q->where('event', 'unit.status_changed')->where('properties->sumber', 'manual')))
+            ->orderByDesc('created_at')->orderByDesc('id')
+            ->limit(6)->get();
+
+        return [
+            'activities' => $activities,
+            'saluran' => $saluran,
+            'perEvent' => $perEvent,
+            'perluDilihat' => $perluDilihat,
+            'denyut' => $this->denyut(),
+        ];
+    }
+
+    /**
+     * Sebaran aktivitas per 15 menit untuk tiap hari di periode aktif, terbaru di atas.
+     * Periode "Semua" dibatasi 30 hari terakhir supaya grafiknya tetap terbaca.
+     *
+     * @return array{hari: list<array{tanggal: CarbonInterface, ketukan: list<array{slot: int, n: int, warna: string, judul: string}>}>, puncak: int, jamKerja: array{0: int, 1: int}}
+     */
+    private function denyut(): array
+    {
+        $mulai = $this->rangeStart() ?? now()->subDays(29)->startOfDay();
+
+        $baris = $this->saring(Activity::query())
+            ->where('created_at', '>=', $mulai)
+            ->toBase()
+            ->get(['created_at', 'log_name']);
+
+        /** @var array<string, array<int, array<string, int>>> $ember tanggal => slot => kategori => jumlah */
+        $ember = [];
+        foreach ($baris as $b) {
+            $waktu = (string) $b->created_at;
+            $slot = intdiv((int) substr($waktu, 11, 2) * 60 + (int) substr($waktu, 14, 2), 15);
+            $kategori = $this->kategoriKunci($b->log_name);
+            $ember[substr($waktu, 0, 10)][$slot][$kategori] = ($ember[substr($waktu, 0, 10)][$slot][$kategori] ?? 0) + 1;
+        }
+
+        $puncak = 1;
+        $hari = [];
+        for ($tanggal = now()->startOfDay(); $tanggal->gte($mulai); $tanggal = $tanggal->subDay()) {
+            $ketukan = [];
+            foreach ($ember[$tanggal->toDateString()] ?? [] as $slot => $perKategori) {
+                arsort($perKategori);
+                $n = array_sum($perKategori);
+                $puncak = max($puncak, $n);
+                $dari = $tanggal->addMinutes($slot * 15);
+                $rincian = collect($perKategori)->map(fn ($jumlah, $kategori) => self::CATEGORIES[$kategori][0].' '.$jumlah)->implode(', ');
+
+                $ketukan[] = [
+                    'slot' => $slot,
+                    'n' => $n,
+                    'warna' => self::CATEGORIES[array_key_first($perKategori)][2] ?? self::NADA['zinc'],
+                    'judul' => $dari->translatedFormat('D j M').' · '.$dari->format('H:i').'–'.$dari->addMinutes(15)->format('H:i')
+                        .' · '.$n.' aktivitas ('.$rincian.')',
+                ];
+            }
+            $hari[] = ['tanggal' => $tanggal, 'ketukan' => $ketukan];
+        }
+
+        return ['hari' => $hari, 'puncak' => $puncak, 'jamKerja' => self::JAM_KERJA];
     }
 }; ?>
 
-<section class="w-full"
+<section class="rk w-full"
          wire:poll.30s="checkNewActivities"
          x-data="{
             requestNotifPermission() {
@@ -361,157 +521,437 @@ new #[Title('Monitoring')] class extends Component
             }
          "
          @visibilitychange.window="if (!document.hidden) document.title = 'Monitoring · ERP-LMI'">
+    <style>
+        /* Monitoring — kartu putih berbingkai seperti halaman lain; warna dipakai hanya untuk membedakan divisi. */
+        .rk { --teks: #18181b; --redup: #52525b; --samar: #71717a; --garis: #e4e4e7; --halus: #f4f4f5; --oranye: #f97316; color: var(--teks); font-variant-numeric: tabular-nums; }
+        .rk button { cursor: pointer; }
+        .rk button:focus-visible { outline: 2px solid #18181b; outline-offset: 2px; border-radius: 8px; }
+
+        /* ---------- kepala ---------- */
+        .rk-kepala { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 32px; margin-bottom: 20px; }
+        .rk-langsung { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; padding: 4px 10px; border-radius: 999px; background: #ecfdf5; color: #047857; font-size: 11px; font-weight: 700; }
+        .rk-titik { position: relative; flex: none; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+        .rk-titik::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: currentColor; animation: rk-pancar 1.8s ease-out infinite; }
+        @keyframes rk-pancar { from { transform: scale(1); opacity: .6; } to { transform: scale(2.8); opacity: 0; } }
+        .rk-waktu { text-align: right; }
+        .rk-jam { font-weight: 600; letter-spacing: -.01em; font-size: clamp(28px, 3vw, 40px); line-height: 1; font-variant-numeric: tabular-nums; }
+        .rk-detik { color: #a1a1aa; }
+        .rk-tanggal { margin-top: 8px; font-size: 12px; color: var(--samar); }
+
+        /* ---------- panel ---------- */
+        .rk-panel { position: relative; border: 1px solid var(--garis); border-radius: 12px; background: #fff; padding: 16px 18px; box-shadow: 0 1px 2px rgba(0, 0, 0, .05); }
+        .rk-panel-kepala { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 20px; margin-bottom: 14px; }
+        .rk-h2 { font-size: 15px; font-weight: 600; }
+        .rk-ket { margin-top: 3px; font-size: 12px; line-height: 1.45; color: var(--samar); }
+        .rk-rentang { display: inline-flex; padding: 3px; border: 1px solid var(--garis); border-radius: 10px; background: #fff; }
+        .rk-rentang button { padding: 6px 12px; border-radius: 7px; font-size: 12px; font-weight: 600; color: var(--redup); transition: background .15s, color .15s; }
+        .rk-rentang button:hover { background: var(--halus); }
+        .rk-rentang button.aktif { background: #059669; color: #fff; }
+
+        /* ---------- denyut: satu lintasan per hari, satu garis per 15 menit ---------- */
+        .rk-grafik { --tinggi: 26px; --celah: 6px; position: relative; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 12px; row-gap: var(--celah); align-items: center; }
+        .rk-denyut--tunggal .rk-grafik { --tinggi: 96px; }
+        .rk-denyut--bulan .rk-grafik { --tinggi: 9px; --celah: 3px; }
+        .rk-hari { font-size: 10.5px; line-height: 1; color: var(--samar); text-align: right; white-space: nowrap; }
+        .rk-hari.minggu { color: #e11d48; }
+        .rk-hari.ini { color: var(--teks); font-weight: 500; }
+        .rk-lintasan { position: relative; height: var(--tinggi); border-radius: 3px 3px 0 0; background: #fafafa; border-bottom: 1px solid #d4d4d8; }
+        .rk-pita { position: absolute; top: 0; bottom: 0; background: rgba(24, 24, 27, .045); }
+        .rk-ketuk { position: absolute; bottom: 0; width: max(2px, calc(100% / 96 - 1.5px)); border-radius: 2px 2px 0 0; background: var(--w); }
+        .rk-ketuk:hover { filter: brightness(1.15) saturate(1.2); }
+        .rk-kini { position: absolute; top: -3px; bottom: -1px; width: 2px; margin-left: -1px; background: var(--oranye); }
+        .rk-kini::before { content: ''; position: absolute; top: -3px; left: -2.5px; width: 7px; height: 7px; border-radius: 50%; background: var(--oranye); }
+        .rk-denyut--bulan .rk-kini::before { display: none; }
+        .rk-sumbu { position: relative; height: 14px; margin-top: 4px; font-size: 10px; color: var(--samar); }
+        .rk-sumbu span { position: absolute; top: 0; transform: translateX(-50%); }
+        .rk-sumbu span:first-child { transform: none; }
+        .rk-sumbu span:last-child { transform: translateX(-100%); }
+        .rk-kosong-denyut { position: absolute; inset: 0 0 18px 76px; display: grid; place-items: center; font-size: 12.5px; color: var(--samar); pointer-events: none; }
+        .rk-legenda { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--halus); font-size: 11.5px; color: var(--redup); }
+        .rk-legenda span { display: inline-flex; align-items: center; gap: 7px; }
+        .rk-legenda span::before { content: ''; width: 9px; height: 9px; border-radius: 2px; background: var(--w); }
+        .rk-legenda .pita::before { width: 16px; background: #ececee; }
+        .rk-legenda .kini::before { width: 2px; height: 11px; background: var(--oranye); }
+
+        /* ---------- badan ---------- */
+        .rk-badan { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; margin-top: 18px; align-items: start; }
+        @media (min-width: 1080px) { .rk-badan { grid-template-columns: 300px minmax(0, 1fr); } }
+        .rk-samping { display: grid; gap: 18px; }
+
+        .rk-saluran { display: grid; gap: 2px; }
+        .rk-kanal { display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; padding: 9px 10px 9px 0; border-radius: 8px; text-align: left; transition: background .15s; }
+        .rk-kanal:hover { background: #fafafa; }
+        .rk-kanal.aktif { background: var(--halus); }
+        .rk-pip { align-self: stretch; border-radius: 0 3px 3px 0; background: var(--w); opacity: .35; transition: opacity .15s; }
+        .rk-kanal:hover .rk-pip, .rk-kanal.aktif .rk-pip { opacity: 1; }
+        .rk-nama { display: block; font-size: 13.5px; font-weight: 600; }
+        .rk-meter { display: block; height: 4px; margin-top: 7px; border-radius: 4px; background: var(--halus); overflow: hidden; }
+        .rk-meter i { display: block; height: 100%; border-radius: inherit; background: var(--w); }
+        .rk-terakhir { display: block; margin-top: 6px; font-size: 11px; color: var(--samar); }
+        .rk-angka { font-size: 20px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; color: var(--w); }
+        .rk-angka.nol { color: #a1a1aa; }
+
+        .rk-rinci { display: grid; gap: 1px; margin: 4px 0 8px 16px; padding-left: 10px; border-left: 1px dashed #d4d4d8; }
+        .rk-rinci button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; border-radius: 6px; font-size: 12.5px; color: var(--redup); text-align: left; }
+        .rk-rinci button::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--nada); }
+        .rk-rinci button:hover { background: #fafafa; color: var(--teks); }
+        .rk-rinci button.aktif { background: var(--halus); color: var(--teks); font-weight: 600; }
+        .rk-rinci-nama { flex: 1; min-width: 0; }
+        .rk-rinci-angka { font-size: 11.5px; color: var(--teks); }
+
+        .rk-waspada-daftar { display: grid; gap: 8px; }
+        .rk-waspada-item { padding: 10px 12px; border: 1px solid var(--garis); border-left: 3px solid var(--nada); border-radius: 8px; background: #fafafa; }
+        .rk-waspada-atas { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+        .rk-waspada-item p { margin-top: 4px; font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere; }
+        .rk-waspada-item time { font-size: 10.5px; color: var(--samar); white-space: nowrap; }
+        .rk-oleh { display: block; margin-top: 4px; font-size: 11px; color: var(--samar); }
+        .rk-label { font-size: 10.5px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--nada); }
+        .rk-tenang { font-size: 12.5px; line-height: 1.5; color: var(--samar); }
+        .rk-cari { margin-bottom: 18px; }
+        .rk mark { border-radius: 3px; padding: 0 2px; background: #fef08a; color: inherit; }
+
+        /* ---------- arus aktivitas ---------- */
+        .rk-arus { padding: 0; overflow: hidden; }
+        .rk-arus > .rk-panel-kepala { padding: 16px 18px 0; margin-bottom: 4px; }
+        .rk-aksi { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+        .rk-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 11px; border: 1px solid #d4d4d8; border-radius: 999px; background: #fff; font-size: 12px; font-weight: 600; }
+        .rk-chip::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--nada); }
+        .rk-chip:hover { background: #fafafa; }
+        .rk-tombol-baru { display: inline-flex; align-items: center; gap: 9px; padding: 6px 12px; border: 1px solid #fcd34d; border-radius: 999px; background: #fffbeb; color: #92400e; font-size: 12px; font-weight: 700; }
+        .rk-tombol-baru:hover { background: #fef3c7; }
+        .rk-tombol-ikon { display: inline-grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--garis); border-radius: 8px; background: #fff; color: var(--redup); }
+        .rk-tombol-ikon:hover { background: #fafafa; color: var(--teks); }
+        .rk-tombol { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--garis); border-radius: 8px; background: #fff; font-size: 12px; font-weight: 600; color: var(--redup); }
+        .rk-tombol:hover { background: #fafafa; color: var(--teks); }
+        .rk-tombol:disabled { opacity: .5; cursor: wait; }
+        .rk-pemisah { display: flex; align-items: center; gap: 12px; padding: 16px 18px 6px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--samar); }
+        .rk-pemisah::after { content: ''; flex: 1; height: 1px; background: var(--garis); }
+        .rk-baris { display: grid; grid-template-columns: 44px 3px minmax(0, 1fr) auto; column-gap: 14px; align-items: start; padding: 11px 18px; transition: background .15s; }
+        .rk-baris + .rk-baris { border-top: 1px solid var(--halus); }
+        .rk-baris:hover { background: #fafafa; }
+        .rk-baris.baru { background: linear-gradient(90deg, #fffbeb, rgba(255, 251, 235, 0) 65%); animation: rk-masuk .6s ease-out both; }
+        @keyframes rk-masuk { from { opacity: 0; transform: translateY(-4px); } }
+        .rk-pukul { padding-top: 2px; font-size: 12px; color: var(--samar); font-variant-numeric: tabular-nums; }
+        .rk-garis-kanal { align-self: stretch; border-radius: 3px; background: var(--w); }
+        .rk-isi-atas { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+        .rk-kat { font-size: 11px; color: #a1a1aa; }
+        .rk-tanda-baru { padding: 1px 6px; border-radius: 4px; background: #f59e0b; color: #fff; font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+        .rk-desk { margin-top: 3px; font-size: 13.5px; font-weight: 500; line-height: 1.45; overflow-wrap: anywhere; }
+        .rk-meta { margin-top: 3px; font-size: 11.5px; color: var(--samar); }
+        .rk-meta b { font-weight: 600; color: var(--redup); }
+        .rk-nilai { padding-top: 2px; font-size: 12.5px; font-weight: 500; color: #047857; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .rk-halaman { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; padding: 12px 18px; border-top: 1px solid var(--garis); font-size: 12px; color: var(--samar); }
+        .rk-halaman button { padding: 7px 12px; border: 1px solid var(--garis); border-radius: 8px; background: #fff; font-size: 12px; font-weight: 600; color: var(--teks); }
+        .rk-halaman button:hover:not(:disabled) { background: #fafafa; }
+        .rk-halaman button:disabled { opacity: .4; cursor: default; }
+        .rk-kosong { padding: 56px 18px 64px; text-align: center; font-size: 13px; color: var(--samar); }
+        .rk-kosong strong { display: block; margin-bottom: 6px; font-size: 14px; color: var(--teks); }
+        .rk-kosong button { margin-top: 16px; padding: 7px 14px; border: 1px solid #d4d4d8; border-radius: 999px; background: #fff; font-size: 12px; font-weight: 600; color: var(--teks); }
+
+        @media (max-width: 640px) {
+            .rk-waktu { text-align: left; }
+            .rk-panel { padding: 14px; }
+            .rk-grafik { grid-template-columns: 50px minmax(0, 1fr); column-gap: 8px; }
+            .rk-kosong-denyut { left: 58px; }
+            .rk-sumbu .minor { display: none; }
+            .rk-arus > .rk-panel-kepala { padding: 14px 14px 0; }
+            .rk-pemisah { padding: 14px 14px 6px; }
+            .rk-baris { grid-template-columns: 40px 3px minmax(0, 1fr); column-gap: 10px; padding: 10px 14px; }
+            .rk-nilai { grid-column: 3; padding-top: 4px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .rk-titik::after, .rk-baris.baru { animation: none; }
+        }
+    </style>
+
     <div class="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8">
 
-        {{-- HEADER --}}
-        <div class="mb-5 flex items-start justify-between gap-3">
+        @php
+            $zonaWaktu = config('app.timezone');
+            $singkatanZona = ['Asia/Jakarta' => 'WIB', 'Asia/Makassar' => 'WITA', 'Asia/Jayapura' => 'WIT'][$zonaWaktu] ?? $zonaWaktu;
+            $totalPeriode = $saluran->sum('jumlah');
+            $saluranTerbesar = max(1, $saluran->max('jumlah'));
+            $modeDenyut = match ($range) { 'today' => 'tunggal', '7d' => 'pekan', default => 'bulan' };
+            [$jamMasuk, $jamPulang] = $denyut['jamKerja'];
+            $adaDenyut = collect($denyut['hari'])->contains(fn ($h) => $h['ketukan'] !== []);
+            $labelEvent = fn (?string $event) => $this::EVENT_LABELS[$event] ?? [$event ?? 'Aktivitas', 'sparkles', 'zinc', null];
+            // Deskripsi di-escape dulu, baru kata yang dicari ditandai.
+            $sorot = fn (?string $teks) => $cari === '' ? e($teks) : preg_replace('~'.preg_quote(e($cari), '~').'~iu', '<mark>$0</mark>', e($teks));
+        @endphp
+
+        {{-- KEPALA --}}
+        <header class="rk-kepala">
             <div>
                 <flux:heading size="xl">{{ __('Monitoring') }}</flux:heading>
-                <flux:subheading>
-                    {{ __('Aktivitas bisnis realtime — penjualan, keuangan, pemberkasan, akunting, unit, legal, dan akses') }}
-                </flux:subheading>
+                <flux:subheading>{{ __('Aktivitas seluruh divisi: penjualan, keuangan, pemberkasan, akunting, unit, legal, dan akses.') }}</flux:subheading>
+                <div class="rk-langsung"><span class="rk-titik"></span>{{ __('Langsung · diperbarui tiap 30 detik') }}</div>
             </div>
-            <div class="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
-                <span class="relative flex size-2">
-                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-                    <span class="relative inline-flex size-2 rounded-full bg-emerald-500"></span>
-                </span>
-                {{ __('LIVE · auto-refresh 30s') }}
+            <div class="rk-waktu" wire:ignore
+                 x-data="{
+                    jamMenit: '{{ now()->format('H:i') }}',
+                    detik: ':{{ now()->format('s') }}',
+                    tanggal: '{{ now()->translatedFormat('l, j F Y') }}',
+                    init() {
+                        const zona = '{{ $zonaWaktu }}';
+                        const jam = new Intl.DateTimeFormat('id-ID', { timeZone: zona, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+                        const tgl = new Intl.DateTimeFormat('id-ID', { timeZone: zona, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                        const tik = () => {
+                            const kini = new Date();
+                            const b = Object.fromEntries(jam.formatToParts(kini).map(p => [p.type, p.value]));
+                            this.jamMenit = b.hour + ':' + b.minute;
+                            this.detik = ':' + b.second;
+                            this.tanggal = tgl.format(kini);
+                        };
+                        tik();
+                        this.timer = setInterval(tik, 1000);
+                    },
+                    destroy() { clearInterval(this.timer); }
+                 }">
+                <div class="rk-jam"><span x-text="jamMenit">{{ now()->format('H:i') }}</span><span class="rk-detik" x-text="detik">:{{ now()->format('s') }}</span></div>
+                <div class="rk-tanggal"><span x-text="tanggal">{{ now()->translatedFormat('l, j F Y') }}</span> · {{ $singkatanZona }}</div>
             </div>
+        </header>
+
+        <div class="rk-cari">
+            <flux:input wire:model.live.debounce.400ms="cari" icon="magnifying-glass" clearable
+                        :placeholder="__('Cari aktivitas: kode unit, nama konsumen, nomor SPR, atau nama user')" />
         </div>
 
-        {{-- BANNER new activities --}}
-        @if ($newCount > 0)
-            <button type="button" wire:click="refreshFeed"
-                    class="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 shadow-sm transition hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50">
-                <flux:icon.bell-alert class="size-4 animate-pulse" />
-                {{ $newCount }} {{ __('aktivitas baru — klik untuk muat ulang') }}
-            </button>
-        @endif
-
-        {{-- CATEGORY PILLS --}}
-        <div class="mb-3 flex flex-wrap items-center gap-2">
-            @foreach ($this::CATEGORIES as $catKey => [$catLbl, $catIco, $catColor])
-                @php $catActive = $category === $catKey; @endphp
-                <button type="button" wire:click="setCategory('{{ $catKey }}')"
-                        @class([
-                            'inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition',
-                            "bg-{$catColor}-600 text-white shadow" => $catActive,
-                            'bg-white text-zinc-600 border border-zinc-200 hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:border-zinc-700 dark:hover:bg-zinc-800' => ! $catActive,
-                        ])>
-                    <flux:icon :name="$catIco" class="size-3.5" />
-                    {{ $catLbl }}
-                </button>
-            @endforeach
-        </div>
-
-        {{-- FILTER BAR --}}
-        <div class="mb-5 flex flex-wrap items-center gap-3">
-            <div class="inline-flex items-center rounded-lg border border-zinc-200 bg-white p-1 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                @foreach ($this::RANGES as $k => $lbl)
-                    @php $active = $range === $k; @endphp
-                    <button type="button" wire:click="setRange('{{ $k }}')"
-                            @class([
-                                'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition',
-                                'bg-emerald-600 text-white shadow' => $active,
-                                'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800' => ! $active,
-                            ])>{{ $lbl }}</button>
-                @endforeach
-            </div>
-
-            <select wire:model.live="eventFilter" class="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-white">
-                <option value="">— Semua Event —</option>
-                @foreach ($this::EVENT_LABELS as $ev => [$lbl, $ico, $col, $eventCat])
-                    @if ($category === '' || $eventCat === $category)
-                        <option value="{{ $ev }}">{{ $lbl }}</option>
-                    @endif
-                @endforeach
-            </select>
-
-            <button type="button" wire:click="$refresh"
-                    class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 shadow-sm hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
-                <flux:icon.arrow-path class="size-3.5" wire:loading.class="animate-spin" />
-                {{ __('Refresh') }}
-            </button>
-        </div>
-
-        {{-- SUMMARY per event (compact & rapi + tooltip info) --}}
-        @if ($summary->isNotEmpty())
-            <div class="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                @foreach ($summary as $event => $cnt)
-                    @php
-                        [$lbl, $ico, $col] = $this::EVENT_LABELS[$event] ?? [$event, 'sparkles', 'zinc', null];
-                        $desc = $this::EVENT_DESC[$event] ?? '';
-                    @endphp
-                    <flux:tooltip content="{{ $desc }}">
-                        <div class="flex cursor-help items-center gap-2.5 rounded-lg border border-{{ $col }}-200 bg-{{ $col }}-50 px-3 py-2.5 transition hover:border-{{ $col }}-400 dark:border-{{ $col }}-800 dark:bg-{{ $col }}-950/30 dark:hover:border-{{ $col }}-600">
-                            <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-{{ $col }}-100 text-{{ $col }}-700 dark:bg-{{ $col }}-950/70 dark:text-{{ $col }}-400">
-                                <flux:icon :name="$ico" class="size-4" />
-                            </div>
-                            <div class="min-w-0 flex-1">
-                                <div class="text-lg font-bold leading-none tabular-nums text-{{ $col }}-800 dark:text-{{ $col }}-300">{{ number_format($cnt) }}</div>
-                                <div class="mt-1 text-[10px] font-semibold uppercase leading-tight tracking-wide text-{{ $col }}-700 dark:text-{{ $col }}-400">{{ $lbl }}</div>
-                            </div>
-                        </div>
-                    </flux:tooltip>
-                @endforeach
-            </div>
-        @endif
-
-        {{-- TIMELINE --}}
-        <div class="rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-            @if ($activities->isEmpty())
-                <div class="p-12 text-center">
-                    <flux:icon.inbox class="mx-auto mb-3 size-12 text-zinc-400" />
-                    <div class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">{{ __('Belum ada aktivitas') }}</div>
-                    <div class="mt-1 text-xs text-zinc-500">{{ __('Aktivitas akan muncul di sini setelah ada transaksi.') }}</div>
+        {{-- DENYUT --}}
+        <div class="rk-panel rk-denyut rk-denyut--{{ $modeDenyut }}">
+            <div class="rk-panel-kepala">
+                <div>
+                    <h2 class="rk-h2">{{ __('Denyut aktivitas') }}</h2>
+                    <p class="rk-ket">
+                        {{ __('Setiap garis mewakili 15 menit: makin tinggi makin ramai, warnanya divisi yang paling banyak bergerak.') }}
+                        @if ($range === 'all') {{ __('Grafik menampilkan 30 hari terakhir.') }} @endif
+                    </p>
                 </div>
-            @else
-                <ul class="divide-y divide-zinc-100 dark:divide-zinc-800">
+                <div class="rk-rentang" role="group" aria-label="{{ __('Periode') }}">
+                    @foreach ($this::RANGES as $k => $lbl)
+                        <button type="button" wire:click="setRange('{{ $k }}')" @class(['aktif' => $range === $k]) aria-pressed="{{ $range === $k ? 'true' : 'false' }}">{{ $lbl }}</button>
+                    @endforeach
+                </div>
+            </div>
+
+            <div class="rk-grafik">
+                @foreach ($denyut['hari'] as $h)
+                    @php
+                        $tgl = $h['tanggal'];
+                        $hariIni = $tgl->isToday();
+                        $tampilLabel = $modeDenyut !== 'bulan' || $hariIni || $tgl->isMonday();
+                    @endphp
+                    <div @class(['rk-hari', 'ini' => $hariIni, 'minggu' => $tgl->isSunday()])>
+                        @if ($tampilLabel){{ $hariIni ? __('Hari ini') : $tgl->translatedFormat('D j') }}@endif
+                    </div>
+                    <div class="rk-lintasan" title="{{ $tgl->translatedFormat('l, j F Y') }}">
+                        <span class="rk-pita" style="left: {{ round($jamMasuk / 24 * 100, 3) }}%; width: {{ round(($jamPulang - $jamMasuk) / 24 * 100, 3) }}%"></span>
+                        @foreach ($h['ketukan'] as $t)
+                            <span class="rk-ketuk" title="{{ $t['judul'] }}"
+                                  style="left: {{ round($t['slot'] / 96 * 100, 3) }}%; height: {{ round(22 + 78 * sqrt($t['n'] / $denyut['puncak']), 1) }}%; --w: {{ $t['warna'] }}"></span>
+                        @endforeach
+                        @if ($hariIni)
+                            <span class="rk-kini" style="left: {{ round((now()->hour * 60 + now()->minute) / 1440 * 100, 3) }}%" title="{{ __('Sekarang') }}"></span>
+                        @endif
+                    </div>
+                @endforeach
+                <div></div>
+                <div class="rk-sumbu" aria-hidden="true">
+                    @foreach ([0, 3, 6, 9, 12, 15, 18, 21, 24] as $jam)
+                        <span @class(['minor' => $jam % 6 !== 0]) style="left: {{ round($jam / 24 * 100, 3) }}%">{{ sprintf('%02d:00', $jam) }}</span>
+                    @endforeach
+                </div>
+                @unless ($adaDenyut)
+                    <div class="rk-kosong-denyut">{{ __('Belum ada aktivitas di periode ini.') }}</div>
+                @endunless
+            </div>
+
+            <div class="rk-legenda">
+                @foreach ($saluran as $kunci => $s)
+                    <span style="--w: {{ $this::CATEGORIES[$kunci][2] }}">{{ $this::CATEGORIES[$kunci][0] }}</span>
+                @endforeach
+                <span class="pita">{{ __('Jam kerja') }} {{ sprintf('%02d:00–%02d:00', $jamMasuk, $jamPulang) }}</span>
+                <span class="kini">{{ __('Sekarang') }}</span>
+            </div>
+        </div>
+
+        <div class="rk-badan">
+            <aside class="rk-samping">
+                {{-- SALURAN --}}
+                <div class="rk-panel">
+                    <div class="rk-panel-kepala">
+                        <div>
+                            <h2 class="rk-h2">{{ __('Saluran') }}</h2>
+                            <p class="rk-ket">{{ number_format($totalPeriode, 0, ',', '.') }} {{ __('aktivitas') }} · {{ $this::RANGES[$range] }}. {{ __('Pilih saluran untuk melihat rinciannya.') }}</p>
+                        </div>
+                    </div>
+                    <ul class="rk-saluran">
+                        <li>
+                            <button type="button" wire:click="setCategory('')" @class(['rk-kanal', 'aktif' => $category === '']) style="--w: {{ $this::CATEGORIES[''][2] }}" aria-pressed="{{ $category === '' ? 'true' : 'false' }}">
+                                <span class="rk-pip"></span>
+                                <span><span class="rk-nama">{{ __('Semua saluran') }}</span></span>
+                                <span class="rk-angka">{{ number_format($totalPeriode, 0, ',', '.') }}</span>
+                            </button>
+                        </li>
+                        @foreach ($saluran as $kunci => $s)
+                            @php [$namaSaluran, , $warnaSaluran] = $this::CATEGORIES[$kunci]; @endphp
+                            <li wire:key="saluran-{{ $kunci }}">
+                                <button type="button" wire:click="setCategory('{{ $kunci }}')" @class(['rk-kanal', 'aktif' => $category === $kunci]) style="--w: {{ $warnaSaluran }}" aria-pressed="{{ $category === $kunci ? 'true' : 'false' }}">
+                                    <span class="rk-pip"></span>
+                                    <span>
+                                        <span class="rk-nama">{{ $namaSaluran }}</span>
+                                        <span class="rk-meter"><i style="width: {{ round($s['jumlah'] / $saluranTerbesar * 100, 1) }}%"></i></span>
+                                        <span class="rk-terakhir">{{ $s['terakhir'] ? __('terakhir').' '.$s['terakhir']->diffForHumans() : __('belum ada catatan') }}</span>
+                                    </span>
+                                    <span @class(['rk-angka', 'nol' => $s['jumlah'] === 0])>{{ number_format($s['jumlah'], 0, ',', '.') }}</span>
+                                </button>
+
+                                @if ($category === $kunci && ($perEvent->isNotEmpty() || $eventFilter))
+                                    <div class="rk-rinci">
+                                        @foreach ($eventFilter && ! $perEvent->has($eventFilter) ? $perEvent->put($eventFilter, 0) : $perEvent as $ev => $cnt)
+                                            @php [$lblEv, , $warnaEv] = $labelEvent($ev); @endphp
+                                            <button type="button" wire:click="pilihEvent('{{ $ev }}')" @class(['aktif' => $eventFilter === $ev])
+                                                    style="--nada: {{ $this::NADA[$warnaEv] ?? $this::NADA['zinc'] }}"
+                                                    title="{{ $this::EVENT_DESC[$ev] ?? '' }}" aria-pressed="{{ $eventFilter === $ev ? 'true' : 'false' }}">
+                                                <span class="rk-rinci-nama">{{ $lblEv }}</span>
+                                                <span class="rk-rinci-angka">{{ number_format($cnt, 0, ',', '.') }}</span>
+                                            </button>
+                                        @endforeach
+                                    </div>
+                                @endif
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+
+                {{-- PERLU DILIHAT --}}
+                <div class="rk-panel">
+                    <div class="rk-panel-kepala">
+                        <div>
+                            <h2 class="rk-h2">{{ __('Perlu dilihat') }}</h2>
+                            <p class="rk-ket">{{ __('Pembatalan, koreksi, penghapusan, dan perubahan status unit yang dilakukan manual.') }}</p>
+                        </div>
+                    </div>
+                    @if ($perluDilihat->isEmpty())
+                        <p class="rk-tenang">{{ __('Tidak ada pembatalan atau koreksi di periode ini.') }}</p>
+                    @else
+                        <div class="rk-waspada-daftar">
+                            @foreach ($perluDilihat as $act)
+                                @php [$lblEv, , $warnaEv] = $labelEvent($act->event); @endphp
+                                <div class="rk-waspada-item" style="--nada: {{ $this::NADA[$warnaEv] ?? $this::NADA['zinc'] }}" wire:key="waspada-{{ $act->id }}">
+                                    <div class="rk-waspada-atas">
+                                        <span class="rk-label">{{ $lblEv }}</span>
+                                        <time datetime="{{ $act->created_at?->toIso8601String() }}">{{ $act->created_at?->isToday() ? $act->created_at->format('H:i') : $act->created_at?->translatedFormat('j M H:i') }}</time>
+                                    </div>
+                                    <p>{{ \App\Support\BusinessActivityLogger::shortenDesc($act->description) }}</p>
+                                    <span class="rk-oleh">{{ __('oleh') }} {{ $act->causer?->name ?? $act->causer?->nama ?? __('Sistem') }}</span>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
+                </div>
+            </aside>
+
+            {{-- ARUS AKTIVITAS --}}
+            <div class="rk-panel rk-arus">
+                <div class="rk-panel-kepala">
+                    <div>
+                        <h2 class="rk-h2">{{ __('Arus aktivitas') }}</h2>
+                        <p class="rk-ket">
+                            {{ number_format($activities->total(), 0, ',', '.') }} {{ __('aktivitas') }}
+                            @if ($category !== '') · {{ $this::CATEGORIES[$category][0] }} @endif
+                            @if ($cari !== '') · {{ __('cocok dengan') }} “{{ $cari }}” @endif
+                            · {{ $this::RANGES[$range] }}
+                        </p>
+                    </div>
+                    <div class="rk-aksi">
+                        @if ($eventFilter)
+                            @php [$lblEv, , $warnaEv] = $labelEvent($eventFilter); @endphp
+                            <button type="button" class="rk-chip" wire:click="pilihEvent('{{ $eventFilter }}')" style="--nada: {{ $this::NADA[$warnaEv] ?? $this::NADA['zinc'] }}" title="{{ __('Hapus saringan') }}">
+                                {{ $lblEv }} <span aria-hidden="true">✕</span>
+                            </button>
+                        @endif
+                        @if ($newCount > 0)
+                            <button type="button" class="rk-tombol-baru" wire:click="refreshFeed">
+                                <span class="rk-titik" style="color: var(--oranye)"></span>
+                                {{ $newCount }} {{ __('baru · tandai sudah dilihat') }}
+                            </button>
+                        @endif
+                        @if ($activities->total() > 0)
+                            <button type="button" class="rk-tombol" wire:click="unduhExcel" wire:loading.attr="disabled" wire:target="unduhExcel">
+                                <flux:icon.arrow-down-tray class="size-4" />
+                                <span wire:loading.remove wire:target="unduhExcel">{{ __('Unduh Excel') }}</span>
+                                <span wire:loading wire:target="unduhExcel">{{ __('Menyiapkan…') }}</span>
+                            </button>
+                        @endif
+                        <button type="button" class="rk-tombol-ikon" wire:click="$refresh" title="{{ __('Muat ulang') }}" aria-label="{{ __('Muat ulang') }}">
+                            <flux:icon.arrow-path class="size-4" wire:loading.class="animate-spin" wire:target="$refresh" />
+                        </button>
+                    </div>
+                </div>
+
+                @if ($activities->isEmpty())
+                    <div class="rk-kosong">
+                        @if ($cari !== '')
+                            <strong>{{ __('Tidak ada aktivitas yang cocok dengan') }} “{{ $cari }}”</strong>
+                            {{ __('Periksa ejaannya, atau cari dengan kata yang lebih pendek, misalnya nama depan konsumen.') }}
+                        @else
+                            <strong>{{ __('Belum ada aktivitas di periode ini') }}</strong>
+                            {{ __('Aktivitas baru akan muncul di sini begitu tercatat.') }}
+                        @endif
+                        @if ($range !== 'all')
+                            <div><button type="button" wire:click="setRange('all')">{{ __('Lihat semua periode') }}</button></div>
+                        @endif
+                    </div>
+                @else
+                    @php $hariSebelumnya = null; @endphp
                     @foreach ($activities as $act)
                         @php
-                            [$lbl, $ico, $col] = $this::EVENT_LABELS[$act->event] ?? [$act->event ?? 'Activity', 'sparkles', 'zinc', null];
+                            [$lbl, , $col] = $labelEvent($act->event);
                             $props = $act->properties ?? collect();
                             $causerName = $act->causer?->name ?? $act->causer?->nama ?? 'Sistem';
+                            $hari = $act->created_at?->toDateString();
+                            $baru = $act->id > $lastSeenId;
                         @endphp
-                        <li class="flex gap-3 px-4 py-3">
-                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-{{ $col }}-100 text-{{ $col }}-700 dark:bg-{{ $col }}-950/50 dark:text-{{ $col }}-400">
-                                <flux:icon :name="$ico" class="size-4" />
+                        @if ($hari !== $hariSebelumnya)
+                            <div class="rk-pemisah" wire:key="hari-{{ $hari }}">
+                                {{ $act->created_at?->isToday() ? __('Hari ini').' · ' : ($act->created_at?->isYesterday() ? __('Kemarin').' · ' : '') }}{{ $act->created_at?->translatedFormat('l, j F Y') }}
                             </div>
-                            <div class="min-w-0 flex-1">
-                                <div class="flex flex-wrap items-baseline justify-between gap-2">
-                                    <div class="text-sm font-semibold text-zinc-900 dark:text-white">{{ \App\Support\BusinessActivityLogger::shortenDesc($act->description) }}</div>
-                                    <div class="text-[10px] text-zinc-500" title="{{ $act->created_at?->format('d M Y H:i:s') }}">
-                                        {{ $act->created_at?->diffForHumans() }}
-                                    </div>
+                            @php $hariSebelumnya = $hari; @endphp
+                        @endif
+                        <article @class(['rk-baris', 'baru' => $baru]) wire:key="act-{{ $act->id }}"
+                                 style="--w: {{ $this->warnaKategori($act->log_name) }}; --nada: {{ $this::NADA[$col] ?? $this::NADA['zinc'] }}">
+                            <time class="rk-pukul" datetime="{{ $act->created_at?->toIso8601String() }}" title="{{ $act->created_at?->diffForHumans() }}">{{ $act->created_at?->format('H:i') }}</time>
+                            <span class="rk-garis-kanal" aria-hidden="true"></span>
+                            <div>
+                                <div class="rk-isi-atas">
+                                    <span class="rk-label">{{ $lbl }}</span>
+                                    <span class="rk-kat">{{ $this->kategoriLabel($act->log_name) }}</span>
+                                    @if ($baru)<span class="rk-tanda-baru">{{ __('Baru') }}</span>@endif
                                 </div>
-                                <div class="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                                    <span class="inline-flex items-center gap-1 rounded-md bg-{{ $col }}-50 px-1.5 py-0.5 text-[10px] font-semibold text-{{ $col }}-700 dark:bg-{{ $col }}-950/30 dark:text-{{ $col }}-400">
-                                        {{ $lbl }}
-                                    </span>
-                                    @if ($act->log_name)
-                                        <span class="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                                            {{ $this->kategoriLabel($act->log_name) }}
-                                        </span>
-                                    @endif
-                                    <span>·</span>
-                                    <span>oleh <span class="font-semibold text-zinc-700 dark:text-zinc-300">{{ $causerName }}</span></span>
-                                    @if (isset($props['sales']) && $props['sales'])
-                                        <span>·</span>
-                                        <span>Sales: <span class="font-semibold">{{ $props['sales'] }}</span></span>
-                                    @endif
-                                    @if (isset($props['nilai']) && $props['nilai'] > 0)
-                                        <span>·</span>
-                                        <span class="font-mono font-bold text-emerald-700 dark:text-emerald-400">Rp {{ number_format((float) $props['nilai'], 0, ',', '.') }}</span>
+                                <p class="rk-desk">{!! $sorot(\App\Support\BusinessActivityLogger::shortenDesc($act->description)) !!}</p>
+                                <div class="rk-meta">
+                                    {{ __('oleh') }} <b>{!! $sorot($causerName) !!}</b>
+                                    @if (! empty($props['sales']))
+                                        · {{ __('Sales') }} <b>{{ $props['sales'] }}</b>
                                     @endif
                                 </div>
                             </div>
-                        </li>
+                            @if (isset($props['nilai']) && $props['nilai'] > 0)
+                                <div class="rk-nilai">Rp {{ number_format((float) $props['nilai'], 0, ',', '.') }}</div>
+                            @endif
+                        </article>
                     @endforeach
-                </ul>
-                <div class="border-t border-zinc-100 p-3 dark:border-zinc-800">{{ $activities->links() }}</div>
-            @endif
-        </div>
 
+                    @if ($activities->hasPages())
+                        <nav class="rk-halaman" aria-label="{{ __('Halaman') }}">
+                            <button type="button" wire:click="previousPage" @disabled($activities->onFirstPage())>← {{ __('Lebih baru') }}</button>
+                            <span>{{ __('Halaman') }} {{ $activities->currentPage() }} {{ __('dari') }} {{ $activities->lastPage() }}</span>
+                            <button type="button" wire:click="nextPage" @disabled(! $activities->hasMorePages())>{{ __('Lebih lama') }} →</button>
+                        </nav>
+                    @endif
+                @endif
+            </div>
+        </div>
     </div>
 </section>

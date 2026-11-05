@@ -349,15 +349,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::livewire('/', 'pages::laporan.index')->name('index');
     });
 
-    // MONITORING — timeline aktivitas bisnis realtime (khusus PM)
-    Route::middleware('permission:monitoring.lihat')->prefix('monitoring')->name('monitoring.')->group(function () {
+    // MONITORING — seluruh aktivitas bisnis, realtime. Log User sudah dilebur ke sini,
+    // jadi pemegang izin log.lihat yang lama tetap bisa membukanya.
+    Route::middleware('permission:monitoring.lihat|log.lihat')->prefix('monitoring')->name('monitoring.')->group(function () {
         Route::livewire('/', 'pages::monitoring.index')->name('index');
     });
-
-    // LOG USER — audit trail (super admin, direktur, project-manager)
-    Route::middleware('permission:log.lihat')->prefix('log-user')->name('log-user.')->group(function () {
-        Route::livewire('/', 'pages::log-user.index')->name('index');
-    });
+    Route::redirect('log-user', 'monitoring');
 
     // MARKETING — hub SPR + sub-page (list, detail, pembatalan)
     Route::middleware('permission:spr.lihat')->prefix('marketing')->name('marketing.')->group(function () {
