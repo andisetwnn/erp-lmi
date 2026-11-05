@@ -6,6 +6,7 @@ use App\Models\Master\Proyek;
 use App\Models\Master\RencanaAkad;
 use App\Models\Master\RencanaAkadUnit;
 use App\Models\Master\Spr;
+use App\Support\BusinessActivityLogger;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -346,7 +347,9 @@ class RencanaAkadService
             ]);
         }
 
-        return DB::transaction(function () use ($rencana, $tujuan, $userId, $opsi) {
+        $dari = $rencana->status;
+
+        $hasil = DB::transaction(function () use ($rencana, $tujuan, $userId, $opsi) {
             $data = ['status' => $tujuan];
 
             match ($tujuan) {
@@ -415,6 +418,10 @@ class RencanaAkadService
 
             return $rencana->fresh();
         });
+
+        BusinessActivityLogger::rencanaAkadStatus($hasil, $dari, $tujuan, $opsi['alasan'] ?? null);
+
+        return $hasil;
     }
 
     /** Tanggal akad yang sudah pasti diteruskan ke pemberkasan tiap SPR. */

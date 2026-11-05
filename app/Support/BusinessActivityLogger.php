@@ -2,7 +2,10 @@
 
 namespace App\Support;
 
+use App\Models\Akunting\Jurnal;
+use App\Models\Master\BiayaTambahanRealisasi;
 use App\Models\Master\Booking;
+use App\Models\Master\RencanaAkad;
 use App\Models\Master\Rumah;
 use App\Models\Master\Sertifikat;
 use App\Models\Master\SertifikatPengajuan;
@@ -10,11 +13,13 @@ use App\Models\Master\SertifikatSerahTerima;
 use App\Models\Master\Spr;
 use App\Models\Master\SprRealisasiPembayaran;
 use App\Models\Master\TipeRumah;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 /**
  * Log business events untuk Monitoring page.
- * Kategori: 'penjualan' | 'keuangan'.
+ * Kategori (log_name): penjualan, keuangan, unit, tipe_rumah, legal, kpr, akunting, akses.
  * Event: 'spr.submitted', 'spr.approved', dll — pakai naming subject.action.
  */
 class BusinessActivityLogger
@@ -52,6 +57,50 @@ class BusinessActivityLogger
         'sertifikat.diperbarui' => 'Data Sertifikat Diperbarui',
         'sertifikat.ke_bank' => 'Sertifikat Diserahkan ke Bank',
         'sertifikat.bast_dibatalkan' => 'Serah Terima Bank Dibatalkan',
+        // Keuangan — biaya tambahan unit
+        'biaya_tambahan.dibayar' => 'Biaya Tambahan Dibayar',
+        'biaya_tambahan.dikoreksi' => 'Biaya Tambahan Dikoreksi',
+        'biaya_tambahan.dihapus' => 'Biaya Tambahan Dihapus',
+        'biaya_tambahan.direfund' => 'Biaya Tambahan Direfund',
+        // Pemberkasan KPR
+        'pemberkasan.bank' => 'Bank KPR Dipilih',
+        'pemberkasan.berkas' => 'Berkas Lengkap',
+        'pemberkasan.wawancara' => 'Wawancara Bank',
+        'pemberkasan.sp3k' => 'SP3K',
+        'pemberkasan.lpa' => 'LPA',
+        'pemberkasan.npwp' => 'NPWP Konsumen Diperbarui',
+        'rencana_akad.dibuat' => 'Rencana Akad Dibuat',
+        'rencana_akad.diajukan' => 'Rencana Akad Diajukan',
+        'rencana_akad.diketahui' => 'Rencana Akad Diketahui PM',
+        'rencana_akad.fix' => 'Rencana Akad Selesai',
+        'rencana_akad.dikembalikan' => 'Rencana Akad Dikembalikan',
+        'rencana_akad.batal' => 'Rencana Akad Dibatalkan',
+        // Akunting
+        'jurnal.dibuat' => 'Jurnal Dibuat',
+        'jurnal.diubah' => 'Jurnal Diubah',
+        'jurnal.diposting' => 'Jurnal Diposting',
+        'jurnal.dibalik' => 'Jurnal Dibalik',
+        'jurnal.dihapus' => 'Jurnal Dihapus',
+        'jurnal.diimpor' => 'Jurnal Diimpor',
+        // Akses
+        'user.dibuat' => 'User Baru',
+        'user.diubah' => 'User Diubah',
+        'user.diaktifkan' => 'User Diaktifkan',
+        'user.dinonaktifkan' => 'User Dinonaktifkan',
+        'user.sandi_direset' => 'Password Direset',
+        'peran.dibuat' => 'Role Baru',
+        'peran.diganti_nama' => 'Role Diganti Nama',
+        'peran.dihapus' => 'Role Dihapus',
+        'izin.diberikan' => 'Izin Diberikan',
+        'izin.dicabut' => 'Izin Dicabut',
+    ];
+
+    /** Nama status unit sebagaimana tampil di layar. */
+    public const STATUS_UNIT = [
+        'draft' => 'Draft',
+        'available' => 'Tersedia',
+        'booking' => 'Booking',
+        'terjual' => 'Terjual',
     ];
 
     /** Konversi event code → label formal Indonesia. */
@@ -427,13 +476,19 @@ class BusinessActivityLogger
                 'proyek' => $rumah->proyek?->nama_proyek,
                 'changes' => $changes,
             ])
-            ->log("Unit {$unit} diubah");
+            ->log("Unit {$unit} diubah · ".implode(', ', array_keys($changes)));
     }
 
-    public static function unitStatusChanged(Rumah $rumah, string $from, string $to): void
+    /**
+     * Status unit berpindah. `$manual` membedakan perubahan tangan di Master Rumah
+     * dari yang terjadi karena alur transaksi (booking, SPR, job pelepasan).
+     */
+    public static function unitStatusChanged(Rumah $rumah, string $from, string $to, ?string $sebab = null, bool $manual = false): void
     {
         $rumah->loadMissing('proyek');
         $unit = $rumah->kode_unit;
+        $dari = self::STATUS_UNIT[$from] ?? $from;
+        $ke = self::STATUS_UNIT[$to] ?? $to;
 
         activity('unit')
             ->causedBy(self::causer())
@@ -444,8 +499,25 @@ class BusinessActivityLogger
                 'proyek' => $rumah->proyek?->nama_proyek,
                 'from' => $from,
                 'to' => $to,
+                'sebab' => $sebab,
+                'sumber' => $manual ? 'manual' : 'otomatis',
             ])
-            ->log("Unit {$unit} · {$from} → {$to}");
+            ->log("Unit {$unit} · {$dari} → {$ke}".($sebab ? " · {$sebab}" : ''));
+    }
+
+    /** Penambahan unit sekaligus dari Master Rumah — dicatat sekali, bukan per unit. */
+    public static function unitDibuatMassal(string $proyek, string $blok, int $jumlah, string $status): void
+    {
+        activity('unit')
+            ->causedBy(self::causer())
+            ->event('unit.created')
+            ->withProperties([
+                'proyek' => $proyek,
+                'blok' => $blok,
+                'jumlah' => $jumlah,
+                'status' => $status,
+            ])
+            ->log("{$jumlah} unit baru di blok {$blok} ditambahkan · {$proyek}");
     }
 
     public static function tipeRumahCreated(TipeRumah $tipe): void
@@ -632,6 +704,221 @@ class BusinessActivityLogger
                 ])
                 ->log("Serah terima unit {$unit} ke bank dibatalkan".($alasan ? " · alasan: {$alasan}" : ''));
         }
+    }
+
+    // ── Keuangan: biaya tambahan unit ─────────────────────────────────────
+
+    /**
+     * @param  'dibayar'|'dikoreksi'|'dihapus'  $aksi
+     * @param  array<string, array{0: ?string, 1: ?string}>  $perubahan  label => [lama, baru], hanya untuk koreksi
+     */
+    public static function biayaTambahan(BiayaTambahanRealisasi $r, string $aksi, array $perubahan = []): void
+    {
+        if ($aksi === 'dikoreksi' && $perubahan === []) {
+            return;
+        }
+
+        $r->loadMissing('rumah', 'spr.prospectCustomer');
+        $unit = $r->rumah?->kode_unit;
+        $customer = $r->spr?->prospectCustomer?->nama_lengkap ?? '—';
+        $nominal = 'Rp '.number_format((float) $r->jumlah, 0, ',', '.');
+
+        $log = activity('keuangan')
+            ->causedBy(self::causer())
+            ->performedOn($r);
+
+        match ($aksi) {
+            'dibayar' => $log->event('biaya_tambahan.dibayar'),
+            'dikoreksi' => $log->event('biaya_tambahan.dikoreksi'),
+            'dihapus' => $log->event('biaya_tambahan.dihapus'),
+        };
+
+        $log
+            ->withProperties([
+                'unit' => $unit,
+                'customer' => $customer,
+                'nomor_kuitansi' => $r->nomor_kuitansi,
+                'jumlah' => (float) $r->jumlah,
+                'nilai' => $aksi === 'dibayar' ? (float) $r->jumlah : 0,
+                'perubahan' => $perubahan ?: null,
+            ])
+            ->log(match ($aksi) {
+                'dibayar' => "Biaya tambahan unit {$unit} dibayar · {$customer} · kuitansi {$r->nomor_kuitansi}",
+                'dikoreksi' => "Biaya tambahan unit {$unit} dikoreksi · kuitansi {$r->nomor_kuitansi} · ".implode(', ', array_keys($perubahan)),
+                default => "Biaya tambahan unit {$unit} dihapus · kuitansi {$r->nomor_kuitansi} · {$nominal}",
+            });
+    }
+
+    /** Semua pembayaran biaya tambahan satu SPR batal direfund sekaligus. */
+    public static function biayaTambahanDirefund(Spr $spr, int $jumlahKuitansi, float $total): void
+    {
+        $spr->loadMissing('rumah', 'prospectCustomer');
+        $customer = $spr->prospectCustomer?->nama_lengkap ?? '—';
+
+        activity('keuangan')
+            ->causedBy(self::causer())
+            ->performedOn($spr)
+            ->event('biaya_tambahan.direfund')
+            ->withProperties([
+                'nomor_spr' => $spr->nomor_spr,
+                'unit' => $spr->rumah?->kode_unit,
+                'customer' => $customer,
+                'jumlah_kuitansi' => $jumlahKuitansi,
+                'jumlah' => $total,
+            ])
+            ->log("Biaya tambahan SPR #{$spr->nomor_display} direfund · {$customer} · Rp ".number_format($total, 0, ',', '.'));
+    }
+
+    // ── Pemberkasan KPR ───────────────────────────────────────────────────
+
+    /**
+     * Satu tahap pemberkasan diisi atau dikoreksi. Tidak dicatat kalau isinya tidak berubah.
+     *
+     * @param  'bank'|'berkas'|'wawancara'|'sp3k'|'lpa'|'npwp'  $tahap
+     * @param  array<string, array{0: ?string, 1: ?string}>  $perubahan  label => [lama, baru]
+     */
+    public static function pemberkasan(Spr $spr, string $tahap, array $perubahan): void
+    {
+        if ($perubahan === []) {
+            return;
+        }
+
+        $spr->loadMissing('rumah', 'prospectCustomer');
+        $customer = $spr->prospectCustomer?->nama_lengkap ?? '—';
+
+        $log = activity('kpr')
+            ->causedBy(self::causer())
+            ->performedOn($spr);
+
+        match ($tahap) {
+            'bank' => $log->event('pemberkasan.bank'),
+            'berkas' => $log->event('pemberkasan.berkas'),
+            'wawancara' => $log->event('pemberkasan.wawancara'),
+            'sp3k' => $log->event('pemberkasan.sp3k'),
+            'lpa' => $log->event('pemberkasan.lpa'),
+            'npwp' => $log->event('pemberkasan.npwp'),
+        };
+
+        $log
+            ->withProperties([
+                'nomor_spr' => $spr->nomor_spr,
+                'unit' => $spr->rumah?->kode_unit,
+                'customer' => $customer,
+                'perubahan' => $perubahan,
+            ])
+            ->log(self::labelFor("pemberkasan.{$tahap}")." · SPR #{$spr->nomor_display} · {$customer}");
+    }
+
+    public static function rencanaAkadDibuat(RencanaAkad $rencana): void
+    {
+        $rencana->loadMissing('proyek');
+
+        activity('kpr')
+            ->causedBy(self::causer())
+            ->performedOn($rencana)
+            ->event('rencana_akad.dibuat')
+            ->withProperties([
+                'nomor' => $rencana->nomor,
+                'proyek' => $rencana->proyek?->nama_proyek,
+                'tanggal_rencana' => $rencana->tanggal_rencana?->format('Y-m-d'),
+            ])
+            ->log("Rencana akad {$rencana->nomor} dibuat · ".($rencana->tanggal_rencana?->format('d/m/Y') ?? '—'));
+    }
+
+    public static function rencanaAkadStatus(RencanaAkad $rencana, string $dari, string $ke, ?string $alasan = null): void
+    {
+        $label = fn (string $s) => RencanaAkad::LABEL_STATUS[$s] ?? $s;
+
+        $log = activity('kpr')
+            ->causedBy(self::causer())
+            ->performedOn($rencana);
+
+        match ($ke) {
+            'draft' => $log->event('rencana_akad.dikembalikan'),
+            'diajukan' => $log->event('rencana_akad.diajukan'),
+            'diketahui' => $log->event('rencana_akad.diketahui'),
+            'fix' => $log->event('rencana_akad.fix'),
+            'batal' => $log->event('rencana_akad.batal'),
+        };
+
+        $log
+            ->withProperties([
+                'nomor' => $rencana->nomor,
+                'from' => $dari,
+                'to' => $ke,
+                'jumlah_unit' => $rencana->unit()->where('status', '!=', 'batal')->count(),
+                'alasan' => $alasan,
+            ])
+            ->log("Rencana akad {$rencana->nomor} · {$label($dari)} → {$label($ke)}".($alasan ? " · alasan: {$alasan}" : ''));
+    }
+
+    // ── Akunting ──────────────────────────────────────────────────────────
+
+    /** @param  'dibuat'|'diubah'|'diposting'|'dibalik'|'dihapus'  $aksi */
+    public static function jurnal(Jurnal $jurnal, string $aksi, ?string $catatan = null): void
+    {
+        $kata = ['dibuat' => 'dibuat', 'diubah' => 'diubah', 'diposting' => 'diposting', 'dibalik' => 'dibalik (reversal)', 'dihapus' => 'dihapus'];
+
+        $log = activity('akunting')
+            ->causedBy(self::causer())
+            ->performedOn($jurnal);
+
+        match ($aksi) {
+            'dibuat' => $log->event('jurnal.dibuat'),
+            'diubah' => $log->event('jurnal.diubah'),
+            'diposting' => $log->event('jurnal.diposting'),
+            'dibalik' => $log->event('jurnal.dibalik'),
+            'dihapus' => $log->event('jurnal.dihapus'),
+        };
+
+        $log
+            ->withProperties([
+                'no_bukti' => $jurnal->no_bukti,
+                'tanggal' => $jurnal->tanggal?->format('Y-m-d'),
+                'keterangan' => $jurnal->keterangan,
+                'nilai' => $jurnal->totalDebet(),
+                'catatan' => $catatan,
+            ])
+            ->log("Jurnal {$jurnal->no_bukti} ".($kata[$aksi] ?? $aksi).($jurnal->keterangan ? ' · '.Str::limit($jurnal->keterangan, 70) : ''));
+    }
+
+    /** Import massal dicatat sekali, bukan per baris jurnal. */
+    public static function jurnalDiimpor(int $jumlah, string $berkas): void
+    {
+        activity('akunting')
+            ->causedBy(self::causer())
+            ->event('jurnal.diimpor')
+            ->withProperties(['jumlah' => $jumlah, 'berkas' => $berkas])
+            ->log("{$jumlah} jurnal diimpor dari {$berkas}");
+    }
+
+    // ── Akses: user, role, izin ───────────────────────────────────────────
+
+    /** @param  array<string, mixed>  $properti  jangan pernah berisi password */
+    public static function akses(string $event, string $kalimat, array $properti = [], ?Model $subjek = null): void
+    {
+        $log = activity('akses')
+            ->causedBy(self::causer())
+            ->withProperties($properti);
+
+        match ($event) {
+            'user.dibuat' => $log->event('user.dibuat'),
+            'user.diubah' => $log->event('user.diubah'),
+            'user.diaktifkan' => $log->event('user.diaktifkan'),
+            'user.dinonaktifkan' => $log->event('user.dinonaktifkan'),
+            'user.sandi_direset' => $log->event('user.sandi_direset'),
+            'peran.dibuat' => $log->event('peran.dibuat'),
+            'peran.diganti_nama' => $log->event('peran.diganti_nama'),
+            'peran.dihapus' => $log->event('peran.dihapus'),
+            'izin.diberikan' => $log->event('izin.diberikan'),
+            'izin.dicabut' => $log->event('izin.dicabut'),
+        };
+
+        if ($subjek) {
+            $log->performedOn($subjek);
+        }
+
+        $log->log($kalimat);
     }
 
     /**

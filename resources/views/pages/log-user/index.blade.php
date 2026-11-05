@@ -215,6 +215,10 @@ new #[Title('Log User')] class extends Component
                         'keuangan'   => 'Keuangan',
                         'unit'       => 'Unit',
                         'tipe_rumah' => 'Tipe Rumah',
+                        'legal'      => 'Legal',
+                        'kpr'        => 'Pemberkasan',
+                        'akunting'   => 'Akunting',
+                        'akses'      => 'Akses',
                         default      => ucfirst((string) $ln),
                     };
                 @endphp

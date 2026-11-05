@@ -3,6 +3,7 @@
 namespace App\Models\Master;
 
 use App\Models\User;
+use App\Support\BusinessActivityLogger;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -51,6 +52,37 @@ class Rumah extends Model
         'siteplan_h' => 'decimal:2',
         'siteplan_points' => 'array',
     ];
+
+    /**
+     * Ubah status unit dan catat setiap perpindahannya ke Monitoring.
+     *
+     * Lewat query, bukan update() pada model: model yang dimuat sebelum perubahan
+     * lain dalam transaksi yang sama bisa membawa status lama di memori, sehingga
+     * update() menganggap tidak ada yang berubah.
+     *
+     * @param  int|list<int>  $ids
+     * @param  list<string>|null  $hanyaDari  hanya unit yang sedang berstatus ini yang diubah
+     */
+    public static function ubahStatus(int|array $ids, string $status, string $sebab, ?array $hanyaDari = null, bool $manual = false): int
+    {
+        $daftar = static::query()
+            ->whereIn('id', (array) $ids)
+            ->where('status', '!=', $status)
+            ->when($hanyaDari !== null, fn ($q) => $q->whereIn('status', $hanyaDari))
+            ->get();
+
+        $berubah = 0;
+        foreach ($daftar as $rumah) {
+            $dari = $rumah->status;
+
+            if (static::whereKey($rumah->id)->where('status', $dari)->update(['status' => $status])) {
+                $berubah++;
+                BusinessActivityLogger::unitStatusChanged($rumah, $dari, $status, $sebab, $manual);
+            }
+        }
+
+        return $berubah;
+    }
 
     public function proyek(): BelongsTo
     {

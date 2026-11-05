@@ -28,6 +28,18 @@ class JurnalSeeder extends Seeder
 {
     public function run(): void
     {
+        // Jurnal contoh bukan kegiatan siapa pun, jadi tidak dicatat ke Monitoring.
+        activity()->disableLogging();
+
+        try {
+            $this->isiContoh();
+        } finally {
+            activity()->enableLogging();
+        }
+    }
+
+    private function isiContoh(): void
+    {
         $perusahaan = Perusahaan::firstWhere('kode_surat', 'LMI') ?? Perusahaan::first();
         if (! $perusahaan) {
             $this->command?->warn('Perusahaan LMI belum ada, JurnalSeeder di-skip.');

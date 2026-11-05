@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\BusinessActivityLogger;
 use App\Livewire\Concerns\Sortable;
 use App\Models\User;
 use Flux\Flux;
@@ -277,7 +278,8 @@ new #[Title('Pengguna Sistem')] class extends Component
             'newRoleName' => 'nama role',
         ]);
 
-        Role::create(['name' => $validated['newRoleName'], 'guard_name' => 'web']);
+        $role = Role::create(['name' => $validated['newRoleName'], 'guard_name' => 'web']);
+        BusinessActivityLogger::akses('peran.dibuat', "Role {$role->name} dibuat", ['role' => $role->name], $role);
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         Flux::modal('role-create')->close();
@@ -327,6 +329,7 @@ new #[Title('Pengguna Sistem')] class extends Component
             return;
         }
 
+        BusinessActivityLogger::akses('peran.dihapus', "Role {$roleName} dihapus", ['role' => $roleName]);
         $role->delete();
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
@@ -385,6 +388,7 @@ new #[Title('Pengguna Sistem')] class extends Component
         }
 
         $role->update(['name' => $newName]);
+        BusinessActivityLogger::akses('peran.diganti_nama', "Role {$oldName} diganti nama menjadi {$newName}", ['dari' => $oldName, 'ke' => $newName], $role);
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         Flux::modal('role-rename')->close();
@@ -411,11 +415,16 @@ new #[Title('Pengguna Sistem')] class extends Component
             return;
         }
 
+        $labelIzin = self::PERMISSION_LABEL[$permissionName] ?? $permissionName;
+        $properti = ['role' => $roleName, 'izin' => $permissionName, 'label' => $labelIzin];
+
         if ($role->hasPermissionTo($perm)) {
             $role->revokePermissionTo($perm);
+            BusinessActivityLogger::akses('izin.dicabut', "Izin \"{$labelIzin}\" dicabut dari role {$roleName}", $properti, $role);
             Flux::toast(variant: 'success', text: "Permission {$permissionName} dicabut dari {$roleName}.");
         } else {
             $role->givePermissionTo($perm);
+            BusinessActivityLogger::akses('izin.diberikan', "Izin \"{$labelIzin}\" diberikan ke role {$roleName}", $properti, $role);
             Flux::toast(variant: 'success', text: "Permission {$permissionName} diberikan ke {$roleName}.");
         }
 
@@ -497,6 +506,8 @@ new #[Title('Pengguna Sistem')] class extends Component
             $data['password'] = Hash::make($validated['password']);
         }
 
+        $sebelum = $this->editId ? $this->nilaiUser(User::findOrFail($this->editId)) : null;
+
         if ($this->editId) {
             $user = User::findOrFail($this->editId);
             $user->update($data);
@@ -509,12 +520,40 @@ new #[Title('Pengguna Sistem')] class extends Component
         // Assign single role (Spatie sync = replace all)
         $user->syncRoles([$validated['selectedRole']]);
 
+        if ($sebelum === null) {
+            BusinessActivityLogger::akses('user.dibuat', "User {$user->name} dibuat sebagai {$validated['selectedRole']}", ['username' => $user->username, 'role' => $validated['selectedRole']], $user);
+        } else {
+            $perubahan = collect($this->nilaiUser($user->fresh()))
+                ->filter(fn ($nilai, $label) => ($sebelum[$label] ?? null) !== $nilai)
+                ->map(fn ($nilai, $label) => [$sebelum[$label] ?? null, $nilai])
+                ->all();
+            if (! empty($validated['password'])) {
+                $perubahan['Password'] = [null, 'diganti'];
+            }
+            if ($perubahan !== []) {
+                BusinessActivityLogger::akses('user.diubah', "User {$user->name} diubah · ".implode(', ', array_keys($perubahan)), ['username' => $user->username, 'perubahan' => $perubahan], $user);
+            }
+        }
+
         Flux::modal('user-form')->close();
         Flux::toast(variant: 'success', text: $this->editId
             ? "User {$user->name} berhasil diperbarui."
             : "User {$user->name} berhasil dibuat.");
 
         $this->reset(['editId', 'name', 'username', 'email', 'hp', 'password', 'selectedRole']);
+    }
+
+    /** @return array<string, ?string> Tanpa password: isinya tidak boleh tercatat. */
+    private function nilaiUser(User $u): array
+    {
+        return [
+            'Nama' => $u->name,
+            'Username' => $u->username,
+            'Email' => $u->email,
+            'HP' => $u->hp,
+            'Status' => $u->is_aktif ? 'Aktif' : 'Nonaktif',
+            'Role' => $u->roles()->pluck('name')->first(),
+        ];
     }
 
     public function toggleAktif(int $id): void
@@ -528,6 +567,7 @@ new #[Title('Pengguna Sistem')] class extends Component
         }
 
         $u->update(['is_aktif' => ! $u->is_aktif]);
+        BusinessActivityLogger::akses($u->is_aktif ? 'user.diaktifkan' : 'user.dinonaktifkan', "User {$u->name} ".($u->is_aktif ? 'diaktifkan' : 'dinonaktifkan'), ['username' => $u->username], $u);
         Flux::toast(variant: 'success', text: $u->is_aktif ? "User {$u->name} diaktifkan." : "User {$u->name} dinonaktifkan.");
     }
 
@@ -551,6 +591,7 @@ new #[Title('Pengguna Sistem')] class extends Component
 
         $u = User::findOrFail($this->resetId);
         $u->update(['password' => Hash::make($validated['newPassword'])]);
+        BusinessActivityLogger::akses('user.sandi_direset', "Password user {$u->name} direset", ['username' => $u->username], $u);
 
         Flux::modal('user-reset-password')->close();
         Flux::toast(variant: 'success', text: "Password {$u->name} berhasil direset.");

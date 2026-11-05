@@ -33,9 +33,7 @@ class ExpireBookings extends Command
                 ]);
 
                 // Lepas unit kembali ke available, hanya kalau status rumah masih 'booking'
-                Rumah::where('id', $booking->rumah_id)
-                    ->where('status', 'booking')
-                    ->update(['status' => 'available']);
+                Rumah::ubahStatus($booking->rumah_id, 'available', 'Booking lewat 24 jam tanpa SPR', ['booking']);
             }
 
             return $stale->count();

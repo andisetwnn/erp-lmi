@@ -189,7 +189,7 @@ new #[Title('Form Booking'), Layout('layouts.dbos')] class extends Component {
                     'status' => 'aktif',
                 ]);
 
-                $rumahLocked->update(['status' => 'booking']);
+                Rumah::ubahStatus($rumahLocked->id, 'booking', "Booking {$prospect->nama_lengkap}");
 
                 // Log catatan booking di status log prospect (sudah finish, jadi catatan tambahan)
                 ProspectCustomerStatusLog::create([

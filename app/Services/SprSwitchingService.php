@@ -65,8 +65,8 @@ class SprSwitchingService
             $this->pindahRealisasi($sprLama, $sprBaru, $switching->id);
             $this->pindahBiayaTambahanRealisasi($sprLama, $sprBaru);
             $this->recalculateTerminUm($sprBaru);
-            $this->releaseRumahLama($sprLama->rumah);
-            $this->lockRumahBaru($rumahBaru, $sprBaru);
+            $this->releaseRumahLama($sprLama->rumah, "Pindah unit: SPR #{$sprLama->nomor_display} ke {$rumahBaru->kode_unit}");
+            $this->lockRumahBaru($rumahBaru, $sprBaru, "Pindah unit: SPR #{$sprBaru->nomor_display} dari {$sprLama->rumah?->kode_unit}");
 
             $sprBaru->refresh();
 
@@ -134,8 +134,8 @@ class SprSwitchingService
             // Status rumah — release+lock silang
             // Rumah asal A → sekarang punya SPR baru B
             // Rumah asal B → sekarang punya SPR baru A
-            $this->lockRumahBaru($rumahAsalB, $sprBaruA);
-            $this->lockRumahBaru($rumahAsalA, $sprBaruB);
+            $this->lockRumahBaru($rumahAsalB, $sprBaruA, "Tukar unit: SPR #{$sprBaruA->nomor_display} dari {$rumahAsalA->kode_unit}");
+            $this->lockRumahBaru($rumahAsalA, $sprBaruB, "Tukar unit: SPR #{$sprBaruB->nomor_display} dari {$rumahAsalB->kode_unit}");
 
             $sprBaruA->refresh();
             $sprBaruB->refresh();
@@ -394,15 +394,15 @@ class SprSwitchingService
         }
     }
 
-    private function releaseRumahLama(?Rumah $rumahLama): void
+    private function releaseRumahLama(?Rumah $rumahLama, string $sebab): void
     {
         if (! $rumahLama) {
             return;
         }
-        $rumahLama->update(['status' => 'available']);
+        Rumah::ubahStatus($rumahLama->id, 'available', $sebab);
     }
 
-    private function lockRumahBaru(Rumah $rumahBaru, Spr $sprBaru): void
+    private function lockRumahBaru(Rumah $rumahBaru, Spr $sprBaru, string $sebab): void
     {
         // Sesuaikan status rumah dgn status SPR baru
         $status = match ($sprBaru->status) {
@@ -414,6 +414,6 @@ class SprSwitchingService
         // Lewat query, bukan $rumahBaru->update(): saat swap, model ini dimuat sebelum
         // pembatalan SPR lama melepas unitnya. Statusnya di memori masih 'terjual',
         // sehingga update() menganggap tidak ada perubahan dan unit tertinggal 'available'.
-        Rumah::whereKey($rumahBaru->id)->update(['status' => $status]);
+        Rumah::ubahStatus($rumahBaru->id, $status, $sebab);
     }
 }

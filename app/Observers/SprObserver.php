@@ -59,16 +59,14 @@ class SprObserver
 
     private function lockRumah(Spr $spr): void
     {
-        Rumah::where('id', $spr->rumah_id)
-            ->where('status', '!=', 'terjual')
-            ->update(['status' => 'terjual']);
+        $kata = $spr->status === 'akad' ? 'akad' : 'disetujui';
+
+        Rumah::ubahStatus($spr->rumah_id, 'terjual', "SPR #{$spr->nomor_display} {$kata}");
     }
 
     private function unlockRumah(Spr $spr): void
     {
-        Rumah::where('id', $spr->rumah_id)
-            ->where('status', 'terjual')
-            ->update(['status' => 'booking']);
+        Rumah::ubahStatus($spr->rumah_id, 'booking', "SPR #{$spr->nomor_display} kembali {$spr->status}", ['terjual']);
     }
 
     private function releaseRumah(Spr $spr): void
@@ -83,8 +81,6 @@ class SprObserver
             return;
         }
 
-        Rumah::where('id', $spr->rumah_id)
-            ->whereIn('status', ['terjual', 'booking'])
-            ->update(['status' => 'available']);
+        Rumah::ubahStatus($spr->rumah_id, 'available', "SPR #{$spr->nomor_display} dibatalkan", ['terjual', 'booking']);
     }
 }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\BusinessActivityLogger;
 use App\Models\Master\BankKpr;
 use App\Models\Master\Proyek;
 use App\Models\Master\Rumah;
@@ -213,17 +214,77 @@ new #[Title('Input Pemberkasan')] class extends Component
             default => null,
         };
 
-        if ($this->editPemberkasanId) {
-            SprPemberkasan::findOrFail($this->editPemberkasanId)->update($data);
+        $sebelum = $this->editPemberkasanId ? SprPemberkasan::findOrFail($this->editPemberkasanId) : null;
+        $nilaiLama = $this->nilaiPemberkasan($sebelum);
+
+        if ($sebelum) {
+            $sebelum->update($data);
+            $sesudah = $sebelum;
         } else {
             $data['spr_id'] = $spr->id;
             $data['input_by_user_id'] = Auth::id();
-            SprPemberkasan::create($data);
+            $sesudah = SprPemberkasan::create($data);
         }
+
+        BusinessActivityLogger::pemberkasan(
+            $spr,
+            self::TAHAP_LOG[$this->editingField] ?? (string) $this->editingField,
+            $this->bedaNilai($nilaiLama, $this->nilaiPemberkasan($sesudah->fresh())),
+        );
 
         Flux::modal('edit-field')->close();
         Flux::toast(variant: 'success', text: "SPR {$spr->nomor_display} — {$this->fieldLabel()} disimpan.");
         $this->resetFieldState();
+    }
+
+    /** Nama event Monitoring per field yang diedit. */
+    private const TAHAP_LOG = ['bank' => 'bank', 'bm' => 'berkas', 'wcr' => 'wawancara', 'sp3k' => 'sp3k', 'lpa' => 'lpa'];
+
+    private const KOLOM_PEMBERKASAN = [
+        'bank_kode' => 'Bank',
+        'bm_tanggal' => 'Tanggal berkas lengkap',
+        'bm_file_original_name' => 'Berkas',
+        'wcr_tanggal' => 'Tanggal wawancara',
+        'wcr_catatan' => 'Catatan wawancara',
+        'sp3k_tanggal' => 'Tanggal SP3K',
+        'sp3k_nomor' => 'Nomor SP3K',
+        'sp3k_expired' => 'SP3K berlaku sampai',
+        'sp3k_nominal' => 'Nominal SP3K',
+        'lpa_tanggal' => 'Tanggal LPA',
+    ];
+
+    /** @return array<string, ?string> */
+    private function nilaiPemberkasan(?SprPemberkasan $p): array
+    {
+        $nilai = [];
+        foreach (self::KOLOM_PEMBERKASAN as $kolom => $label) {
+            $isi = $p?->getAttribute($kolom);
+            $nilai[$label] = match (true) {
+                $isi === null || $isi === '' => null,
+                $isi instanceof \DateTimeInterface => $isi->format('d/m/Y'),
+                $kolom === 'sp3k_nominal' => (float) $isi > 0 ? 'Rp '.number_format((float) $isi, 0, ',', '.') : null,
+                default => (string) $isi,
+            };
+        }
+
+        return $nilai;
+    }
+
+    /**
+     * @param  array<string, ?string>  $lama
+     * @param  array<string, ?string>  $baru
+     * @return array<string, array{0: ?string, 1: ?string}>
+     */
+    private function bedaNilai(array $lama, array $baru): array
+    {
+        $beda = [];
+        foreach ($baru as $label => $nilai) {
+            if (($lama[$label] ?? null) !== $nilai) {
+                $beda[$label] = [$lama[$label] ?? null, $nilai];
+            }
+        }
+
+        return $beda;
     }
 
     protected function fieldLabel(): string
@@ -264,8 +325,16 @@ new #[Title('Input Pemberkasan')] class extends Component
         $this->validate([
             'editNpwpValue' => ['nullable', 'string', 'max:30'],
         ]);
+        $npwpLama = \App\Models\Master\ProspectCustomer::whereKey($this->editNpwpProspectId)->value('npwp');
+        $npwpBaru = $this->editNpwpValue ?: null;
+
         \App\Models\Master\ProspectCustomer::where('id', $this->editNpwpProspectId)
-            ->update(['npwp' => $this->editNpwpValue ?: null]);
+            ->update(['npwp' => $npwpBaru]);
+
+        $sprKonsumen = Spr::where('prospect_customer_id', $this->editNpwpProspectId)->latest('id')->first();
+        if ($sprKonsumen && $npwpLama !== $npwpBaru) {
+            BusinessActivityLogger::pemberkasan($sprKonsumen, 'npwp', ['NPWP' => [$npwpLama, $npwpBaru]]);
+        }
         Flux::modal('edit-npwp')->close();
         Flux::toast(variant: 'success', text: 'NPWP customer diperbarui.');
         $this->reset(['editNpwpProspectId', 'editNpwpValue', 'editNpwpCustomerName']);

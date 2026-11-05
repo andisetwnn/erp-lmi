@@ -8,6 +8,7 @@ use App\Models\Akunting\JurnalDetail;
 use App\Models\Master\Coa;
 use App\Models\Master\Perusahaan;
 use App\Models\User;
+use App\Support\BusinessActivityLogger;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -127,6 +128,10 @@ class ImportAkuntingCommand extends Command
         }
 
         $this->summary();
+
+        if ($this->stats['jurnal_added'] > 0) {
+            BusinessActivityLogger::jurnalDiimpor($this->stats['jurnal_added'], basename($file));
+        }
 
         return self::SUCCESS;
     }

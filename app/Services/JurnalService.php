@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Akunting\Jurnal;
 use App\Models\Akunting\JurnalDetail;
+use App\Support\BusinessActivityLogger;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -30,7 +31,7 @@ class JurnalService
     {
         $this->validateBalance($details);
 
-        return DB::transaction(function () use ($data, $details) {
+        $jurnal = DB::transaction(function () use ($data, $details) {
             $jurnal = Jurnal::create([
                 'perusahaan_id' => $data['perusahaan_id'],
                 'tanggal' => $data['tanggal'],
@@ -57,6 +58,10 @@ class JurnalService
 
             return $jurnal->fresh('detail');
         });
+
+        BusinessActivityLogger::jurnal($jurnal, 'dibuat');
+
+        return $jurnal;
     }
 
     /**
@@ -73,7 +78,7 @@ class JurnalService
 
         $this->validateBalance($details);
 
-        return DB::transaction(function () use ($jurnal, $data, $details) {
+        $hasil = DB::transaction(function () use ($jurnal, $data, $details) {
             $jurnal->update([
                 'tanggal' => $data['tanggal'],
                 'no_bukti' => $data['no_bukti'],
@@ -96,6 +101,10 @@ class JurnalService
 
             return $jurnal->fresh('detail');
         });
+
+        BusinessActivityLogger::jurnal($hasil, 'diubah');
+
+        return $hasil;
     }
 
     /** Posting: draft → posted. Setelah ini immutable. */
@@ -125,6 +134,8 @@ class JurnalService
             'posted_at' => now(),
         ]);
 
+        BusinessActivityLogger::jurnal($jurnal, 'diposting');
+
         return $jurnal->fresh();
     }
 
@@ -140,7 +151,7 @@ class JurnalService
             ]);
         }
 
-        return DB::transaction(function () use ($jurnalAsal, $keterangan, $userId) {
+        $reversal = DB::transaction(function () use ($jurnalAsal, $keterangan, $userId) {
             $reversal = Jurnal::create([
                 'perusahaan_id' => $jurnalAsal->perusahaan_id,
                 'tanggal' => now()->toDateString(),
@@ -168,6 +179,10 @@ class JurnalService
 
             return $reversal->fresh('detail');
         });
+
+        BusinessActivityLogger::jurnal($reversal, 'dibalik', "Membalik {$jurnalAsal->no_bukti}: {$keterangan}");
+
+        return $reversal;
     }
 
     /**
@@ -196,6 +211,8 @@ class JurnalService
                 'jurnal' => 'Jurnal yang sudah diposting tidak bisa dihapus. Gunakan reversal.',
             ]);
         }
+
+        BusinessActivityLogger::jurnal($jurnal, 'dihapus');
 
         $jurnal->delete();
     }

@@ -65,8 +65,7 @@ class SyncRumahStatusCommand extends Command
             return self::SUCCESS;
         }
 
-        // updateQuietly: status sudah dihitung di sini, jangan picu observer lagi.
-        $jml = Rumah::whereIn('id', $melenceng->pluck('id'))->update(['status' => 'terjual']);
+        $jml = Rumah::ubahStatus($melenceng->pluck('id')->all(), 'terjual', 'Penyelarasan status dengan SPR');
 
         $this->newLine();
         $this->info("✓ $jml unit diperbarui jadi 'terjual'.");

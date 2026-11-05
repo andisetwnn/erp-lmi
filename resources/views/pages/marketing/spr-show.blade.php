@@ -628,10 +628,13 @@ new #[Title('Detail SPR')] class extends Component
 
         if ($this->btEditId) {
             $r = BiayaTambahanRealisasi::findOrFail($this->btEditId);
+            $sebelum = $this->nilaiBiayaTambahan($r);
             $r->update($payload);
+            BusinessActivityLogger::biayaTambahan($r, 'dikoreksi', $this->bedaBiayaTambahan($sebelum, $this->nilaiBiayaTambahan($r->fresh())));
             $msg = "Realisasi biaya tambahan {$r->nomor_kuitansi} diperbarui.";
         } else {
-            BiayaTambahanRealisasi::create($payload);
+            $r = BiayaTambahanRealisasi::create($payload);
+            BusinessActivityLogger::biayaTambahan($r, 'dibayar');
             $msg = 'Realisasi biaya tambahan tersimpan.';
         }
 
@@ -639,6 +642,31 @@ new #[Title('Detail SPR')] class extends Component
         $this->loadSpr($this->spr->id);
         $this->reset(['btEditId', 'btNomorKuitansi', 'btJumlah', 'btKeterangan']);
         Flux::toast(variant: 'success', text: $msg);
+    }
+
+    /** @return array<string, ?string> */
+    private function nilaiBiayaTambahan(BiayaTambahanRealisasi $r): array
+    {
+        return [
+            'Tanggal bayar' => $r->tanggal_bayar?->format('d/m/Y'),
+            'Nomor kuitansi' => (string) $r->nomor_kuitansi,
+            'Jumlah' => 'Rp '.number_format((float) $r->jumlah, 0, ',', '.'),
+            'Metode' => $r->metode,
+            'Keterangan' => $r->keterangan,
+        ];
+    }
+
+    /**
+     * @param  array<string, ?string>  $lama
+     * @param  array<string, ?string>  $baru
+     * @return array<string, array{0: ?string, 1: ?string}>
+     */
+    private function bedaBiayaTambahan(array $lama, array $baru): array
+    {
+        return collect($baru)
+            ->filter(fn ($nilai, $label) => ($lama[$label] ?? null) !== $nilai)
+            ->map(fn ($nilai, $label) => [$lama[$label] ?? null, $nilai])
+            ->all();
     }
 
     public function openConfirmDeleteBiayaTambahan(int $id): void
@@ -663,6 +691,7 @@ new #[Title('Detail SPR')] class extends Component
         if ($r->rumah_id !== $this->spr->rumah_id) {
             abort(403);
         }
+        BusinessActivityLogger::biayaTambahan($r, 'dihapus');
         $r->delete();
         $this->reset(['btDeleteId', 'btDeleteLabel']);
         Flux::modal('confirm-delete-biaya-tambahan')->close();
@@ -695,6 +724,12 @@ new #[Title('Detail SPR')] class extends Component
             'btRefundKeterangan' => 'keterangan refund',
         ]);
 
+        $belumRefund = BiayaTambahanRealisasi::where('rumah_id', $this->spr->rumah_id)
+            ->where('spr_id', $this->spr->id)
+            ->where('is_refunded', false);
+        $jumlahKuitansi = (clone $belumRefund)->count();
+        $totalRefund = (float) (clone $belumRefund)->sum('jumlah');
+
         BiayaTambahanRealisasi::where('rumah_id', $this->spr->rumah_id)
             ->where('spr_id', $this->spr->id)
             ->where('is_refunded', false)
@@ -704,6 +739,10 @@ new #[Title('Detail SPR')] class extends Component
                 'refunded_by_user_id' => Auth::id(),
                 'refund_keterangan' => $validated['btRefundKeterangan'] ?: 'SPR dibatalkan',
             ]);
+
+        if ($jumlahKuitansi > 0) {
+            BusinessActivityLogger::biayaTambahanDirefund($this->spr, $jumlahKuitansi, $totalRefund);
+        }
 
         Flux::modal('refund-biaya-tambahan')->close();
         $this->loadSpr($this->spr->id);

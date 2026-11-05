@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Master\Rumah;
 use App\Models\Master\Booking;
 use Flux\Flux;
 use Illuminate\Support\Carbon;
@@ -73,7 +74,9 @@ new #[Title('Daftar Booking'), Layout('layouts.dbos')] class extends Component
             ]);
 
             // Lepas unit kembali jadi available
-            $booking->rumah?->update(['status' => 'available']);
+            if ($booking->rumah_id) {
+                Rumah::ubahStatus($booking->rumah_id, 'available', 'Booking dibatalkan sales: '.$this->cancelKeterangan);
+            }
         });
 
         Flux::modal('booking-cancel')->close();

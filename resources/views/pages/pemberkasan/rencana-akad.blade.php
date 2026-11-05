@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\BusinessActivityLogger;
 use App\Models\Master\BankKpr;
 use App\Models\Master\Notaris;
 use App\Models\Master\Proyek;
@@ -104,6 +105,8 @@ new #[Title('Rencana Akad')] class extends Component
             'catatan' => $this->formCatatan ?: null,
             'created_by_user_id' => Auth::id(),
         ]);
+
+        BusinessActivityLogger::rencanaAkadDibuat($rencana);
 
         Flux::modal('form-rencana')->close();
 

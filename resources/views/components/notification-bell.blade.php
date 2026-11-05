@@ -50,7 +50,10 @@ new class extends Component {
 
     private function baseQuery()
     {
-        $query = Activity::query()->whereIn('log_name', ['penjualan', 'keuangan', 'unit']);
+        $query = Activity::query()->whereIn('log_name', ['penjualan', 'keuangan', 'unit'])
+            // Status unit yang berubah karena booking/SPR sudah terwakili event transaksinya;
+            // yang perlu sampai ke lonceng hanya perubahan tangan di Master Rumah.
+            ->where(fn ($q) => $q->where('event', '!=', 'unit.status_changed')->orWhere('properties->sumber', 'manual'));
         $events = $this->relevantEvents();
         if (! empty($events)) {
             $query->whereIn('event', $events);

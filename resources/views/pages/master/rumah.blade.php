@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\BusinessActivityLogger;
 use App\Livewire\Concerns\Sortable;
 use App\Models\Master\Proyek;
 use App\Models\Master\Rumah;
@@ -395,10 +396,16 @@ new #[Title('Master Rumah')] class extends Component {
             return;
         }
 
+        $tipeLama = $daftar->mapWithKeys(fn ($r) => [$r->id => $r->tipeRumah?->nama_tipe]);
+
         DB::transaction(fn () => $daftar->each->update([
             'tipe_rumah_id' => $tipe->id,
             'updated_by_user_id' => Auth::id(),
         ]));
+
+        foreach ($daftar as $r) {
+            BusinessActivityLogger::unitUpdated($r, ['Tipe' => ['from' => $tipeLama[$r->id] ?? null, 'to' => $tipe->nama_tipe]]);
+        }
 
         Flux::modal('pindah-tipe')->close();
         Flux::toast(
@@ -426,6 +433,33 @@ new #[Title('Master Rumah')] class extends Component {
         $this->resetErrorBag();
 
         Flux::modal('rumah-form')->show();
+    }
+
+    /** Kolom unit yang perubahannya dicatat ke Monitoring, dengan nama tampilnya. */
+    private const KOLOM_DICATAT = [
+        'tipe_rumah_id' => 'Tipe',
+        'blok' => 'Blok',
+        'nomor_unit' => 'Nomor unit',
+        'biaya_tambahan' => 'Biaya tambahan',
+        'discount' => 'Diskon',
+        'ppn' => 'PPN',
+    ];
+
+    /** @return array<string, ?string> */
+    private function nilaiDicatat(Rumah $rumah): array
+    {
+        $nilai = [];
+        foreach (self::KOLOM_DICATAT as $kolom => $label) {
+            $isi = $rumah->getAttribute($kolom);
+            $nilai[$label] = match (true) {
+                $isi === null || $isi === '' => null,
+                $kolom === 'tipe_rumah_id' => TipeRumah::find($isi)?->nama_tipe ?? (string) $isi,
+                in_array($kolom, ['biaya_tambahan', 'discount', 'ppn'], true) => 'Rp '.number_format((float) $isi, 0, ',', '.'),
+                default => (string) $isi,
+            };
+        }
+
+        return $nilai;
     }
 
     public function save(): void
@@ -470,6 +504,8 @@ new #[Title('Master Rumah')] class extends Component {
             $tanggalLaunching = now()->toDateString();
         }
 
+        $sebelum = $rumah->exists ? $this->nilaiDicatat($rumah) : null;
+
         $rumah->fill([
             'proyek_id' => $this->selectedProyekId,
             'tipe_rumah_id' => $validated['tipe_rumah_id'],
@@ -482,6 +518,25 @@ new #[Title('Master Rumah')] class extends Component {
             'tanggal_launching' => $tanggalLaunching,
             'updated_by_user_id' => Auth::id(),
         ])->save();
+
+        if ($sebelum === null) {
+            BusinessActivityLogger::unitCreated($rumah);
+        } else {
+            if ($oldStatus !== $newStatus) {
+                BusinessActivityLogger::unitStatusChanged($rumah, (string) $oldStatus, $newStatus, 'Diubah manual di Master Rumah', manual: true);
+            }
+
+            $sesudah = $this->nilaiDicatat($rumah);
+            $perubahan = [];
+            foreach ($sesudah as $label => $baru) {
+                if (($sebelum[$label] ?? null) !== $baru) {
+                    $perubahan[$label] = ['from' => $sebelum[$label] ?? null, 'to' => $baru];
+                }
+            }
+            if ($perubahan !== []) {
+                BusinessActivityLogger::unitUpdated($rumah, $perubahan);
+            }
+        }
 
         Flux::modal('rumah-form')->close();
         $wasEdit = (bool) $this->editId;
@@ -541,6 +596,15 @@ new #[Title('Master Rumah')] class extends Component {
                 $created++;
             }
         });
+
+        if ($created > 0) {
+            BusinessActivityLogger::unitDibuatMassal(
+                Proyek::find($this->selectedProyekId)?->nama_proyek ?? '—',
+                $validated['blok'],
+                $created,
+                BusinessActivityLogger::STATUS_UNIT[$validated['status']] ?? $validated['status'],
+            );
+        }
 
         Flux::modal('rumah-form')->close();
         $this->resetForm();

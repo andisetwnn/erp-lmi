@@ -31,9 +31,15 @@ new #[Title('Monitoring')] class extends Component
         '' => ['Semua', 'squares-2x2', 'zinc'],
         'penjualan' => ['Penjualan', 'chart-bar', 'emerald'],
         'keuangan' => ['Keuangan', 'banknotes', 'purple'],
+        'kpr' => ['Pemberkasan', 'folder-open', 'green'],
+        'akunting' => ['Akunting', 'calculator', 'indigo'],
         'unit' => ['Unit', 'home-modern', 'blue'],
         'legal' => ['Legal', 'document-text', 'amber'],
+        'akses' => ['Akses', 'shield-check', 'rose'],
     ];
+
+    /** Nama log lain yang ikut terbaca di sebuah kategori (perubahan tipe rumah tercatat sebagai 'tipe_rumah'). */
+    private const LOG_TAMBAHAN = ['unit' => ['tipe_rumah']];
 
     public const RANGES = [
         'today' => 'Hari Ini',
@@ -73,6 +79,42 @@ new #[Title('Monitoring')] class extends Component
         'sertifikat.diperbarui' => ['Data Sertifikat Diperbarui', 'pencil-square', 'blue', 'legal'],
         'sertifikat.ke_bank' => ['Sertifikat Diserahkan ke Bank', 'building-library', 'violet', 'legal'],
         'sertifikat.bast_dibatalkan' => ['Serah Terima Bank Dibatalkan', 'arrow-uturn-left', 'rose', 'legal'],
+        // Keuangan — biaya tambahan
+        'biaya_tambahan.dibayar' => ['Biaya Tambahan Dibayar', 'currency-dollar', 'purple', 'keuangan'],
+        'biaya_tambahan.dikoreksi' => ['Biaya Tambahan Dikoreksi', 'pencil-square', 'amber', 'keuangan'],
+        'biaya_tambahan.dihapus' => ['Biaya Tambahan Dihapus', 'trash', 'rose', 'keuangan'],
+        'biaya_tambahan.direfund' => ['Biaya Tambahan Direfund', 'arrow-uturn-left', 'amber', 'keuangan'],
+        // Pemberkasan KPR
+        'pemberkasan.bank' => ['Bank KPR Dipilih', 'building-library', 'green', 'kpr'],
+        'pemberkasan.berkas' => ['Berkas Lengkap', 'folder', 'green', 'kpr'],
+        'pemberkasan.wawancara' => ['Wawancara Bank', 'chat-bubble-left-right', 'green', 'kpr'],
+        'pemberkasan.sp3k' => ['SP3K', 'document-check', 'emerald', 'kpr'],
+        'pemberkasan.lpa' => ['LPA', 'clipboard-document-check', 'green', 'kpr'],
+        'pemberkasan.npwp' => ['NPWP Konsumen Diperbarui', 'identification', 'blue', 'kpr'],
+        'rencana_akad.dibuat' => ['Rencana Akad Dibuat', 'calendar', 'green', 'kpr'],
+        'rencana_akad.diajukan' => ['Rencana Akad Diajukan', 'paper-airplane', 'green', 'kpr'],
+        'rencana_akad.diketahui' => ['Rencana Akad Diketahui PM', 'check-circle', 'emerald', 'kpr'],
+        'rencana_akad.fix' => ['Rencana Akad Selesai', 'check-badge', 'violet', 'kpr'],
+        'rencana_akad.dikembalikan' => ['Rencana Akad Dikembalikan', 'arrow-uturn-left', 'amber', 'kpr'],
+        'rencana_akad.batal' => ['Rencana Akad Dibatalkan', 'x-circle', 'rose', 'kpr'],
+        // Akunting
+        'jurnal.dibuat' => ['Jurnal Dibuat', 'document-plus', 'indigo', 'akunting'],
+        'jurnal.diubah' => ['Jurnal Diubah', 'pencil-square', 'amber', 'akunting'],
+        'jurnal.diposting' => ['Jurnal Diposting', 'check-circle', 'indigo', 'akunting'],
+        'jurnal.dibalik' => ['Jurnal Dibalik', 'arrow-uturn-left', 'amber', 'akunting'],
+        'jurnal.dihapus' => ['Jurnal Dihapus', 'trash', 'rose', 'akunting'],
+        'jurnal.diimpor' => ['Jurnal Diimpor', 'arrow-down-tray', 'indigo', 'akunting'],
+        // Akses
+        'user.dibuat' => ['User Baru', 'user-plus', 'blue', 'akses'],
+        'user.diubah' => ['User Diubah', 'pencil-square', 'blue', 'akses'],
+        'user.diaktifkan' => ['User Diaktifkan', 'check-circle', 'emerald', 'akses'],
+        'user.dinonaktifkan' => ['User Dinonaktifkan', 'no-symbol', 'rose', 'akses'],
+        'user.sandi_direset' => ['Password Direset', 'key', 'amber', 'akses'],
+        'peran.dibuat' => ['Role Baru', 'plus-circle', 'blue', 'akses'],
+        'peran.diganti_nama' => ['Role Diganti Nama', 'pencil-square', 'blue', 'akses'],
+        'peran.dihapus' => ['Role Dihapus', 'trash', 'rose', 'akses'],
+        'izin.diberikan' => ['Izin Diberikan', 'lock-open', 'emerald', 'akses'],
+        'izin.dicabut' => ['Izin Dicabut', 'lock-closed', 'rose', 'akses'],
     ];
 
     /** Deskripsi tooltip per event — dijelaskan supaya user paham. */
@@ -94,7 +136,7 @@ new #[Title('Monitoring')] class extends Component
         'materai.stamped'   => 'e-Materai ditempel di dokumen SPR final (langkah terakhir). SPR sekarang sah bermaterai.',
         'unit.created'         => 'Unit rumah baru ditambahkan ke master data.',
         'unit.updated'         => 'Data unit rumah diubah (blok, tipe, harga, dll).',
-        'unit.status_changed'  => 'Status unit berubah antara Tersedia / Booking / Terjual.',
+        'unit.status_changed'  => 'Status unit berubah antara Tersedia / Booking / Terjual, beserta sebabnya. Perubahan tangan di Master Rumah tercatat sebagai manual.',
         'tipe.created'         => 'Tipe rumah baru ditambahkan (luas, harga, skema uang muka).',
         'tipe.updated'         => 'Data tipe rumah diubah — harga dan skema uang muka unit baru mengikuti perubahan ini.',
         'tipe.deleted'         => 'Tipe rumah dihapus dari master data.',
@@ -103,6 +145,38 @@ new #[Title('Monitoring')] class extends Component
         'sertifikat.diperbarui' => 'Data sertifikat yang sudah tercatat dikoreksi — isi lama dan barunya tersimpan di riwayat unitnya.',
         'sertifikat.ke_bank'   => 'Sertifikat diserahkan ke bank sebagai jaminan kredit, disertai dokumen serah terima.',
         'sertifikat.bast_dibatalkan' => 'Penyerahan ke bank dibatalkan — sertifikatnya kembali berstatus Terbit.',
+        'biaya_tambahan.dibayar' => 'Pembayaran biaya tambahan unit dicatat dengan nomor kuitansinya.',
+        'biaya_tambahan.dikoreksi' => 'Pembayaran biaya tambahan yang sudah dicatat dikoreksi; isi lama dan barunya tersimpan.',
+        'biaya_tambahan.dihapus' => 'Pembayaran biaya tambahan yang salah catat dihapus.',
+        'biaya_tambahan.direfund' => 'Biaya tambahan SPR yang batal dikembalikan ke konsumen.',
+        'pemberkasan.bank' => 'Admin KPR memilih atau mengganti bank KPR konsumen.',
+        'pemberkasan.berkas' => 'Berkas KPR konsumen dinyatakan lengkap dan diserahkan ke bank.',
+        'pemberkasan.wawancara' => 'Tanggal wawancara bank diisi atau dikoreksi.',
+        'pemberkasan.sp3k' => 'SP3K dari bank dicatat: tanggal, nomor, masa berlaku, dan nominalnya.',
+        'pemberkasan.lpa' => 'Tanggal LPA (khusus BTN) diisi atau dikoreksi.',
+        'pemberkasan.npwp' => 'NPWP konsumen diperbarui dari halaman pemberkasan.',
+        'rencana_akad.dibuat' => 'Admin KPR membuat rencana akad baru.',
+        'rencana_akad.diajukan' => 'Rencana akad diajukan ke Project Manager.',
+        'rencana_akad.diketahui' => 'Project Manager menyetujui rencana akad.',
+        'rencana_akad.fix' => 'Rencana akad selesai; tanggal akad unit-unitnya terkunci.',
+        'rencana_akad.dikembalikan' => 'Rencana akad dikembalikan ke Draft untuk diperbaiki.',
+        'rencana_akad.batal' => 'Rencana akad dibatalkan.',
+        'jurnal.dibuat' => 'Jurnal baru dibuat sebagai draft.',
+        'jurnal.diubah' => 'Jurnal draft diubah.',
+        'jurnal.diposting' => 'Jurnal diposting dan tidak bisa diubah lagi.',
+        'jurnal.dibalik' => 'Jurnal yang sudah diposting dibalik dengan jurnal reversal.',
+        'jurnal.dihapus' => 'Jurnal draft dihapus.',
+        'jurnal.diimpor' => 'Jurnal diimpor massal dari berkas Excel; dicatat sekali per impor.',
+        'user.dibuat' => 'Akun user baru dibuat beserta role-nya.',
+        'user.diubah' => 'Data atau role user diubah.',
+        'user.diaktifkan' => 'Akun user diaktifkan kembali.',
+        'user.dinonaktifkan' => 'Akun user dinonaktifkan dan tidak bisa masuk lagi.',
+        'user.sandi_direset' => 'Password user direset oleh admin.',
+        'peran.dibuat' => 'Role baru dibuat.',
+        'peran.diganti_nama' => 'Nama role diganti.',
+        'peran.dihapus' => 'Role dihapus.',
+        'izin.diberikan' => 'Izin akses diberikan ke sebuah role.',
+        'izin.dicabut' => 'Izin akses dicabut dari sebuah role.',
     ];
 
     /**
@@ -116,7 +190,28 @@ new #[Title('Monitoring')] class extends Component
      */
     private function logTerpantau(): array
     {
-        return array_values(array_filter(array_keys(self::CATEGORIES)));
+        return collect(array_keys(self::CATEGORIES))
+            ->filter()
+            ->flatMap(fn ($kategori) => $this->logNames($kategori))
+            ->values()
+            ->all();
+    }
+
+    /** @return list<string> */
+    private function logNames(string $kategori): array
+    {
+        return [$kategori, ...(self::LOG_TAMBAHAN[$kategori] ?? [])];
+    }
+
+    public function kategoriLabel(?string $logName): string
+    {
+        foreach (self::LOG_TAMBAHAN as $kategori => $nama) {
+            if (in_array($logName, $nama, true)) {
+                $logName = $kategori;
+            }
+        }
+
+        return self::CATEGORIES[$logName ?? ''][0] ?? ucfirst((string) $logName);
     }
 
     public function setCategory(string $c): void
@@ -154,7 +249,7 @@ new #[Title('Monitoring')] class extends Component
     {
         $query = Activity::query()
             ->when($this->category !== '',
-                fn ($q) => $q->where('log_name', $this->category),
+                fn ($q) => $q->whereIn('log_name', $this->logNames($this->category)),
                 fn ($q) => $q->whereIn('log_name', $this->logTerpantau()))
             ->when($this->eventFilter, fn ($q) => $q->where('event', $this->eventFilter))
             ->where('id', '>', $this->lastSeenId);
@@ -198,7 +293,7 @@ new #[Title('Monitoring')] class extends Component
         $query = Activity::query()->with(['causer', 'subject']);
 
         if ($this->category !== '') {
-            $query->where('log_name', $this->category);
+            $query->whereIn('log_name', $this->logNames($this->category));
         } else {
             $query->whereIn('log_name', $this->logTerpantau());
         }
@@ -211,12 +306,12 @@ new #[Title('Monitoring')] class extends Component
             $query->where('event', $this->eventFilter);
         }
 
-        $activities = $query->orderByDesc('created_at')->paginate(25);
+        $activities = $query->orderByDesc('created_at')->orderByDesc('id')->paginate(25);
 
         // Ringkasan count per event untuk periode aktif (independen dari eventFilter)
         $summaryQuery = Activity::query()
             ->when($this->category !== '',
-                fn ($q) => $q->where('log_name', $this->category),
+                fn ($q) => $q->whereIn('log_name', $this->logNames($this->category)),
                 fn ($q) => $q->whereIn('log_name', $this->logTerpantau()))
             ->when($start = $this->rangeStart(), fn ($q) => $q->where('created_at', '>=', $start));
 
@@ -273,7 +368,7 @@ new #[Title('Monitoring')] class extends Component
             <div>
                 <flux:heading size="xl">{{ __('Monitoring') }}</flux:heading>
                 <flux:subheading>
-                    {{ __('Aktivitas transaksi bisnis realtime — penjualan & keuangan') }}
+                    {{ __('Aktivitas bisnis realtime — penjualan, keuangan, pemberkasan, akunting, unit, legal, dan akses') }}
                 </flux:subheading>
             </div>
             <div class="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
@@ -377,7 +472,7 @@ new #[Title('Monitoring')] class extends Component
                         @php
                             [$lbl, $ico, $col] = $this::EVENT_LABELS[$act->event] ?? [$act->event ?? 'Activity', 'sparkles', 'zinc', null];
                             $props = $act->properties ?? collect();
-                            $causerName = $act->causer?->name ?? $act->causer?->nama ?? '—';
+                            $causerName = $act->causer?->name ?? $act->causer?->nama ?? 'Sistem';
                         @endphp
                         <li class="flex gap-3 px-4 py-3">
                             <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-{{ $col }}-100 text-{{ $col }}-700 dark:bg-{{ $col }}-950/50 dark:text-{{ $col }}-400">
@@ -396,7 +491,7 @@ new #[Title('Monitoring')] class extends Component
                                     </span>
                                     @if ($act->log_name)
                                         <span class="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                                            {{ ucfirst($act->log_name) }}
+                                            {{ $this->kategoriLabel($act->log_name) }}
                                         </span>
                                     @endif
                                     <span>·</span>
