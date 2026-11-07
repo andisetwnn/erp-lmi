@@ -39,6 +39,32 @@ class Jurnal extends Model
         'RJE' => 'Reversing Journal Entry (jurnal balik AJP)',
     ];
 
+    /**
+     * Induk akun yang menentukan kategori, urut dari yang paling menentukan.
+     * Jurnal kas + bank sekaligus (pengisian kas, belanja dibayar dari bank) ikut BANK.
+     */
+    private const KATEGORI_DARI_INDUK_AKUN = ['1501' => 'AKM', '1002' => 'BANK', '1001' => 'KAS'];
+
+    /**
+     * Kategori yang sesuai dengan akun-akun di jurnal — cocok dengan 3.042 dari 3.050 jurnal
+     * buku Keuangan Des 2025–Sep 2026. Null kalau tidak ada akun kas, bank, atau akumulasi
+     * penyusutan (PENJ, HPP, RJE tetap dipilih sendiri).
+     *
+     * @param  iterable<string>  $kodeAkun
+     */
+    public static function kategoriDariAkun(iterable $kodeAkun): ?string
+    {
+        $kode = collect($kodeAkun)->filter()->map(fn ($k) => (string) $k);
+
+        foreach (self::KATEGORI_DARI_INDUK_AKUN as $induk => $kategori) {
+            if ($kode->contains(fn ($k) => str_starts_with($k, $induk.'.'))) {
+                return $kategori;
+            }
+        }
+
+        return null;
+    }
+
     protected $casts = [
         'tanggal' => 'date',
         'posted_at' => 'datetime',

@@ -46,6 +46,12 @@ new #[Title('Jurnal Umum')] class extends Component
 
     public string $kategori_bukti = 'KAS';
 
+    /** Kategori dipilih sendiri, bukan mengikuti akun di baris jurnal. */
+    public bool $kategoriManual = false;
+
+    /** No bukti jurnal yang sedang diedit, sebelum kategori/bulannya diganti. */
+    public string $noBuktiAsli = '';
+
     public string $keterangan = '';
 
     /**
@@ -90,19 +96,43 @@ new #[Title('Jurnal Umum')] class extends Component
         return app(JurnalService::class)->generateNoBukti($perusahaanId, $kat, $tgl);
     }
 
-    /** Refresh no_bukti otomatis saat kategori atau tanggal berubah (form create). */
     public function updatedKategoriBukti(): void
     {
-        if (! $this->editId) {
-            $this->no_bukti = $this->generateNoBukti();
-        }
+        $this->kategoriManual = true;
+        $this->pratinjauNoBukti();
     }
 
     public function updatedTanggal(): void
     {
-        if (! $this->editId) {
-            $this->no_bukti = $this->generateNoBukti();
+        $this->pratinjauNoBukti();
+    }
+
+    /** Selama kategori belum dipilih sendiri, kategori mengikuti akun kas/bank/akumulasi di baris jurnal. */
+    public function updatedDetail(mixed $nilai, ?string $kunci = null): void
+    {
+        $gantiAkun = $kunci === null || ! str_contains($kunci, '.') || str_ends_with($kunci, 'coa_id');
+        if ($this->kategoriManual || ! $gantiAkun) {
+            return;
         }
+
+        $saran = Jurnal::kategoriDariAkun(Coa::whereIn('id', collect($this->detail)->pluck('coa_id')->filter())->pluck('kode'));
+        if ($saran && $saran !== $this->kategori_bukti) {
+            $this->kategori_bukti = $saran;
+            $this->pratinjauNoBukti();
+        }
+    }
+
+    /**
+     * Nomor yang dipakai saat disimpan. Saat edit, nomor lama tetap selama kategori dan
+     * bulannya sama — aturan yang sama dengan JurnalService::update().
+     */
+    protected function pratinjauNoBukti(): void
+    {
+        $prefix = app(JurnalService::class)->prefixNoBukti($this->kategori_bukti, $this->tanggal ?: now()->toDateString());
+
+        $this->no_bukti = $this->editId && str_starts_with($this->noBuktiAsli, $prefix)
+            ? $this->noBuktiAsli
+            : $this->generateNoBukti();
     }
 
     public function updated($property): void
@@ -180,7 +210,7 @@ new #[Title('Jurnal Umum')] class extends Component
     {
         abort_unless(Auth::user()?->can('jurnal.umum.kelola'), 403);
 
-        $this->reset(['editId', 'keterangan']);
+        $this->reset(['editId', 'keterangan', 'kategoriManual', 'noBuktiAsli']);
         $this->tanggal = now()->toDateString();
         $this->kategori_bukti = 'KAS';
         $this->no_bukti = $this->generateNoBukti($this->tanggal, $this->kategori_bukti);
@@ -235,8 +265,10 @@ new #[Title('Jurnal Umum')] class extends Component
         }
         $this->editId = $j->id;
         $this->tanggal = $j->tanggal->toDateString();
-        $this->no_bukti = $j->no_bukti;
+        $this->noBuktiAsli = $j->no_bukti;
         $this->kategori_bukti = $j->kategori_bukti ?: 'KAS';
+        // PENJ, HPP, RJE selalu pilihan sendiri — jangan sampai tergeser oleh akun kas di barisnya.
+        $this->kategoriManual = ! in_array($this->kategori_bukti, ['KAS', 'BANK', 'AKM'], true);
         $this->keterangan = (string) $j->keterangan;
         $this->detail = $j->detail->map(fn ($d) => [
             'coa_id' => $d->coa_id,
@@ -244,6 +276,8 @@ new #[Title('Jurnal Umum')] class extends Component
             'kredit' => $d->kredit > 0 ? number_format((float) $d->kredit, 0, ',', '.') : '',
             'rekanan' => RekananPilihan::nilai($d->rekanan_type, $d->rekanan_id),
         ])->toArray();
+        // Jurnal yang nomornya sudah tidak cocok dengan kategorinya langsung terlihat akan dinomori ulang.
+        $this->pratinjauNoBukti();
         $this->resetErrorBag();
         Flux::modal('form-jurnal')->show();
     }
@@ -305,12 +339,9 @@ new #[Title('Jurnal Umum')] class extends Component
 
         try {
             if ($this->editId) {
-                $jurnal = Jurnal::findOrFail($this->editId);
-                $jurnal->kategori_bukti = $this->kategori_bukti;
-                $jurnal->save();
-                $jurnal = $svc->update($jurnal, [
+                $jurnal = $svc->update(Jurnal::findOrFail($this->editId), [
                     'tanggal' => $this->tanggal,
-                    'no_bukti' => $this->no_bukti,
+                    'kategori_bukti' => $this->kategori_bukti,
                     'keterangan' => $this->keterangan ?: null,
                 ], $details);
             } else {
@@ -674,13 +705,19 @@ new #[Title('Jurnal Umum')] class extends Component
 
             {{-- Header form --}}
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <flux:select wire:model.live="kategori_bukti" label="Kategori Jurnal" required>
+                <flux:select wire:model.live="kategori_bukti" label="Kategori Jurnal" required
+                             description="Mengikuti akun kas, bank, atau akumulasi penyusutan yang dipilih. Bisa diganti.">
                     @foreach (\App\Models\Akunting\Jurnal::KATEGORI_BUKTI as $kode => $label)
                         <flux:select.option value="{{ $kode }}">{{ $kode }} — {{ $label }}</flux:select.option>
                     @endforeach
                 </flux:select>
                 <flux:input type="date" wire:model.live="tanggal" label="Tanggal" required />
-                <flux:input wire:model="no_bukti" label="No Bukti" readonly />
+                <div>
+                    <flux:input wire:model="no_bukti" label="No Bukti" readonly />
+                    @if ($editId && $noBuktiAsli !== '' && $no_bukti !== $noBuktiAsli)
+                        <p class="mt-1 text-xs text-amber-600">{{ __('Menggantikan :nomor karena kategori atau bulannya berubah.', ['nomor' => $noBuktiAsli]) }}</p>
+                    @endif
+                </div>
                 <div class="sm:col-span-3">
                     <flux:textarea wire:model="keterangan" label="Keterangan" rows="2"
                                    placeholder="Deskripsi transaksi (muncul di buku besar)" />

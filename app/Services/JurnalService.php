@@ -78,10 +78,21 @@ class JurnalService
 
         $this->validateBalance($details);
 
+        $nomorLama = $jurnal->no_bukti;
+
         $hasil = DB::transaction(function () use ($jurnal, $data, $details) {
+            $kategori = $data['kategori_bukti'] ?? $jurnal->kategori_bukti;
+
+            // Nomor bukti mengikuti kategori dan bulan. Selama keduanya tetap, nomornya tetap;
+            // kalau berganti, nomor lama ditinggalkan supaya tidak ada KAS/... berkategori AKM.
+            $noBukti = $kategori && ! str_starts_with($jurnal->no_bukti, $this->prefixNoBukti($kategori, $data['tanggal']))
+                ? $this->generateNoBukti($jurnal->perusahaan_id, $kategori, $data['tanggal'])
+                : $jurnal->no_bukti;
+
             $jurnal->update([
                 'tanggal' => $data['tanggal'],
-                'no_bukti' => $data['no_bukti'],
+                'no_bukti' => $noBukti,
+                'kategori_bukti' => $kategori,
                 'tipe' => $data['tipe'] ?? $jurnal->tipe,
                 'keterangan' => $data['keterangan'] ?? null,
             ]);
@@ -102,7 +113,7 @@ class JurnalService
             return $jurnal->fresh('detail');
         });
 
-        BusinessActivityLogger::jurnal($hasil, 'diubah');
+        BusinessActivityLogger::jurnal($hasil, 'diubah', $hasil->no_bukti !== $nomorLama ? "Nomor bukti {$nomorLama} → {$hasil->no_bukti}" : null);
 
         return $hasil;
     }
@@ -191,8 +202,7 @@ class JurnalService
      */
     public function generateNoBukti(int $perusahaanId, string $kategori, string $tanggal): string
     {
-        $tgl = Carbon::parse($tanggal);
-        $prefix = strtoupper($kategori).'/'.$tgl->format('m').'/'.$tgl->format('y').'/';
+        $prefix = $this->prefixNoBukti($kategori, $tanggal);
 
         $lastSeq = Jurnal::where('perusahaan_id', $perusahaanId)
             ->where('no_bukti', 'like', $prefix.'%')
@@ -201,6 +211,12 @@ class JurnalService
             ->max() ?? 0;
 
         return $prefix.str_pad((string) ($lastSeq + 1), 4, '0', STR_PAD_LEFT);
+    }
+
+    /** Awalan no bukti untuk kategori + bulan, mis. "AKM/10/26/". */
+    public function prefixNoBukti(string $kategori, string $tanggal): string
+    {
+        return strtoupper($kategori).'/'.Carbon::parse($tanggal)->format('m/y').'/';
     }
 
     /** Delete jurnal draft (posted tidak bisa di-hapus, cuma reverse). */
