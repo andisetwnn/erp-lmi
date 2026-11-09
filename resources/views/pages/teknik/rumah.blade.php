@@ -55,10 +55,10 @@ new #[Title('Data Rumah — Teknik')] class extends Component
     public ?int $massal_progres = null;
 
     /**
-     * LOT diisi BERURUTAN dari nomor ini, bukan nilai yang sama untuk semua.
-     * LOT adalah nomor sertifikat — menyeragamkannya akan membuat data ganda.
+     * LOT = gelombang pembangunan: semua unit yang dipilih masuk LOT yang sama
+     * (dikonfirmasi user 9 Nov 2026; sebelumnya keliru dianggap nomor sertifikat).
      */
-    public ?int $massal_lot_mulai = null;
+    public ?int $massal_lot = null;
 
     public string $val_catatan = '';
 
@@ -113,7 +113,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
             return;
         }
 
-        $this->reset(['massal_subcon_id', 'massal_progres', 'massal_lot_mulai']);
+        $this->reset(['massal_subcon_id', 'massal_progres', 'massal_lot']);
         $this->val_catatan = '';
         $this->resetErrorBag();
         Flux::modal('update-massal')->show();
@@ -130,29 +130,27 @@ new #[Title('Data Rumah — Teknik')] class extends Component
         $this->validate([
             'massal_subcon_id' => ['nullable', 'exists:subcon,id'],
             'massal_progres' => ['nullable', 'integer', 'min:0', 'max:100'],
-            'massal_lot_mulai' => ['nullable', 'integer', 'min:0', 'max:9999'],
+            'massal_lot' => ['nullable', 'integer', 'min:0', 'max:9999'],
             'val_catatan' => ['nullable', 'string', 'max:500'],
         ], [], [
             'massal_subcon_id' => 'subcon',
             'massal_progres' => 'progres fisik',
-            'massal_lot_mulai' => 'LOT mulai dari',
+            'massal_lot' => 'LOT',
         ]);
 
-        if ($this->massal_subcon_id === null && $this->massal_progres === null && $this->massal_lot_mulai === null) {
+        if ($this->massal_subcon_id === null && $this->massal_progres === null && $this->massal_lot === null) {
             Flux::toast(variant: 'warning', text: 'Tidak ada yang diisi — tidak ada yang diubah.');
 
             return;
         }
 
-        // Urutkan seperti tampilan supaya penomoran LOT mengikuti urutan blok-unit.
         $daftar = Rumah::whereIn('id', $this->terpilih)
             ->orderBy('blok')->orderBy('nomor_unit')
             ->get();
 
-        $lot = $this->massal_lot_mulai;
         $jumlahLog = 0;
 
-        DB::transaction(function () use ($daftar, &$lot, &$jumlahLog) {
+        DB::transaction(function () use ($daftar, &$jumlahLog) {
             foreach ($daftar as $r) {
                 $ubah = [];
 
@@ -160,8 +158,8 @@ new #[Title('Data Rumah — Teknik')] class extends Component
                     $ubah['subcon_id'] = $this->massal_subcon_id;
                 }
 
-                if ($this->massal_lot_mulai !== null) {
-                    $ubah['lot'] = $lot++;
+                if ($this->massal_lot !== null) {
+                    $ubah['lot'] = $this->massal_lot;
                 }
 
                 $progresLama = (int) $r->progres_fisik;
@@ -190,7 +188,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
         Flux::modal('update-massal')->close();
         Flux::toast(variant: 'success', text: $daftar->count().' unit diperbarui.');
 
-        $this->reset(['terpilih', 'massal_subcon_id', 'massal_progres', 'massal_lot_mulai', 'val_catatan']);
+        $this->reset(['terpilih', 'massal_subcon_id', 'massal_progres', 'massal_lot', 'val_catatan']);
     }
 
     public function openUpdate(int $rumahId): void
@@ -329,7 +327,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
                 </div>
                 <div>
                     <flux:heading size="xl">{{ __('Data Rumah — Teknik') }}</flux:heading>
-                    <flux:subheading>Progres pembangunan fisik, LOT sertifikat, & subcon per unit</flux:subheading>
+                    <flux:subheading>Progres pembangunan fisik, LOT (gelombang pembangunan), & subcon per unit</flux:subheading>
                 </div>
             </div>
         </div>
@@ -604,13 +602,12 @@ new #[Title('Data Rumah — Teknik')] class extends Component
             @error('massal_progres') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
 
             <div>
-                <flux:input type="number" min="0" max="9999" wire:model="massal_lot_mulai"
-                            label="LOT — mulai dari nomor" placeholder="kosongkan kalau tidak diubah" />
+                <flux:input type="number" min="0" max="9999" wire:model="massal_lot"
+                            label="LOT (gelombang pembangunan)" placeholder="kosongkan kalau tidak diubah" />
                 <p class="mt-1 text-xs text-zinc-500">
-                    LOT diisi <strong>berurutan</strong> mengikuti urutan blok-unit, bukan nomor
-                    yang sama untuk semua &mdash; nomor sertifikat tidak boleh kembar.
+                    Semua unit yang dipilih masuk ke LOT yang sama.
                 </p>
-                @error('massal_lot_mulai') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
+                @error('massal_lot') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
             </div>
 
             <flux:textarea wire:model="val_catatan" rows="2" label="Catatan Perubahan"
@@ -664,7 +661,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
                 @error('val_progres') <div class="mt-1 text-xs text-rose-600">{{ $message }}</div> @enderror
             </div>
 
-            <flux:input type="number" min="0" max="9999" wire:model="val_lot" label="LOT (Nomor Sertifikat)" placeholder="opsional" />
+            <flux:input type="number" min="0" max="9999" wire:model="val_lot" label="LOT (Gelombang Pembangunan)" placeholder="opsional" />
             @error('val_lot') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
 
             <flux:select wire:model="val_subcon_id" label="Subcon (Pemborong)">

@@ -5,7 +5,11 @@ use App\Models\Master\Proyek;
 use App\Models\Master\Rumah;
 use App\Models\Master\Spr;
 use App\Models\Master\TargetMarketing;
+use App\Models\Matrix\MatrixImport;
 use Carbon\CarbonImmutable;
+use Flux\Flux;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
@@ -205,6 +209,106 @@ new #[Title('Dashboard')] class extends Component
         return $hasil;
     }
 
+    /** Kartu Persediaan Rumah yang bisa dibuka rinciannya. */
+    public const KARTU_PERSEDIAAN = [
+        'total_kavling', 'akad', 'sudah_dibangun', 'belum_dibangun',
+        'konsumen_aktif', 'konsumen_non_lot', 'stok_awal', 'stok_berjalan',
+    ];
+
+    /** Kartu Persediaan Rumah yang rinciannya sedang dibuka. */
+    public ?string $rincianPersediaan = null;
+
+    public string $cariRincian = '';
+
+    public function bukaRincianPersediaan(string $kunci): void
+    {
+        if (! in_array($kunci, self::KARTU_PERSEDIAAN, true)) {
+            return;
+        }
+
+        $this->rincianPersediaan = $kunci;
+        $this->cariRincian = '';
+        Flux::modal('rincian-persediaan')->show();
+    }
+
+    public function tutupRincianPersediaan(): void
+    {
+        $this->reset('rincianPersediaan', 'cariRincian');
+    }
+
+    /**
+     * Penyaring unit untuk tiap kartu Persediaan Rumah. Dipakai untuk angka di kartu
+     * sekaligus daftar rinciannya, supaya jumlah baris selalu sama dengan angkanya.
+     *
+     * - Tahap pembangunan mengikuti LOT (gelombang pembangunan): unit yang sudah turun
+     *   LOT sedang/sudah dibangun. Progres fisik tidak dipakai karena belum diperbarui
+     *   rutin oleh admin teknik. Akad, dibangun, dan belum dibangun membagi habis kavling.
+     * - Stok kavling = total dikurangi akad, bukan unit berstatus "available": unit
+     *   ditandai terjual begitu SPR disetujui, padahal menurut manajemen selama belum
+     *   akad ia masih stok. Stok awal tahun hanya dikurangi akad sebelum tahun terpilih,
+     *   menurut tanggal akad (bukan tanggal SPR) — SPR Desember yang akad Februari
+     *   termasuk penjualan tahun berikutnya.
+     */
+    protected function saringPersediaan(string $kunci, Builder $q): Builder
+    {
+        $akad = Spr::query()->select('rumah_id')->where('status', 'akad');
+        $dibeli = Spr::query()->select('rumah_id')->whereIn('status', ['submitted', 'approved']);
+        $akadSebelumTahunIni = Spr::query()->select('rumah_id')->where('status', 'akad')
+            ->whereNotNull('tgl_akad')
+            ->where('tgl_akad', '<', CarbonImmutable::create($this->selectedTahun, 1, 1)->toDateString());
+
+        return match ($kunci) {
+            'akad' => $q->whereIn('id', $akad),
+            'sudah_dibangun' => $q->whereNotNull('lot')->whereNotIn('id', $akad),
+            'belum_dibangun' => $q->whereNull('lot')->whereNotIn('id', $akad),
+            'konsumen_aktif' => $q->whereIn('id', $dibeli)->whereNotIn('id', $akad),
+            'konsumen_non_lot' => $q->whereIn('id', $dibeli)->whereNotIn('id', $akad)->whereNull('lot'),
+            'stok_awal' => $q->whereNotIn('id', $akadSebelumTahunIni),
+            'stok_berjalan' => $q->whereNotIn('id', $akad),
+            default => $q,
+        };
+    }
+
+    /**
+     * Unit di balik kartu yang dibuka, beserta pembelinya bila ada.
+     *
+     * @return Collection<int, array{unit: string, blok: string, nomor: int, tipe: ?string, lot: ?int, progres: int, konsumen: ?string, sales: ?string, tahap: ?string, tanggal: mixed}>
+     */
+    protected function daftarRincianPersediaan(): Collection
+    {
+        $rumah = $this->saringPersediaan($this->rincianPersediaan, Rumah::query()->whereIn('proyek_id', Proyek::pluck('id')))
+            ->with('tipeRumah:id,tipe')
+            ->get(['id', 'tipe_rumah_id', 'blok', 'nomor_unit', 'lot', 'progres_fisik']);
+
+        $spr = Spr::whereIn('rumah_id', $rumah->pluck('id'))
+            ->whereIn('status', ['submitted', 'approved', 'akad'])
+            ->with(['prospectCustomer:id,nama_lengkap', 'sales:id,nama'])
+            ->orderByDesc('id')
+            ->get()
+            ->unique('rumah_id')
+            ->keyBy('rumah_id');
+
+        $cari = mb_strtolower(trim($this->cariRincian));
+
+        return $rumah
+            ->map(function (Rumah $r) use ($spr) {
+                $s = $spr[$r->id] ?? null;
+
+                return [
+                    'unit' => $r->kode_unit, 'blok' => $r->blok, 'nomor' => (int) $r->nomor_unit,
+                    'tipe' => $r->tipeRumah?->tipe, 'lot' => $r->lot, 'progres' => (int) $r->progres_fisik,
+                    'konsumen' => $s?->prospectCustomer?->nama_lengkap, 'sales' => $s?->sales?->nama,
+                    'tahap' => match ($s?->status) {
+                        'akad' => 'Akad', 'approved' => 'Disetujui', 'submitted' => 'Diajukan', default => null
+                    },
+                    'tanggal' => $s ? ($s->status === 'akad' ? $s->tgl_akad : $s->tanggal_spr) : null,
+                ];
+            })
+            ->filter(fn ($b) => $cari === '' || str_contains(mb_strtolower($b['unit'].' '.$b['konsumen'].' '.$b['sales']), $cari))
+            ->sortBy([['blok', 'asc'], ['nomor', 'asc']])
+            ->values();
+    }
+
     /**
      * Matrix Persediaan Rumah per proyek (state saat ini).
      * Return: ['metrics' => [ [label, icon, color, values_per_proyek, showDetail] ]]
@@ -227,54 +331,22 @@ new #[Title('Dashboard')] class extends Component
         $rumahSelesai = $countByProyek(fn ($q) => $q->where('progres_fisik', 100));
         $rumahProses = $countByProyek(fn ($q) => $q->whereBetween('progres_fisik', [1, 99]));
 
-        // Akad & UTJ dari SPR (join rumah untuk proyek_id)
-        $akadCount = Spr::query()
-            ->join('rumah', 'rumah.id', '=', 'spr.rumah_id')
-            ->where('spr.status', 'akad')
-            ->groupBy('rumah.proyek_id')
-            ->pluck(DB::raw('COUNT(*)'), 'rumah.proyek_id');
-        $utjBelumAkad = Spr::query()
-            ->join('rumah', 'rumah.id', '=', 'spr.rumah_id')
-            ->where('spr.status', 'approved')
-            ->whereNotNull('spr.utj_confirmed_at')
-            ->groupBy('rumah.proyek_id')
-            ->pluck(DB::raw('COUNT(*)'), 'rumah.proyek_id');
+        $per = fn (string $kunci) => $countByProyek(fn ($q) => $this->saringPersediaan($kunci, $q));
+        $akadUnit = $per('akad');
+        $sudahDibangun = $per('sudah_dibangun');
+        $belumDibangun = $per('belum_dibangun');
+        $konsumenAktif = $per('konsumen_aktif');
+        $konsumenNonLot = $per('konsumen_non_lot');
+        $stokAwal = $per('stok_awal');
+        $stokBerjalan = $per('stok_berjalan');
 
-        // Stok kavling di awal tahun terpilih: total kavling dikurangi akad tahun-tahun
-        // sebelumnya. Acuannya AKAD, bukan SPR — unit yang SPR-nya sudah disetujui tapi
-        // belum akad masih terhitung stok menurut manajemen.
-        //
-        // Patokannya tanggal akad, bukan tanggal SPR dibuat. Keduanya bisa terpaut
-        // bulanan, dan SPR yang dibuat Desember lalu akad Februari termasuk penjualan
-        // tahun berikutnya.
-        $awalTahun = CarbonImmutable::create($this->selectedTahun, 1, 1);
-        $akadSebelumTahunIni = Spr::query()
-            ->join('rumah', 'rumah.id', '=', 'spr.rumah_id')
-            ->where('spr.status', 'akad')
-            ->whereNotNull('spr.tgl_akad')
-            ->where('spr.tgl_akad', '<', $awalTahun->toDateString())
-            ->groupBy('rumah.proyek_id')
-            // Hitungannya diberi alias, bukan dioper mentah ke pluck(): pluck memotong
-            // nama kolom di titik terakhir, sehingga COUNT(DISTINCT spr.rumah_id)
-            // terbaca sebagai properti "rumah_id)" dan meledak begitu hasilnya tidak kosong.
-            ->selectRaw('rumah.proyek_id, COUNT(DISTINCT spr.rumah_id) as jml')
-            ->pluck('jml', 'proyek_id');
-
-        // Stok kavling berjalan: total kavling dikurangi seluruh akad — bukan jumlah
-        // unit berstatus "available". Unit ditandai terjual begitu SPR-nya disetujui,
-        // padahal menurut manajemen selama belum akad ia masih terhitung stok. Memakai
-        // status rumah membuat angkanya nol walau ratusan unit belum diakadkan.
-        //
-        // Panel ini bertajuk "proyek to date", jadi yang dikurangkan seluruh akad sejak
-        // proyek berdiri, bukan akad tahun berjalan saja.
-        $stokBerjalan = collect();
-        foreach ($proyekList as $p) {
-            $stokBerjalan[$p->id] = max(0, (int) ($totalKavling[$p->id] ?? 0) - (int) ($akadCount[$p->id] ?? 0));
-        }
-        $stokAwal = collect();
-        foreach ($proyekList as $p) {
-            $stokAwal[$p->id] = max(0, (int) ($totalKavling[$p->id] ?? 0) - (int) ($akadSebelumTahunIni[$p->id] ?? 0));
-        }
+        $komposisi = $proyekList->map(fn ($p) => [
+            'nama' => $p->nama_proyek,
+            'total' => (int) ($totalKavling[$p->id] ?? 0),
+            'akad' => (int) ($akadUnit[$p->id] ?? 0),
+            'dibangun' => (int) ($sudahDibangun[$p->id] ?? 0),
+            'belum' => (int) ($belumDibangun[$p->id] ?? 0),
+        ])->filter(fn ($k) => $k['total'] > 0)->values();
 
         $metrics = [
             [
@@ -282,12 +354,24 @@ new #[Title('Dashboard')] class extends Component
                 'info' => 'Seluruh unit yang terdaftar di master rumah, apa pun statusnya. Ini pembagi untuk persentase di baris lain.',
             ],
             [
-                'key' => 'akad', 'label' => 'Akad', 'icon' => 'check-badge', 'color' => 'emerald', 'values' => $akadCount, 'persen' => true,
+                'key' => 'akad', 'label' => 'Akad', 'icon' => 'check-badge', 'color' => 'emerald', 'values' => $akadUnit, 'persen' => true,
                 'info' => 'Unit yang SPR-nya sudah berstatus akad — serah terima selesai. Persentasenya terhadap Total Rencana Kavling.',
             ],
             [
-                'key' => 'utj', 'label' => 'UTJ Belum Akad', 'icon' => 'clock', 'color' => 'amber', 'values' => $utjBelumAkad,
-                'info' => 'SPR yang sudah disetujui dan UTJ-nya sudah dikonfirmasi keuangan, tapi belum sampai akad. Ini antrean yang sedang berjalan.',
+                'key' => 'sudah_dibangun', 'label' => 'Sudah Dibangun, Belum Akad', 'icon' => 'wrench-screwdriver', 'color' => 'orange', 'values' => $sudahDibangun,
+                'info' => 'Unit yang sudah turun LOT (masuk pembangunan) tapi belum akad, baik sudah ada pembelinya maupun belum.',
+            ],
+            [
+                'key' => 'belum_dibangun', 'label' => 'Belum Dibangun', 'icon' => 'map-pin', 'color' => 'zinc', 'values' => $belumDibangun,
+                'info' => 'Sisa kavling yang belum turun LOT dan belum akad, baik sudah ada pembelinya maupun belum.',
+            ],
+            [
+                'key' => 'konsumen_aktif', 'label' => 'Konsumen Aktif', 'icon' => 'user-group', 'color' => 'amber', 'values' => $konsumenAktif,
+                'info' => 'Konsumen yang sudah membeli — SPR-nya diajukan atau disetujui — tapi belum akad.',
+            ],
+            [
+                'key' => 'konsumen_non_lot', 'label' => 'Konsumen Non LOT', 'icon' => 'clock', 'color' => 'rose', 'values' => $konsumenNonLot,
+                'info' => 'Konsumen aktif yang unitnya belum turun LOT — sudah membeli, tapi rumahnya belum mulai dibangun.',
             ],
             [
                 'key' => 'stok_awal', 'label' => 'Stok Kavling Awal '.$this->selectedTahun, 'icon' => 'calendar', 'color' => 'violet', 'values' => $stokAwal, 'persen' => true,
@@ -312,7 +396,12 @@ new #[Title('Dashboard')] class extends Component
             ],
         ];
 
-        return compact('proyekList', 'metrics', 'totalKavling');
+        // Tahap pembangunan hanya sesegar data LOT-nya, yang datang dari unggahan Matrix
+        // atau diisi admin teknik di menu Teknik.
+        $lotDiperbarui = Rumah::whereIn('proyek_id', $proyekIds)->max('progres_updated_at');
+        $matrixTerakhir = MatrixImport::latest('id')->first(['nama_file', 'created_at']);
+
+        return compact('proyekList', 'metrics', 'totalKavling', 'komposisi', 'lotDiperbarui', 'matrixTerakhir');
     }
 
     public function with(): array
@@ -332,6 +421,7 @@ new #[Title('Dashboard')] class extends Component
             'now' => $now,
             'marketing' => $this->marketingMatrix(),
             'persediaan' => $this->persediaanMatrix(),
+            'rincian' => $this->rincianPersediaan ? $this->daftarRincianPersediaan() : collect(),
         ];
     }
 }; ?>
@@ -393,6 +483,187 @@ new #[Title('Dashboard')] class extends Component
                     </div>
                 </div>
             </div>
+        </div>
+
+        {{-- ═════════════ PERSEDIAAN RUMAH (matrix per proyek) ═════════════ --}}
+        @php
+            $metricColorMap = [
+                'sky' => 'bg-sky-500', 'emerald' => 'bg-emerald-500', 'amber' => 'bg-amber-500',
+                'indigo' => 'bg-indigo-500', 'rose' => 'bg-rose-500', 'orange' => 'bg-orange-500',
+                'violet' => 'bg-violet-500', 'zinc' => 'bg-zinc-400',
+            ];
+        @endphp
+        <div class="mb-6 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+            <div class="mb-3 flex items-center gap-2">
+                <flux:icon.home-modern class="size-5 text-emerald-600" />
+                <h2 class="text-base font-bold">Persediaan Rumah</h2>
+
+                {{-- Penjelasan ditaruh di judul, bukan per baris: isi tabel berada di dalam
+                     kotak yang bisa digeser menyamping, dan apa pun yang muncul dari dalam
+                     sana ikut terpotong oleh kotak itu. --}}
+                <x-info-button title="Persediaan Rumah">
+                    <p class="mb-3">Arti tiap baris, supaya angka yang mirip tidak tertukar:</p>
+                    <dl class="space-y-2.5">
+                        @foreach ($persediaan['metrics'] as $m)
+                            @continue($m['sembunyi'] ?? false)
+                            <div>
+                                <dt class="font-semibold text-zinc-900 dark:text-zinc-100">{{ $m['label'] }}</dt>
+                                <dd class="text-zinc-600 dark:text-zinc-400">{{ $m['info'] }}</dd>
+                            </div>
+                        @endforeach
+                    </dl>
+                </x-info-button>
+
+                <span class="ml-auto text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Proyek to Date</span>
+            </div>
+
+            {{-- Kartu ringkas: seluruh kavling terbagi habis menjadi akad, sudah dibangun
+                 (sudah turun LOT), dan belum dibangun; lalu konsumen yang belum akad.
+                 Angkanya gabungan semua proyek; tabel rincian per proyek baru muncul kalau
+                 proyeknya lebih dari satu, supaya angka yang sama tidak tampil dua kali. --}}
+            @php
+                $k = [
+                    'total' => $persediaan['komposisi']->sum('total'),
+                    'akad' => $persediaan['komposisi']->sum('akad'),
+                    'dibangun' => $persediaan['komposisi']->sum('dibangun'),
+                    'belum' => $persediaan['komposisi']->sum('belum'),
+                ];
+                $nilaiMetrik = fn (string $kunci) => (int) collect(collect($persediaan['metrics'])->firstWhere('key', $kunci)['values'] ?? [])->sum();
+                $aktif = $nilaiMetrik('konsumen_aktif');
+                $nonLot = $nilaiMetrik('konsumen_non_lot');
+                $persen = fn (int $v) => $k['total'] > 0 ? round($v / $k['total'] * 100).'% dari total kavling' : '';
+                $kartu = [
+                    ['Total Kavling', $k['total'], 'Seluruh unit di master rumah', 'map', 'bg-sky-500', 'total_kavling'],
+                    ['Akad', $k['akad'], $persen($k['akad']), 'check-badge', 'bg-emerald-500', 'akad'],
+                    ['Sudah Dibangun, Belum Akad', $k['dibangun'], $num($aktif - $nonLot).' sudah laku · '.$num($k['dibangun'] - ($aktif - $nonLot)).' belum laku', 'wrench-screwdriver', 'bg-orange-500', 'sudah_dibangun'],
+                    ['Belum Dibangun', $k['belum'], $num($nonLot).' sudah laku · '.$num($k['belum'] - $nonLot).' belum laku', 'map-pin', 'bg-zinc-400', 'belum_dibangun'],
+                    ['Konsumen Aktif', $aktif, 'Sudah beli, belum akad', 'user-group', 'bg-amber-500', 'konsumen_aktif'],
+                    ['Konsumen Non LOT', $nonLot, 'Sudah beli, belum turun LOT', 'clock', 'bg-rose-500', 'konsumen_non_lot'],
+                    ['Stok Kavling Awal '.$this->selectedTahun, $nilaiMetrik('stok_awal'), $persen($nilaiMetrik('stok_awal')), 'calendar', 'bg-violet-500', 'stok_awal'],
+                    ['Stok Kavling Berjalan', $nilaiMetrik('stok_berjalan'), 'Total kavling dikurangi seluruh akad', 'squares-2x2', 'bg-indigo-500', 'stok_berjalan'],
+                ];
+            @endphp
+            @if ($k['total'] > 0)
+                <div class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    @foreach ($kartu as [$label, $nilai, $keterangan, $ikon, $warna, $kunci])
+                        <button type="button" wire:click="bukaRincianPersediaan('{{ $kunci }}')" title="{{ __('Lihat unit') }}"
+                                class="cursor-pointer rounded-lg border border-zinc-200 bg-white p-3 text-left transition hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
+                            <div class="flex items-center gap-2">
+                                <span class="flex size-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm {{ $warna }}">
+                                    <flux:icon :name="$ikon" class="size-4" />
+                                </span>
+                                <span class="text-[10px] font-bold uppercase leading-tight tracking-wide text-zinc-500 dark:text-zinc-400">{{ $label }}</span>
+                                <flux:icon.chevron-right class="ml-auto size-3.5 shrink-0 text-zinc-400" />
+                            </div>
+                            <div class="mt-2 font-mono text-2xl font-bold tabular-nums text-zinc-900 dark:text-zinc-100">{{ $num($nilai) }}</div>
+                            <div class="mt-0.5 text-[11px] leading-tight text-zinc-500 dark:text-zinc-400">{{ $keterangan }}</div>
+                        </button>
+                    @endforeach
+                </div>
+                <p @class(['-mt-2 text-[11px] text-zinc-500 dark:text-zinc-400', 'mb-4' => $persediaan['komposisi']->count() > 1])>
+                    {{ __('Sudah/belum dibangun mengikuti LOT.') }}
+                    @if ($persediaan['lotDiperbarui'])
+                        {{ __('Data LOT terakhir diperbarui') }} <b>{{ \Illuminate\Support\Carbon::parse($persediaan['lotDiperbarui'])->translatedFormat('j M Y') }}</b>.
+                    @endif
+                    @if ($persediaan['matrixTerakhir'])
+                        {{ __('Matrix terakhir diunggah') }}: {{ $persediaan['matrixTerakhir']->nama_file }} ({{ $persediaan['matrixTerakhir']->created_at->translatedFormat('j M Y') }}).
+                    @endif
+                </p>
+            @endif
+
+            {{-- Rincian kartu: daftar unit di balik angka yang diklik --}}
+            <flux:modal name="rincian-persediaan" class="w-full max-w-5xl" @close="tutupRincianPersediaan">
+                @php $judulRincian = collect($kartu)->firstWhere(5, $rincianPersediaan); @endphp
+                <div class="space-y-4">
+                    <div>
+                        <flux:heading size="lg">{{ $judulRincian[0] ?? __('Rincian') }} · {{ $num($judulRincian[1] ?? 0) }} {{ __('unit') }}</flux:heading>
+                        <flux:subheading>{{ $judulRincian[2] ?? '' }}</flux:subheading>
+                    </div>
+                    <flux:input wire:model.live.debounce.300ms="cariRincian" icon="magnifying-glass" :placeholder="__('Cari unit, konsumen, atau sales')" />
+                    <div class="max-h-[60vh] overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-700">
+                        <table class="w-full text-xs">
+                            <thead class="sticky top-0 bg-zinc-50 text-[10px] uppercase text-zinc-500 dark:bg-zinc-800">
+                                <tr>
+                                    <th class="px-3 py-2 text-left">{{ __('Unit') }}</th>
+                                    <th class="px-3 py-2 text-left">{{ __('Tipe') }}</th>
+                                    <th class="px-3 py-2 text-center">{{ __('LOT') }}</th>
+                                    <th class="px-3 py-2 text-right">{{ __('Progres') }}</th>
+                                    <th class="px-3 py-2 text-left">{{ __('Konsumen') }}</th>
+                                    <th class="px-3 py-2 text-left">{{ __('Tahap') }}</th>
+                                    <th class="px-3 py-2 text-left">{{ __('Tanggal') }}</th>
+                                    <th class="px-3 py-2 text-left">{{ __('Sales') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
+                                @forelse ($rincian as $b)
+                                    <tr wire:key="rincian-{{ $b['unit'] }}">
+                                        <td class="whitespace-nowrap px-3 py-2 font-mono font-semibold">{{ $b['unit'] }}</td>
+                                        <td class="whitespace-nowrap px-3 py-2">{{ $b['tipe'] ?? '—' }}</td>
+                                        <td class="px-3 py-2 text-center font-mono">{{ $b['lot'] ?? '—' }}</td>
+                                        <td class="px-3 py-2 text-right font-mono tabular-nums">{{ $b['progres'] }}%</td>
+                                        <td @class(['px-3 py-2', 'text-zinc-400' => ! $b['konsumen']])>{{ $b['konsumen'] ?? __('Belum laku') }}</td>
+                                        <td class="whitespace-nowrap px-3 py-2">{{ $b['tahap'] ?? '—' }}</td>
+                                        <td class="whitespace-nowrap px-3 py-2 font-mono">{{ $b['tanggal'] ? \Illuminate\Support\Carbon::parse($b['tanggal'])->format('d/m/Y') : '—' }}</td>
+                                        <td class="whitespace-nowrap px-3 py-2">{{ $b['sales'] ?? '—' }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="8" class="px-3 py-8 text-center text-zinc-400">{{ __('Tidak ada unit yang cocok.') }}</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-[11px] text-zinc-500">{{ $num($rincian->count()) }} {{ __('unit ditampilkan') }}{{ $cariRincian !== '' ? ' '.__('dari').' '.$num($judulRincian[1] ?? 0) : '' }}.</p>
+                </div>
+            </flux:modal>
+
+            @if ($persediaan['komposisi']->count() > 1)
+            <div class="overflow-x-auto" data-rincian="persediaan-per-proyek">
+                <table class="w-full text-xs">
+                    <thead class="bg-zinc-50 text-[10px] uppercase text-zinc-500 dark:bg-zinc-800">
+                        <tr>
+                            <th class="w-56 px-3 py-2 text-left"></th>
+                            <th class="px-3 py-2 text-right font-bold">*ALL</th>
+                            @foreach ($persediaan['proyekList'] as $p)
+                                <th class="px-3 py-2 text-right">{{ $p->nama_proyek }}</th>
+                            @endforeach
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
+                        @foreach ($persediaan['metrics'] as $m)
+                            @continue($m['sembunyi'] ?? false)
+                            @php
+                                $totalRow = collect($m['values'])->sum();
+                                // Persentase terhadap total kavling, seperti laporan lama.
+                                $totalSemuaKavling = collect($persediaan['totalKavling'])->sum();
+                                $persenRow = ! empty($m['persen']) && $totalSemuaKavling > 0
+                                    ? (int) round($totalRow / $totalSemuaKavling * 100)
+                                    : null;
+                            @endphp
+                            <tr>
+                                <td class="whitespace-nowrap px-3 py-2">
+                                    <span class="inline-flex items-center gap-2">
+                                        <span class="flex h-7 w-7 items-center justify-center rounded text-white shadow-sm {{ $metricColorMap[$m['color']] ?? 'bg-zinc-500' }}">
+                                            <flux:icon :name="$m['icon']" class="size-4" />
+                                        </span>
+                                        <span class="font-semibold text-zinc-700 dark:text-zinc-300">{{ $m['label'] }}</span>
+                                        @if ($persenRow !== null)
+                                            <span class="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{{ $persenRow }}%</span>
+                                        @endif
+                                    </span>
+                                </td>
+                                <td class="px-3 py-2 text-right font-mono text-sm font-bold tabular-nums">{{ $num($totalRow) }}</td>
+                                @foreach ($persediaan['proyekList'] as $p)
+                                    @php $v = (int) ($m['values'][$p->id] ?? 0); @endphp
+                                    <td class="px-3 py-2 text-right font-mono tabular-nums {{ $v === 0 ? 'text-zinc-300' : 'text-zinc-800 dark:text-zinc-100' }}">{{ $num($v) }}</td>
+                                @endforeach
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            @endif
         </div>
 
         {{-- ═════════════ MARKETING PERFORMANCE (Target vs Real per proyek) ═════════════ --}}
@@ -667,84 +938,6 @@ new #[Title('Dashboard')] class extends Component
                     @endif
                 </div>
             @endforeach
-        </div>
-
-        {{-- ═════════════ PERSEDIAAN RUMAH (matrix per proyek) ═════════════ --}}
-        @php
-            $metricColorMap = [
-                'sky' => 'bg-sky-500', 'emerald' => 'bg-emerald-500', 'amber' => 'bg-amber-500',
-                'indigo' => 'bg-indigo-500', 'rose' => 'bg-rose-500', 'orange' => 'bg-orange-500',
-                'violet' => 'bg-violet-500',
-            ];
-        @endphp
-        <div class="mb-6 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-            <div class="mb-3 flex items-center gap-2">
-                <flux:icon.home-modern class="size-5 text-emerald-600" />
-                <h2 class="text-base font-bold">Persediaan Rumah</h2>
-
-                {{-- Penjelasan ditaruh di judul, bukan per baris: isi tabel berada di dalam
-                     kotak yang bisa digeser menyamping, dan apa pun yang muncul dari dalam
-                     sana ikut terpotong oleh kotak itu. --}}
-                <x-info-button title="Persediaan Rumah">
-                    <p class="mb-3">Arti tiap baris, supaya angka yang mirip tidak tertukar:</p>
-                    <dl class="space-y-2.5">
-                        @foreach ($persediaan['metrics'] as $m)
-                            @continue($m['sembunyi'] ?? false)
-                            <div>
-                                <dt class="font-semibold text-zinc-900 dark:text-zinc-100">{{ $m['label'] }}</dt>
-                                <dd class="text-zinc-600 dark:text-zinc-400">{{ $m['info'] }}</dd>
-                            </div>
-                        @endforeach
-                    </dl>
-                </x-info-button>
-
-                <span class="ml-auto text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Proyek to Date</span>
-            </div>
-
-            <div class="overflow-x-auto">
-                <table class="w-full text-xs">
-                    <thead class="bg-zinc-50 text-[10px] uppercase text-zinc-500 dark:bg-zinc-800">
-                        <tr>
-                            <th class="w-56 px-3 py-2 text-left"></th>
-                            <th class="px-3 py-2 text-right font-bold">*ALL</th>
-                            @foreach ($persediaan['proyekList'] as $p)
-                                <th class="px-3 py-2 text-right">{{ $p->nama_proyek }}</th>
-                            @endforeach
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
-                        @foreach ($persediaan['metrics'] as $m)
-                            @continue($m['sembunyi'] ?? false)
-                            @php
-                                $totalRow = collect($m['values'])->sum();
-                                // Persentase terhadap total kavling, seperti laporan lama.
-                                $totalSemuaKavling = collect($persediaan['totalKavling'])->sum();
-                                $persenRow = ! empty($m['persen']) && $totalSemuaKavling > 0
-                                    ? (int) round($totalRow / $totalSemuaKavling * 100)
-                                    : null;
-                            @endphp
-                            <tr>
-                                <td class="whitespace-nowrap px-3 py-2">
-                                    <span class="inline-flex items-center gap-2">
-                                        <span class="flex h-7 w-7 items-center justify-center rounded text-white shadow-sm {{ $metricColorMap[$m['color']] ?? 'bg-zinc-500' }}">
-                                            <flux:icon :name="$m['icon']" class="size-4" />
-                                        </span>
-                                        <span class="font-semibold text-zinc-700 dark:text-zinc-300">{{ $m['label'] }}</span>
-                                        @if ($persenRow !== null)
-                                            <span class="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{{ $persenRow }}%</span>
-                                        @endif
-                                    </span>
-                                </td>
-                                <td class="px-3 py-2 text-right font-mono text-sm font-bold tabular-nums">{{ $num($totalRow) }}</td>
-                                @foreach ($persediaan['proyekList'] as $p)
-                                    @php $v = (int) ($m['values'][$p->id] ?? 0); @endphp
-                                    <td class="px-3 py-2 text-right font-mono tabular-nums {{ $v === 0 ? 'text-zinc-300' : 'text-zinc-800 dark:text-zinc-100' }}">{{ $num($v) }}</td>
-                                @endforeach
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
         </div>
 
 

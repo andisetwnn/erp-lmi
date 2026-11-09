@@ -161,30 +161,27 @@ it('mengubah subcont beberapa unit sekaligus', function () {
         ->and($lain->fresh()->subcon_id)->toBe($this->subcon->id);
 });
 
-it('mengisi LOT berurutan, bukan nomor yang sama untuk semua', function () {
-    // LOT adalah nomor sertifikat — menyeragamkannya membuat data kembar.
+it('memasukkan semua unit yang dipilih ke LOT yang sama', function () {
+    // LOT adalah gelombang pembangunan: satu LOT berisi banyak unit.
     $dua = Rumah::create([
         'proyek_id' => $this->rumah->proyek_id, 'tipe_rumah_id' => $this->rumah->tipe_rumah_id,
         'blok' => 'ZZ', 'nomor_unit' => '02', 'status' => 'available',
-    ]);
-    $tiga = Rumah::create([
-        'proyek_id' => $this->rumah->proyek_id, 'tipe_rumah_id' => $this->rumah->tipe_rumah_id,
-        'blok' => 'ZZ', 'nomor_unit' => '03', 'status' => 'available',
     ]);
 
     $this->actingAs($this->admin);
 
     Livewire::test('pages::teknik.rumah')
-        ->set('terpilih', [$tiga->id, $this->rumah->id, $dua->id])
+        ->set('terpilih', [$dua->id, $this->rumah->id])
         ->call('openMassal')
-        ->set('massal_lot_mulai', 20)
+        ->set('massal_lot', 7)
         ->call('simpanMassal')
         ->assertHasNoErrors();
 
-    // Urutannya mengikuti blok-unit, bukan urutan dicentang.
-    expect($this->rumah->fresh()->lot)->toBe(20)
-        ->and($dua->fresh()->lot)->toBe(21)
-        ->and($tiga->fresh()->lot)->toBe(22);
+    expect($this->rumah->fresh()->lot)->toBe(7)
+        ->and($dua->fresh()->lot)->toBe(7)
+        // Waktu pembaruan ikut tercatat walau progresnya tidak berubah — dashboard
+        // direksi memakainya sebagai "data LOT per tanggal".
+        ->and($dua->fresh()->progres_updated_at)->not->toBeNull();
 });
 
 it('tidak menimpa isian yang dikosongkan', function () {
