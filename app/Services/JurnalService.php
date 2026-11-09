@@ -127,16 +127,8 @@ class JurnalService
             ]);
         }
 
-        if (! $jurnal->isBalanced()) {
-            throw ValidationException::withMessages([
-                'jurnal' => 'Total debet tidak sama dengan total kredit. Jurnal harus balance sebelum diposting.',
-            ]);
-        }
-
-        if ($jurnal->detail()->count() < 2) {
-            throw ValidationException::withMessages([
-                'jurnal' => 'Jurnal harus punya minimal 2 baris detail.',
-            ]);
+        if ($alasan = $this->alasanBelumSiapPosting($jurnal->loadMissing('detail'))) {
+            throw ValidationException::withMessages(['jurnal' => $alasan]);
         }
 
         $jurnal->update([
@@ -148,6 +140,57 @@ class JurnalService
         BusinessActivityLogger::jurnal($jurnal, 'diposting');
 
         return $jurnal->fresh();
+    }
+
+    /**
+     * Posting banyak draft sekaligus. Draft yang belum layak dilewati beserta alasannya,
+     * bukan menggagalkan semuanya; yang sudah posted diabaikan. Dicatat sekali di
+     * Monitoring — siapa dan kapan memposting tetap tersimpan di tiap jurnal.
+     *
+     * @param  iterable<int|string>  $ids
+     * @return array{diposting: list<string>, dilewati: array<string, string>, nilai: float}
+     */
+    public function postBanyak(iterable $ids, ?int $userId = null): array
+    {
+        $hasil = DB::transaction(function () use ($ids, $userId) {
+            $hasil = ['diposting' => [], 'dilewati' => [], 'nilai' => 0.0];
+
+            $draft = Jurnal::with('detail')
+                ->whereIn('id', collect($ids)->map(fn ($id) => (int) $id)->all())
+                ->where('status', 'draft')
+                ->orderBy('tanggal')->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($draft as $jurnal) {
+                if ($alasan = $this->alasanBelumSiapPosting($jurnal)) {
+                    $hasil['dilewati'][$jurnal->no_bukti] = $alasan;
+
+                    continue;
+                }
+
+                $jurnal->update(['status' => 'posted', 'posted_by_user_id' => $userId ?? Auth::id(), 'posted_at' => now()]);
+                $hasil['diposting'][] = $jurnal->no_bukti;
+                $hasil['nilai'] += $jurnal->totalDebet();
+            }
+
+            return $hasil;
+        });
+
+        if ($hasil['diposting'] !== []) {
+            BusinessActivityLogger::jurnalDipostingMassal($hasil['diposting'], $hasil['nilai']);
+        }
+
+        return $hasil;
+    }
+
+    private function alasanBelumSiapPosting(Jurnal $jurnal): ?string
+    {
+        return match (true) {
+            ! $jurnal->isBalanced() => 'Total debet tidak sama dengan total kredit. Jurnal harus balance sebelum diposting.',
+            $jurnal->detail->count() < 2 => 'Jurnal harus punya minimal 2 baris detail.',
+            default => null,
+        };
     }
 
     /**

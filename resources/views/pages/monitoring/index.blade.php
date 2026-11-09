@@ -137,6 +137,7 @@ new #[Title('Monitoring')] class extends Component
         'jurnal.dibalik' => ['Jurnal Dibalik', 'arrow-uturn-left', 'amber', 'akunting'],
         'jurnal.dihapus' => ['Jurnal Dihapus', 'trash', 'rose', 'akunting'],
         'jurnal.diimpor' => ['Jurnal Diimpor', 'arrow-down-tray', 'indigo', 'akunting'],
+        'jurnal.diposting_massal' => ['Jurnal Diposting Sekaligus', 'check-badge', 'indigo', 'akunting'],
         // Akses
         'user.dibuat' => ['User Baru', 'user-plus', 'blue', 'akses'],
         'user.diubah' => ['User Diubah', 'pencil-square', 'blue', 'akses'],
@@ -200,6 +201,7 @@ new #[Title('Monitoring')] class extends Component
         'jurnal.dibalik' => 'Jurnal yang sudah diposting dibalik dengan jurnal reversal.',
         'jurnal.dihapus' => 'Jurnal draft dihapus.',
         'jurnal.diimpor' => 'Jurnal diimpor massal dari berkas Excel; dicatat sekali per impor.',
+        'jurnal.diposting_massal' => 'Beberapa jurnal draft diposting sekaligus; dicatat sekali, daftar nomor buktinya ada di detail.',
         'user.dibuat' => 'Akun user baru dibuat beserta role-nya.',
         'user.diubah' => 'Data atau role user diubah.',
         'user.diaktifkan' => 'Akun user diaktifkan kembali.',

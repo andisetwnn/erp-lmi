@@ -76,6 +76,7 @@ class RolePermissionSeeder extends Seeder
             // ─── FINANCE ───
             'pembayaran.kelola',  // Konfirmasi UTJ + realisasi cicilan + tempel materai
             'pembayaran.approve', // Approve refund / reversal (biasanya finance-manager)
+            'utj.verifikasi',     // Verifikasi booking fee (UTJ) sehingga SPR disetujui — FAT
 
             // ─── AKUNTING ───
             'jurnal.umum.kelola',      // Input/edit jurnal umum (draft)
@@ -110,7 +111,7 @@ class RolePermissionSeeder extends Seeder
      */
     public static function matriksRole(): array
     {
-        return [
+        $matriks = [
             // Super admin: SEMUA permission
             'super-admin' => self::daftarIzin(),
 
@@ -174,6 +175,7 @@ class RolePermissionSeeder extends Seeder
                 'spr.cetak',
                 'pembayaran.kelola',
                 'pembayaran.approve',
+                'utj.verifikasi',
                 'pemberkasan.lihat',
                 'legal.lihat',
                 'biayatambahan.kelola',
@@ -245,6 +247,13 @@ class RolePermissionSeeder extends Seeder
                 'ttd.kelola',
             ],
         ];
+
+        // Staf Keuangan menyiapkan transaksi, FAT yang mengesahkan: posting jurnal dan verifikasi
+        // UTJ tetap di tangan FAT (diputuskan 9 Nov 2026). Diturunkan dari finance supaya izin
+        // keuangan yang ditambah kemudian ikut terbawa.
+        $matriks['staf-keuangan'] = array_values(array_diff($matriks['finance'], ['jurnal.post', 'utj.verifikasi']));
+
+        return $matriks;
     }
 
     /**

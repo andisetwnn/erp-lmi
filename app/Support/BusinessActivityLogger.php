@@ -82,6 +82,7 @@ class BusinessActivityLogger
         'jurnal.dibalik' => 'Jurnal Dibalik',
         'jurnal.dihapus' => 'Jurnal Dihapus',
         'jurnal.diimpor' => 'Jurnal Diimpor',
+        'jurnal.diposting_massal' => 'Jurnal Diposting Sekaligus',
         // Akses
         'user.dibuat' => 'User Baru',
         'user.diubah' => 'User Diubah',
@@ -890,6 +891,21 @@ class BusinessActivityLogger
             ->event('jurnal.diimpor')
             ->withProperties(['jumlah' => $jumlah, 'berkas' => $berkas])
             ->log("{$jumlah} jurnal diimpor dari {$berkas}");
+    }
+
+    /**
+     * Posting sekaligus dicatat sekali, bukan per jurnal; siapa dan kapan memposting
+     * tetap tersimpan di tiap jurnal.
+     *
+     * @param  list<string>  $noBukti
+     */
+    public static function jurnalDipostingMassal(array $noBukti, float $nilai): void
+    {
+        activity('akunting')
+            ->causedBy(self::causer())
+            ->event('jurnal.diposting_massal')
+            ->withProperties(['jumlah' => count($noBukti), 'nilai' => $nilai, 'no_bukti' => $noBukti])
+            ->log(count($noBukti).' jurnal diposting sekaligus · '.$noBukti[0].(count($noBukti) > 1 ? ' dan '.(count($noBukti) - 1).' lainnya' : ''));
     }
 
     // ── Akses: user, role, izin ───────────────────────────────────────────

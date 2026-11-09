@@ -82,7 +82,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // tampilan di header.
         return redirect(match (true) {
             $user->hasRole('direktur') => route('dashboard.direksi'),
-            $user->hasRole('finance') => route('dashboard.finance'),
+            $user->hasAnyRole(['finance', 'staf-keuangan']) => route('dashboard.finance'),
             $user->hasRole('project-manager') => route('dashboard.pm'),
             $user->hasRole('admin-kpr') => route('dashboard.kpr'),
             $user->hasRole('admin-sales') => route('dashboard.sales'),
@@ -101,7 +101,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('role:project-manager|super-admin')->group(function () {
         Route::livewire('dashboard/pm', 'pages::dashboard.pm')->name('dashboard.pm');
     });
-    Route::middleware('role:finance|super-admin')->group(function () {
+    Route::middleware('role:finance|staf-keuangan|super-admin')->group(function () {
         Route::livewire('dashboard/finance', 'pages::dashboard.finance')->name('dashboard.finance');
     });
     Route::middleware('role:direktur|super-admin')->group(function () {

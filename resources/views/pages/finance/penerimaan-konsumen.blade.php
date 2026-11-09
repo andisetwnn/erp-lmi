@@ -77,6 +77,9 @@ new #[Title('Penerimaan Konsumen')] class extends Component
 
     public function openKonfirmasi(int $sprId): void
     {
+        // Verifikasi UTJ mengesahkan SPR, jadi khusus FAT — staf keuangan cukup melihat antreannya.
+        abort_unless(Auth::user()?->can('utj.verifikasi'), 403);
+
         $spr = Spr::findOrFail($sprId);
         $this->confirmSprId = $spr->id;
         $this->confirmTanggalTransaksi = now()->format('Y-m-d');
@@ -89,6 +92,8 @@ new #[Title('Penerimaan Konsumen')] class extends Component
 
     public function submitKonfirmasi(): void
     {
+        abort_unless(Auth::user()?->can('utj.verifikasi'), 403);
+
         $validated = $this->validate([
             'confirmTanggalTransaksi' => ['required', 'date'],
             'confirmNominalAktual' => ['required', 'numeric', 'min:0'],
@@ -309,11 +314,15 @@ new #[Title('Penerimaan Konsumen')] class extends Component
                                 </td>
                                 <td class="whitespace-nowrap px-3 py-3 text-xs">{{ $expired?->format('d/m/Y H:i:s') ?? '—' }}</td>
                                 <td class="whitespace-nowrap px-3 py-3 text-right">
-                                    <button type="button" wire:click="openKonfirmasi({{ $s->id }})"
-                                            class="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white shadow-sm hover:bg-emerald-700">
-                                        <flux:icon.check class="size-3.5" />
-                                        Konfirmasi UTJ
-                                    </button>
+                                    @can('utj.verifikasi')
+                                        <button type="button" wire:click="openKonfirmasi({{ $s->id }})"
+                                                class="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white shadow-sm hover:bg-emerald-700">
+                                            <flux:icon.check class="size-3.5" />
+                                            Konfirmasi UTJ
+                                        </button>
+                                    @else
+                                        <span class="text-xs text-zinc-500">{{ __('Menunggu verifikasi FAT') }}</span>
+                                    @endcan
                                 </td>
                             </tr>
                         @empty

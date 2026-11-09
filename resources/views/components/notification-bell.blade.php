@@ -42,7 +42,7 @@ new class extends Component {
 
         return match (true) {
             $user?->hasRole('project-manager') => ['utj.verified'],           // UTJ verified → PM approve
-            $user?->hasRole('finance')          => ['spr.submitted', 'konsumen.signed'], // baru → UTJ, TTD → materai
+            $user?->hasAnyRole(['finance', 'staf-keuangan']) => ['spr.submitted', 'konsumen.signed'], // baru → UTJ, TTD → materai
             $user?->hasRole('admin-kpr')        => ['materai.stamped'],       // materai final → lanjut KPR pipeline
             default                              => [],                        // Direktur & super-admin: read-only observer
         };

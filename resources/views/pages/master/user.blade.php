@@ -128,6 +128,7 @@ new #[Title('Pengguna Sistem')] class extends Component
         // Finance
         'pembayaran.kelola'         => 'Kelola Penerimaan Konsumen',
         'pembayaran.approve'        => 'Approve Pembayaran',
+        'utj.verifikasi'            => 'Verifikasi UTJ',
         // Akunting
         'jurnal.umum.kelola'        => 'Kelola Jurnal Umum',
         'jurnal.bank.kelola'        => 'Kelola Jurnal Bank',
@@ -196,7 +197,8 @@ new #[Title('Pengguna Sistem')] class extends Component
         'promo.kelola'              => 'Membuat promo penjualan (potongan UM atau booking fee sesuai usia) beserta masa berlaku dan unitnya, serta melampirkan promo susulan ke SPR yang terlewat. Promo ditanggung developer — angka di SPR tidak berubah.',
         'target.kelola'             => 'Input & edit target penjualan/akad per proyek per tahun (RAB tahunan). Angka target akan tampil di matrix Marketing Performance dashboard direksi. Biasanya diinput oleh Direktur di awal tahun.',
         // Finance
-        'pembayaran.kelola'         => 'Mengakses menu Penerimaan Konsumen: konfirmasi UTJ, mencatat cicilan Uang Muka, menempelkan e-Materai, dan memproses realisasi pembayaran.',
+        'pembayaran.kelola'         => 'Mengakses menu Penerimaan Konsumen: melihat UTJ yang menunggu verifikasi, mencatat cicilan Uang Muka, menempelkan e-Materai, dan memproses realisasi pembayaran.',
+        'utj.verifikasi'            => 'Memverifikasi booking fee (UTJ) di menu Penerimaan Konsumen. Setelah diverifikasi, SPR berstatus disetujui dan menunggu persetujuan Project Manager.',
         'pembayaran.approve'        => 'Fiturnya belum tersedia — dicentang atau tidak belum berpengaruh. Rencananya: menyetujui pengembalian dana (refund) & reversal realisasi pembayaran.',
         // Akunting
         'jurnal.umum.kelola'        => 'Input, edit jurnal umum (semua kategori bukti: KAS, BANK, PENJ, HPP, AKM, RJE, dsb) di modul Akunting.',
@@ -236,6 +238,7 @@ new #[Title('Pengguna Sistem')] class extends Component
         'rencanaakad' => 'rencana akad',
         'biayatambahan' => 'biaya tambahan',
         'notifikasi'  => 'monitoring',
+        'utj'         => 'pembayaran',
     ];
 
     protected function defaultSortBy(): ?string
@@ -677,6 +680,7 @@ new #[Title('Pengguna Sistem')] class extends Component
         'direktur'        => ['label' => 'Direktur',        'cls' => 'bg-purple-100 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300'],
         'project-manager' => ['label' => 'Project Manager', 'cls' => 'bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300'],
         'finance'         => ['label' => 'Keuangan',        'cls' => 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'],
+        'staf-keuangan'   => ['label' => 'Staf Keuangan',   'cls' => 'bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-300'],
         'admin-kpr'       => ['label' => 'Admin KPR',       'cls' => 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300'],
         'admin-sales'     => ['label' => 'Admin Sales',     'cls' => 'bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300'],
         'admin-teknik'    => ['label' => 'Admin Teknik',    'cls' => 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'],

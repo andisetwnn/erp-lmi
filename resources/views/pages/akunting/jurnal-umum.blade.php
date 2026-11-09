@@ -65,6 +65,16 @@ new #[Title('Jurnal Umum')] class extends Component
     // View detail modal state
     public ?int $viewId = null;
 
+    /** @var list<string> id jurnal draft yang dicentang untuk diposting sekaligus */
+    public array $dipilih = [];
+
+    /** 'terpilih' (yang dicentang) atau 'saringan' (semua draft sesuai saringan). */
+    public string $postingMassal = '';
+
+    public int $konfirmJumlah = 0;
+
+    public float $konfirmNilai = 0;
+
     // Confirm modal state (untuk post/reverse/hapus)
     public ?string $confirmAction = null;
 
@@ -139,6 +149,7 @@ new #[Title('Jurnal Umum')] class extends Component
     {
         if (str_starts_with($property, 'filter') || $property === 'search' || $property === 'perPage') {
             $this->resetPage();
+            $this->dipilih = [];
         }
     }
 
@@ -421,28 +432,81 @@ new #[Title('Jurnal Umum')] class extends Component
         }
     }
 
+    /** Jurnal umum sesuai pencarian dan tanggal; status ikut disaring bila diminta. */
+    protected function querySaringan(bool $denganStatus = true): \Illuminate\Database\Eloquent\Builder
+    {
+        return Jurnal::query()
+            ->where('tipe', 'umum')
+            ->when($this->search !== '', fn ($q) => $q->where(fn ($qq) => $qq
+                ->where('no_bukti', 'like', "%{$this->search}%")
+                ->orWhere('keterangan', 'like', "%{$this->search}%")))
+            ->when($this->filterFrom !== '', fn ($q) => $q->whereDate('tanggal', '>=', $this->filterFrom))
+            ->when($this->filterTo !== '', fn ($q) => $q->whereDate('tanggal', '<=', $this->filterTo))
+            ->when($denganStatus && $this->filterStatus !== '', fn ($q) => $q->where('status', $this->filterStatus));
+    }
+
+    /** Draft yang akan diposting: yang dicentang, atau semua draft sesuai saringan. */
+    protected function idPostingMassal(): array
+    {
+        $q = $this->querySaringan(denganStatus: false)->where('status', 'draft');
+
+        if ($this->postingMassal === 'terpilih') {
+            $q->whereIn('id', array_map('intval', $this->dipilih));
+        }
+
+        return $q->pluck('id')->all();
+    }
+
+    public function togglePilihHalaman(array $ids): void
+    {
+        $ids = array_map('strval', $ids);
+        $this->dipilih = array_diff($ids, $this->dipilih) === []
+            ? array_values(array_diff($this->dipilih, $ids))
+            : array_values(array_unique([...$this->dipilih, ...$ids]));
+    }
+
+    public function siapkanPostingMassal(string $mode): void
+    {
+        abort_unless(Auth::user()?->can('jurnal.post'), 403);
+
+        $this->postingMassal = $mode === 'terpilih' ? 'terpilih' : 'saringan';
+        $ids = $this->idPostingMassal();
+
+        if ($ids === []) {
+            Flux::toast('Tidak ada jurnal draft untuk diposting.', variant: 'warning');
+
+            return;
+        }
+
+        $this->konfirmJumlah = count($ids);
+        $this->konfirmNilai = (float) \App\Models\Akunting\JurnalDetail::whereIn('jurnal_id', $ids)->sum('debet');
+        Flux::modal('posting-massal')->show();
+    }
+
+    public function jalankanPostingMassal(): void
+    {
+        abort_unless(Auth::user()?->can('jurnal.post'), 403);
+
+        $hasil = app(JurnalService::class)->postBanyak($this->idPostingMassal());
+
+        Flux::modal('posting-massal')->close();
+        $this->reset(['dipilih', 'postingMassal', 'konfirmJumlah', 'konfirmNilai']);
+
+        $jumlah = count($hasil['diposting']);
+        $dilewati = $hasil['dilewati'];
+        Flux::toast(
+            $dilewati === []
+                ? "{$jumlah} jurnal berhasil diposting."
+                : "{$jumlah} jurnal diposting. ".count($dilewati).' dilewati karena belum balance atau kurang baris: '.implode(', ', array_slice(array_keys($dilewati), 0, 5)).(count($dilewati) > 5 ? ', …' : '').'.',
+            variant: $dilewati === [] ? 'success' : 'warning',
+        );
+    }
+
     public function with(): array
     {
-        $q = Jurnal::query()
-            ->where('tipe', 'umum')
+        $q = $this->querySaringan()
             ->with(['detail', 'createdBy:id,name'])
             ->withCount('lampiran');
-
-        if ($this->search !== '') {
-            $q->where(function ($qq) {
-                $qq->where('no_bukti', 'like', "%{$this->search}%")
-                    ->orWhere('keterangan', 'like', "%{$this->search}%");
-            });
-        }
-        if ($this->filterFrom !== '') {
-            $q->whereDate('tanggal', '>=', $this->filterFrom);
-        }
-        if ($this->filterTo !== '') {
-            $q->whereDate('tanggal', '<=', $this->filterTo);
-        }
-        if ($this->filterStatus !== '') {
-            $q->where('status', $this->filterStatus);
-        }
 
         // Summary stats — semua jurnal umum (tidak kena filter list)
         $totalUmum = Jurnal::where('tipe', 'umum')->count();
@@ -470,6 +534,7 @@ new #[Title('Jurnal Umum')] class extends Component
             'bolehKelola' => (bool) $user?->can('jurnal.umum.kelola'),
             'bolehPost' => (bool) $user?->can('jurnal.post'),
             'bolehHapus' => (bool) $user?->can('jurnal.delete'),
+            'jumlahDraftSaringan' => $user?->can('jurnal.post') ? $this->querySaringan(denganStatus: false)->where('status', 'draft')->count() : 0,
             'jurnalList' => $q->orderByDesc('tanggal')->orderByDesc('id')
                 ->paginate((int) $this->perPage),
             'coaOptions' => Coa::query()
@@ -569,11 +634,40 @@ new #[Title('Jurnal Umum')] class extends Component
             </div>
         </div>
 
+        {{-- POSTING SEKALIGUS --}}
+        @if ($bolehPost && $jumlahDraftSaringan > 0)
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm dark:border-amber-900/40 dark:bg-amber-950/30">
+                <div class="text-amber-900 dark:text-amber-200">
+                    @if (count($dipilih))
+                        <span class="font-semibold">{{ count($dipilih) }}</span> jurnal draft dipilih
+                    @else
+                        Centang jurnal draft untuk memposting beberapa sekaligus, atau posting semua draft sesuai saringan.
+                    @endif
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    @if (count($dipilih))
+                        <flux:button size="sm" variant="ghost" wire:click="$set('dipilih', [])">Batal pilih</flux:button>
+                        <flux:button size="sm" variant="primary" icon="check-circle" wire:click="siapkanPostingMassal('terpilih')">Posting {{ count($dipilih) }} terpilih</flux:button>
+                    @endif
+                    <flux:button size="sm" icon="check-circle" wire:click="siapkanPostingMassal('saringan')">Posting semua draft ({{ number_format($jumlahDraftSaringan) }})</flux:button>
+                </div>
+            </div>
+        @endif
+
         {{-- LIST --}}
         <div class="overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900">
             <table class="w-full text-sm">
                 <thead class="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800">
                     <tr class="text-left text-xs uppercase text-zinc-500 dark:text-zinc-400">
+                        @if ($bolehPost)
+                            @php $idDraftHalaman = $jurnalList->getCollection()->where('status', 'draft')->pluck('id')->map(fn ($id) => (string) $id)->values()->all(); @endphp
+                            <th class="w-10 px-4 py-3">
+                                @if ($idDraftHalaman)
+                                    <input type="checkbox" class="size-4 rounded" style="accent-color:#059669" aria-label="Pilih semua draft di halaman ini"
+                                           wire:click="togglePilihHalaman(@js($idDraftHalaman))" @checked(array_diff($idDraftHalaman, $dipilih) === [])>
+                                @endif
+                            </th>
+                        @endif
                         <th class="px-4 py-3 font-semibold">Tanggal</th>
                         <th class="px-4 py-3 font-semibold">No Bukti</th>
                         <th class="px-4 py-3 font-semibold">Keterangan</th>
@@ -591,7 +685,14 @@ new #[Title('Jurnal Umum')] class extends Component
                             $totalDebet = $j->detail->sum('debet');
                             $totalKredit = $j->detail->sum('kredit');
                         @endphp
-                        <tr class="hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
+                        <tr class="hover:bg-zinc-50 dark:hover:bg-zinc-800/40" wire:key="jurnal-{{ $j->id }}">
+                            @if ($bolehPost)
+                                <td class="px-4 py-2.5">
+                                    @if ($j->isDraft())
+                                        <input type="checkbox" value="{{ $j->id }}" wire:model.live="dipilih" class="size-4 rounded" style="accent-color:#059669" aria-label="Pilih {{ $j->no_bukti }}">
+                                    @endif
+                                </td>
+                            @endif
                             <td class="px-4 py-2.5 whitespace-nowrap font-mono text-xs">
                                 {{ $j->tanggal->format('d M Y') }}
                             </td>
@@ -675,7 +776,7 @@ new #[Title('Jurnal Umum')] class extends Component
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" class="px-4 py-12 text-center text-zinc-400 dark:text-zinc-500">
+                            <td colspan="{{ $bolehPost ? 10 : 9 }}" class="px-4 py-12 text-center text-zinc-400 dark:text-zinc-500">
                                 Belum ada jurnal umum. Klik <strong>Buat Jurnal Baru</strong> untuk mulai.
                             </td>
                         </tr>
@@ -1017,6 +1118,34 @@ new #[Title('Jurnal Umum')] class extends Component
                 <flux:modal.close><flux:button variant="ghost">Batal</flux:button></flux:modal.close>
                 <flux:button variant="{{ $confirmAction === 'hapus' ? 'danger' : 'primary' }}" wire:click="executeConfirm">
                     {{ $c['action_label'] }}
+                </flux:button>
+            </div>
+        </div>
+    </flux:modal>
+
+    <flux:modal name="posting-massal" @class(['max-w-md'])>
+        <div class="space-y-4">
+            <div class="flex items-start gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+                    <flux:icon name="check-circle" class="size-5" />
+                </div>
+                <div>
+                    <flux:heading size="lg">Posting {{ number_format($konfirmJumlah) }} jurnal sekaligus</flux:heading>
+                    <flux:subheading>Total debet Rp {{ number_format($konfirmNilai, 0, ',', '.') }}</flux:subheading>
+                </div>
+            </div>
+            <p class="text-sm text-zinc-600 dark:text-zinc-400">
+                @if ($postingMassal === 'saringan')
+                    Semua jurnal draft {{ $filterFrom || $filterTo ? 'tanggal '.($filterFrom ? \Carbon\Carbon::parse($filterFrom)->format('d/m/Y') : 'awal').' – '.($filterTo ? \Carbon\Carbon::parse($filterTo)->format('d/m/Y') : 'sekarang') : 'dari semua tanggal' }}{{ $search !== '' ? ' yang cocok dengan “'.$search.'”' : '' }} akan diposting.
+                @else
+                    Jurnal draft yang dicentang akan diposting.
+                @endif
+                Setelah diposting, jurnal masuk Buku Besar dan laporan, dan tidak bisa diedit lagi — koreksinya lewat Reverse.
+            </p>
+            <div class="flex justify-end gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-700">
+                <flux:modal.close><flux:button variant="ghost">Batal</flux:button></flux:modal.close>
+                <flux:button variant="primary" wire:click="jalankanPostingMassal" wire:loading.attr="disabled" wire:target="jalankanPostingMassal">
+                    Posting {{ number_format($konfirmJumlah) }} jurnal
                 </flux:button>
             </div>
         </div>
