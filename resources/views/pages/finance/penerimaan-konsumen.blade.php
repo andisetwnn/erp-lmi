@@ -4,6 +4,7 @@ use App\Livewire\Concerns\Sortable;
 use App\Models\Master\Spr;
 use App\Models\Master\SprRealisasiPembayaran;
 use App\Models\Master\SprTerminPembayaran;
+use App\Services\PromoPenjualanService;
 use App\Support\BusinessActivityLogger;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
@@ -214,7 +215,22 @@ new #[Title('Penerimaan Konsumen')] class extends Component
             ])->find($this->confirmSprId)
             : null;
 
-        return compact('sprs', 'confirmSpr');
+        // Promo yang berlaku pada tanggal transfer tapi belum terpasang — hanya diingatkan. SPR yang
+        // dimasukkan setelah masa promo berakhir tidak mendapat promo otomatis, dan pemasangannya
+        // tetap lewat promo susulan di detail SPR.
+        $promoTerlewat = null;
+        if ($confirmSpr && ! $confirmSpr->promo_penjualan_id && $this->confirmTanggalTransaksi) {
+            $spr = Spr::with('rumah', 'prospectCustomer')->find($confirmSpr->id);
+            $promoTerlewat = $spr->rumah ? app(PromoPenjualanService::class)->untuk(
+                $spr->rumah,
+                $this->confirmTanggalTransaksi,
+                $spr->prospectCustomer?->tanggal_lahir,
+                (float) $spr->utj_nominal,
+                (float) $spr->um_net,
+            ) : null;
+        }
+
+        return compact('sprs', 'confirmSpr', 'promoTerlewat');
     }
 }; ?>
 
@@ -448,7 +464,7 @@ new #[Title('Penerimaan Konsumen')] class extends Component
                                 {{-- Input tanggal bawaan browser, sama seperti halaman lain. Flatpickr di
                                      sini tidak dibungkus wire:ignore, sehingga tiap render ulang Livewire
                                      menimpa kotak tanggalnya dan isinya tercampur ("202621/10/"). --}}
-                                <flux:input type="date" wire:model="confirmTanggalTransaksi"
+                                <flux:input type="date" wire:model.live="confirmTanggalTransaksi"
                                             max="{{ now()->toDateString() }}" required />
                                 <flux:description>{{ __('Tanggal masuk ke rekening sesuai mutasi.') }}</flux:description>
                                 <flux:error name="confirmTanggalTransaksi" />
@@ -462,6 +478,23 @@ new #[Title('Penerimaan Konsumen')] class extends Component
                             </flux:field>
                         </div>
                     </div>
+
+                    @if ($promoTerlewat)
+                        <div class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                            <div class="flex items-start gap-2">
+                                <flux:icon.exclamation-triangle class="mt-0.5 size-4 shrink-0" />
+                                <div>
+                                    <b>{{ __('Tanggal transfer ini masuk masa :promo, tapi SPR ini belum berpromo.', ['promo' => $promoTerlewat['promo']->nama]) }}</b>
+                                    @if ($promoTerlewat['potongan_utj'] > 0)
+                                        {{ __('Booking fee promo Rp :nominal.', ['nominal' => number_format((float) $confirmSpr->utj_nominal - $promoTerlewat['potongan_utj'], 0, ',', '.')]) }}
+                                    @else
+                                        {{ __('Potongan uang muka Rp :nominal.', ['nominal' => number_format($promoTerlewat['potongan_um'], 0, ',', '.')]) }}
+                                    @endif
+                                    {{ __('Isi nominal sesuai yang benar-benar ditransfer, lalu minta Admin Sales memasang promonya lewat "Lampirkan promo yang terlewat" di detail SPR.') }}
+                                </div>
+                            </div>
+                        </div>
+                    @endif
 
                     <div class="flex items-center justify-end gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-700">
                         <flux:modal.close>
