@@ -387,7 +387,7 @@ new #[Title('Dashboard')] class extends Component
             [
                 'key' => 'rumah_selesai', 'label' => 'Stok Rumah', 'icon' => 'home', 'color' => 'rose', 'values' => $rumahSelesai,
                 'sembunyi' => true,
-                'info' => 'Unit yang progres fisik bangunannya sudah 100 persen, terlepas dari sudah laku atau belum.',
+                'info' => 'Unit yang progres fisik bangunannya sudah 100 persen, terlepas dari sudah terjual atau belum.',
             ],
             [
                 'key' => 'rumah_proses', 'label' => 'Rumah Proses Bangun', 'icon' => 'wrench', 'color' => 'orange', 'values' => $rumahProses,
@@ -535,8 +535,8 @@ new #[Title('Dashboard')] class extends Component
                 $kartu = [
                     ['Total Kavling', $k['total'], 'Seluruh unit di master rumah', 'map', 'bg-sky-500', 'total_kavling'],
                     ['Akad', $k['akad'], $persen($k['akad']), 'check-badge', 'bg-emerald-500', 'akad'],
-                    ['Sudah Dibangun, Belum Akad', $k['dibangun'], $num($aktif - $nonLot).' sudah laku · '.$num($k['dibangun'] - ($aktif - $nonLot)).' stok', 'wrench-screwdriver', 'bg-orange-500', 'sudah_dibangun'],
-                    ['Belum Dibangun', $k['belum'], $num($nonLot).' sudah laku · '.$num($k['belum'] - $nonLot).' stok', 'map-pin', 'bg-zinc-400', 'belum_dibangun'],
+                    ['Sudah Dibangun, Belum Akad', $k['dibangun'], $num($aktif - $nonLot).' sudah terjual · '.$num($k['dibangun'] - ($aktif - $nonLot)).' belum terjual', 'wrench-screwdriver', 'bg-orange-500', 'sudah_dibangun'],
+                    ['Belum Dibangun', $k['belum'], $num($nonLot).' sudah terjual · '.$num($k['belum'] - $nonLot).' belum terjual', 'map-pin', 'bg-zinc-400', 'belum_dibangun'],
                     ['Konsumen Aktif', $aktif, 'Sudah beli, belum akad', 'user-group', 'bg-amber-500', 'konsumen_aktif'],
                     ['Konsumen Non LOT', $nonLot, 'Sudah beli, belum turun LOT', 'clock', 'bg-rose-500', 'konsumen_non_lot'],
                     ['Stok Kavling Awal '.$this->selectedTahun, $nilaiMetrik('stok_awal'), $persen($nilaiMetrik('stok_awal')), 'calendar', 'bg-violet-500', 'stok_awal'],
@@ -601,7 +601,7 @@ new #[Title('Dashboard')] class extends Component
                                         <td class="whitespace-nowrap px-3 py-2">{{ $b['tipe'] ?? '—' }}</td>
                                         <td class="px-3 py-2 text-center font-mono">{{ $b['lot'] ?? '—' }}</td>
                                         <td class="px-3 py-2 text-right font-mono tabular-nums">{{ $b['progres'] }}%</td>
-                                        <td @class(['px-3 py-2', 'text-zinc-400' => ! $b['konsumen']])>{{ $b['konsumen'] ?? __('Stok') }}</td>
+                                        <td @class(['px-3 py-2', 'text-zinc-400' => ! $b['konsumen']])>{{ $b['konsumen'] ?? __('Belum terjual') }}</td>
                                         <td class="whitespace-nowrap px-3 py-2">{{ $b['tahap'] ?? '—' }}</td>
                                         <td class="whitespace-nowrap px-3 py-2 font-mono">{{ $b['tanggal'] ? \Illuminate\Support\Carbon::parse($b['tanggal'])->format('d/m/Y') : '—' }}</td>
                                         <td class="whitespace-nowrap px-3 py-2">{{ $b['sales'] ?? '—' }}</td>
