@@ -277,7 +277,7 @@ function buatUnitPersediaan(int $urut, ?string $statusSpr, ?int $lot): void
 it('membagi seluruh kavling menjadi akad, sudah dibangun, dan belum dibangun menurut LOT', function () {
     buatUnitPersediaan(1, 'akad', 1);
     buatUnitPersediaan(2, 'approved', 2);    // dibangun, sudah ada pembeli
-    buatUnitPersediaan(3, null, 2);          // dibangun, belum laku
+    buatUnitPersediaan(3, null, 2);          // dibangun, masih stok
     buatUnitPersediaan(4, 'approved', null); // belum dibangun, sudah ada pembeli
     buatUnitPersediaan(5, 'submitted', null);
     buatUnitPersediaan(6, null, null);
@@ -304,7 +304,7 @@ it('menaruh Persediaan Rumah di atas Marketing Performance beserta kartu ringkas
     expect(strpos($html, 'Persediaan Rumah'))->toBeLessThan(strpos($html, 'Marketing Performance'))
         ->and($html)->toContain('Total Kavling')
         ->and($html)->toContain('50% dari total kavling')
-        ->and($html)->toContain('0 sudah laku · 1 belum laku')
+        ->and($html)->toContain('0 sudah laku · 1 stok')
         ->and($html)->toContain('Sudah beli, belum turun LOT');
 });
 
@@ -375,7 +375,7 @@ it('menyebutkan pembeli, tahap, dan sales pada daftar unit', function () {
         ['LT-05', 'KONSUMEN LT 5', 'Diajukan', 'Sales Persediaan'],
         ['LT-06', null, null, null],
     ]);
-    $komponen->assertSee('Belum Dibangun · 3 unit')->assertSee('Belum laku');
+    $komponen->assertSee('Belum Dibangun · 3 unit')->assertSeeHtml('text-zinc-400">Stok</td>')->assertDontSee('Belum laku');
 
     $akad = Livewire::test('pages::dashboard.direksi')->call('bukaRincianPersediaan', 'akad')->viewData('rincian')->first();
     expect($akad['tahap'])->toBe('Akad')->and($akad['konsumen'])->toBe('KONSUMEN LT 1');
