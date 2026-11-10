@@ -13,13 +13,14 @@ use App\Models\Master\SertifikatSerahTerima;
 use App\Models\Master\Spr;
 use App\Models\Master\SprRealisasiPembayaran;
 use App\Models\Master\TipeRumah;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
 /**
  * Log business events untuk Monitoring page.
- * Kategori (log_name): penjualan, keuangan, unit, tipe_rumah, legal, kpr, akunting, akses.
+ * Kategori (log_name): penjualan, keuangan, unit, tipe_rumah, legal, kpr, akunting, pembelian, akses.
  * Event: 'spr.submitted', 'spr.approved', dll — pakai naming subject.action.
  */
 class BusinessActivityLogger
@@ -83,6 +84,22 @@ class BusinessActivityLogger
         'jurnal.dihapus' => 'Jurnal Dihapus',
         'jurnal.diimpor' => 'Jurnal Diimpor',
         'jurnal.diposting_massal' => 'Jurnal Diposting Sekaligus',
+        // Pembelian
+        'pr.diajukan' => 'PR Diajukan',
+        'pr.disetujui' => 'PR Disetujui',
+        'pr.diteruskan' => 'PR Diteruskan ke Direktur',
+        'pr.dikembalikan' => 'PR Dikembalikan',
+        'pr.ditolak' => 'PR Ditolak',
+        'po.diterbitkan' => 'PO Diterbitkan',
+        'po.dibayar' => 'PO Dibayar',
+        'po.barang_datang' => 'Barang PO Datang',
+        'po.dibatalkan' => 'PO Dibatalkan',
+        'po.ditutup' => 'PO Ditutup',
+        'po.dikembalikan' => 'Pengembalian dari Supplier',
+        'supplier.dibuat' => 'Supplier Baru',
+        'supplier.diubah' => 'Supplier Diubah',
+        'supplier.dihapus' => 'Supplier Dihapus',
+        'pengaturan_pembelian.diubah' => 'Pengaturan Pembelian Diubah',
         // Akses
         'user.dibuat' => 'User Baru',
         'user.diubah' => 'User Diubah',
@@ -906,6 +923,49 @@ class BusinessActivityLogger
             ->event('jurnal.diposting_massal')
             ->withProperties(['jumlah' => count($noBukti), 'nilai' => $nilai, 'no_bukti' => $noBukti])
             ->log(count($noBukti).' jurnal diposting sekaligus · '.$noBukti[0].(count($noBukti) > 1 ? ' dan '.(count($noBukti) - 1).' lainnya' : ''));
+    }
+
+    // ── Pembelian ─────────────────────────────────────────────────────────
+
+    /**
+     * Langkah PR, PO, supplier, dan pengaturan pembelian. Dipanggil dari dalam
+     * transaksinya, jadi catatan ikut batal kalau langkahnya gagal.
+     *
+     * Pelaku diambil dari $userId bila ada (layanan menerimanya dari halaman),
+     * selain itu dari login aktif; kosong berarti dijalankan sistem, misalnya
+     * batal otomatis PO gantung.
+     *
+     * @param  array<string, mixed>  $properti  'nilai' tampil sebagai rupiah di Monitoring
+     */
+    public static function pembelian(string $event, string $kalimat, array $properti = [], ?Model $subjek = null, ?int $userId = null): void
+    {
+        $log = activity('pembelian')
+            ->causedBy($userId ? User::find($userId) : self::causer())
+            ->withProperties($properti);
+
+        match ($event) {
+            'pr.diajukan' => $log->event('pr.diajukan'),
+            'pr.disetujui' => $log->event('pr.disetujui'),
+            'pr.diteruskan' => $log->event('pr.diteruskan'),
+            'pr.dikembalikan' => $log->event('pr.dikembalikan'),
+            'pr.ditolak' => $log->event('pr.ditolak'),
+            'po.diterbitkan' => $log->event('po.diterbitkan'),
+            'po.dibayar' => $log->event('po.dibayar'),
+            'po.barang_datang' => $log->event('po.barang_datang'),
+            'po.dibatalkan' => $log->event('po.dibatalkan'),
+            'po.ditutup' => $log->event('po.ditutup'),
+            'po.dikembalikan' => $log->event('po.dikembalikan'),
+            'supplier.dibuat' => $log->event('supplier.dibuat'),
+            'supplier.diubah' => $log->event('supplier.diubah'),
+            'supplier.dihapus' => $log->event('supplier.dihapus'),
+            'pengaturan_pembelian.diubah' => $log->event('pengaturan_pembelian.diubah'),
+        };
+
+        if ($subjek) {
+            $log->performedOn($subjek);
+        }
+
+        $log->log($kalimat);
     }
 
     // ── Akses: user, role, izin ───────────────────────────────────────────

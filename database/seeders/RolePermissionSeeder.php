@@ -37,6 +37,7 @@ class RolePermissionSeeder extends Seeder
             'master.bankkpr.kelola',
             'master.notaris.kelola',
             'master.subcon.kelola',
+            'master.supplier.kelola', // Supplier barang untuk Modul Pembelian
             'master.va.kelola',       // Virtual account
             'master.coa.kelola',      // Chart of Accounts
 
@@ -78,6 +79,15 @@ class RolePermissionSeeder extends Seeder
             'pembayaran.approve', // Approve refund / reversal (biasanya finance-manager)
             'utj.verifikasi',     // Verifikasi booking fee (UTJ) sehingga SPR disetujui — FAT
 
+            // ─── PEMBELIAN (PR → review FAT → [direktur bila di atas batas] → PO → bayar → barang datang) ───
+            'pembelian.minta',     // Buat & ajukan permintaan pembelian (PR) — admin tiap departemen
+            'pembelian.review',    // Review PR sebagai Keuangan (FAT): setujui / kembalikan / tolak
+            'pembelian.anggaran',  // Setujui PR di atas batas persetujuan FAT — bawaan Direktur
+            'pembelian.po',        // Terbitkan, batalkan & cetak PO — Keuangan
+            'pembelian.bayar',     // Catat pembayaran ke supplier — Keuangan
+            'pembelian.terima',    // Catat barang datang — Keuangan / Admin Teknik
+            'pembelian.lihat',     // Lihat semua PR & PO (view-only)
+
             // ─── AKUNTING ───
             'jurnal.umum.kelola',      // Input/edit jurnal umum (draft)
             'jurnal.bank.kelola',      // Input/edit jurnal bank
@@ -118,6 +128,8 @@ class RolePermissionSeeder extends Seeder
             // Direktur: view-only (SPR, akunting, laporan, log, monitor) + kelola target
             'direktur' => [
                 'matrix.lihat',
+                'pembelian.anggaran',
+                'pembelian.lihat',
                 'rencanaakad.approve',
                 'rencanaakad.lihat',
                 'target.kelola',
@@ -143,6 +155,8 @@ class RolePermissionSeeder extends Seeder
             // Project Manager: approve SPR + kelola master proyek/tipe/rumah (untuk buka blok)
             'project-manager' => [
                 'matrix.lihat',
+                'pembelian.minta',
+                'pembelian.lihat',
                 'master.subcon.kelola',
                 'rencanaakad.mengetahui',
                 'rencanaakad.lihat',
@@ -166,6 +180,13 @@ class RolePermissionSeeder extends Seeder
             'finance' => [
                 'matrix.lihat',
                 'master.subcon.kelola',
+                'master.supplier.kelola',
+                'pembelian.minta',
+                'pembelian.review',
+                'pembelian.po',
+                'pembelian.bayar',
+                'pembelian.terima',
+                'pembelian.lihat',
                 'rencanaakad.lihat',
                 'master.bankkpr.kelola',
                 'master.notaris.kelola',
@@ -201,6 +222,7 @@ class RolePermissionSeeder extends Seeder
             // Admin KPR: kelola customer + proses pembatalan SPR + pemberkasan KPR + laporan
             'admin-kpr' => [
                 'matrix.lihat',
+                'pembelian.minta',
                 'rencanaakad.kelola',
                 'rencanaakad.lihat',
                 // Tarif biaya proses akad datang dari bank dan berubah dari
@@ -220,6 +242,7 @@ class RolePermissionSeeder extends Seeder
             // Admin Sales: kelola realisasi biaya tambahan unit + lihat SPR
             'admin-sales' => [
                 'matrix.lihat',
+                'pembelian.minta',
                 'promo.kelola',
                 'spr.akad',
                 'spr.lihat',
@@ -232,6 +255,8 @@ class RolePermissionSeeder extends Seeder
             // Admin Teknik: input progres fisik + LOT rumah (tanpa akses harga/finansial)
             'admin-teknik' => [
                 'teknik.rumah.lihat',
+                'pembelian.minta',
+                'pembelian.terima',
                 'teknik.rumah.update',
             ],
 
@@ -240,6 +265,7 @@ class RolePermissionSeeder extends Seeder
             // Marketing yang menyerahkan, tinggal dipindah tanpa mengubah kode.
             'admin-legal' => [
                 'legal.pengajuan.kelola',
+                'pembelian.minta',
                 'legal.sertifikat.kelola',
                 'legal.serahterima.kelola',
                 'legal.lihat',
@@ -249,9 +275,10 @@ class RolePermissionSeeder extends Seeder
         ];
 
         // Staf Keuangan menyiapkan transaksi, FAT yang mengesahkan: posting jurnal dan verifikasi
-        // UTJ tetap di tangan FAT (diputuskan 9 Nov 2026). Diturunkan dari finance supaya izin
-        // keuangan yang ditambah kemudian ikut terbawa.
-        $matriks['staf-keuangan'] = array_values(array_diff($matriks['finance'], ['jurnal.post', 'utj.verifikasi']));
+        // UTJ tetap di tangan FAT (diputuskan 9 Nov 2026), begitu juga persetujuan PR — untuk
+        // sementara hanya Bu Uli (10 Nov 2026). Diturunkan dari finance supaya izin keuangan yang
+        // ditambah kemudian ikut terbawa.
+        $matriks['staf-keuangan'] = array_values(array_diff($matriks['finance'], ['jurnal.post', 'utj.verifikasi', 'pembelian.review']));
 
         return $matriks;
     }

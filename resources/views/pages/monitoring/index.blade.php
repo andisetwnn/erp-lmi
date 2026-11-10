@@ -45,6 +45,7 @@ new #[Title('Monitoring')] class extends Component
         'keuangan' => ['Keuangan', 'banknotes', '#9333ea'],
         'kpr' => ['Pemberkasan', 'folder-open', '#0d9488'],
         'akunting' => ['Akunting', 'calculator', '#4f46e5'],
+        'pembelian' => ['Pembelian', 'shopping-cart', '#16a34a'],
         'unit' => ['Unit', 'home-modern', '#0284c7'],
         'legal' => ['Legal', 'document-text', '#d97706'],
         'akses' => ['Akses', 'shield-check', '#e11d48'],
@@ -65,7 +66,8 @@ new #[Title('Monitoring')] class extends Component
         'spr.rejected', 'spr.cancelled', 'realisasi.updated', 'realisasi.deleted', 'refund.processed',
         'biaya_tambahan.dikoreksi', 'biaya_tambahan.dihapus', 'biaya_tambahan.direfund',
         'tipe.deleted', 'sertifikat.bast_dibatalkan', 'rencana_akad.dikembalikan', 'rencana_akad.batal',
-        'jurnal.dibalik', 'jurnal.dihapus', 'user.dinonaktifkan', 'user.sandi_direset', 'peran.dihapus', 'izin.dicabut',
+        'jurnal.dibalik', 'jurnal.dihapus', 'pr.ditolak', 'po.dibatalkan', 'po.ditutup', 'supplier.dihapus',
+        'pengaturan_pembelian.diubah', 'user.dinonaktifkan', 'user.sandi_direset', 'peran.dihapus', 'izin.dicabut',
     ];
 
     /** Jam kerja kantor, ditandai di grafik denyut supaya aktivitas di luar jam kerja mudah terlihat. */
@@ -138,6 +140,22 @@ new #[Title('Monitoring')] class extends Component
         'jurnal.dihapus' => ['Jurnal Dihapus', 'trash', 'rose', 'akunting'],
         'jurnal.diimpor' => ['Jurnal Diimpor', 'arrow-down-tray', 'indigo', 'akunting'],
         'jurnal.diposting_massal' => ['Jurnal Diposting Sekaligus', 'check-badge', 'indigo', 'akunting'],
+        // Pembelian
+        'pr.diajukan' => ['PR Diajukan', 'document-plus', 'blue', 'pembelian'],
+        'pr.disetujui' => ['PR Disetujui', 'check-circle', 'emerald', 'pembelian'],
+        'pr.diteruskan' => ['PR Diteruskan ke Direktur', 'arrow-up-right', 'violet', 'pembelian'],
+        'pr.dikembalikan' => ['PR Dikembalikan', 'arrow-uturn-left', 'amber', 'pembelian'],
+        'pr.ditolak' => ['PR Ditolak', 'x-circle', 'rose', 'pembelian'],
+        'po.diterbitkan' => ['PO Diterbitkan', 'document-text', 'green', 'pembelian'],
+        'po.dibayar' => ['PO Dibayar', 'banknotes', 'purple', 'pembelian'],
+        'po.barang_datang' => ['Barang PO Datang', 'truck', 'teal', 'pembelian'],
+        'po.dibatalkan' => ['PO Dibatalkan', 'x-mark', 'rose', 'pembelian'],
+        'po.ditutup' => ['PO Ditutup', 'lock-closed', 'amber', 'pembelian'],
+        'po.dikembalikan' => ['Pengembalian dari Supplier', 'receipt-refund', 'emerald', 'pembelian'],
+        'supplier.dibuat' => ['Supplier Baru', 'building-storefront', 'blue', 'pembelian'],
+        'supplier.diubah' => ['Supplier Diubah', 'pencil-square', 'blue', 'pembelian'],
+        'supplier.dihapus' => ['Supplier Dihapus', 'trash', 'rose', 'pembelian'],
+        'pengaturan_pembelian.diubah' => ['Pengaturan Pembelian Diubah', 'cog-6-tooth', 'amber', 'pembelian'],
         // Akses
         'user.dibuat' => ['User Baru', 'user-plus', 'blue', 'akses'],
         'user.diubah' => ['User Diubah', 'pencil-square', 'blue', 'akses'],
@@ -202,6 +220,21 @@ new #[Title('Monitoring')] class extends Component
         'jurnal.dihapus' => 'Jurnal draft dihapus.',
         'jurnal.diimpor' => 'Jurnal diimpor massal dari berkas Excel; dicatat sekali per impor.',
         'jurnal.diposting_massal' => 'Beberapa jurnal draft diposting sekaligus; dicatat sekali, daftar nomor buktinya ada di detail.',
+        'pr.diajukan' => 'Permintaan pembelian (PR) diajukan peminta ke FAT untuk direview.',
+        'pr.disetujui' => 'PR disetujui FAT, atau oleh direktur untuk PR di atas batas persetujuan. Siap dibuatkan PO.',
+        'pr.diteruskan' => 'PR di atas batas persetujuan FAT diteruskan ke direktur untuk disetujui.',
+        'pr.dikembalikan' => 'PR dikembalikan FAT ke peminta untuk diperbaiki, beserta alasannya.',
+        'pr.ditolak' => 'PR ditolak FAT atau direktur, beserta alasannya.',
+        'po.diterbitkan' => 'Purchase Order (PO) diterbitkan ke supplier dari PR yang sudah disetujui.',
+        'po.dibayar' => 'Pembayaran ke supplier dicatat Keuangan (uang muka, bertahap, atau pelunasan).',
+        'po.barang_datang' => 'Barang dari PO datang dan dicatat; PO selesai otomatis begitu semua barang diterima.',
+        'po.dibatalkan' => 'PO dibatalkan sebelum dibayar dan sebelum ada barang datang, termasuk batal otomatis PO gantung.',
+        'po.ditutup' => 'PO ditutup karena supplier tidak sanggup mengirim sisa barang; nilai PO disesuaikan dengan barang yang datang.',
+        'po.dikembalikan' => 'Supplier mengembalikan kelebihan bayar dari PO yang ditutup; dicatat Keuangan beserta rekening penerimanya.',
+        'supplier.dibuat' => 'Supplier baru ditambahkan ke master supplier.',
+        'supplier.diubah' => 'Data supplier diubah (kontak, rekening, PKP, atau status aktif).',
+        'supplier.dihapus' => 'Supplier yang belum pernah dipakai di PO dihapus.',
+        'pengaturan_pembelian.diubah' => 'Batas persetujuan direktur atau batas hari PO gantung diubah.',
         'user.dibuat' => 'Akun user baru dibuat beserta role-nya.',
         'user.diubah' => 'Data atau role user diubah.',
         'user.diaktifkan' => 'Akun user diaktifkan kembali.',
@@ -685,7 +718,7 @@ new #[Title('Monitoring')] class extends Component
         <header class="rk-kepala">
             <div>
                 <flux:heading size="xl">{{ __('Monitoring') }}</flux:heading>
-                <flux:subheading>{{ __('Aktivitas seluruh divisi: penjualan, keuangan, pemberkasan, akunting, unit, legal, dan akses.') }}</flux:subheading>
+                <flux:subheading>{{ __('Aktivitas seluruh divisi: penjualan, keuangan, pemberkasan, akunting, pembelian, unit, legal, dan akses.') }}</flux:subheading>
                 <div class="rk-langsung"><span class="rk-titik"></span>{{ __('Langsung · diperbarui tiap 30 detik') }}</div>
             </div>
             <div class="rk-waktu" wire:ignore

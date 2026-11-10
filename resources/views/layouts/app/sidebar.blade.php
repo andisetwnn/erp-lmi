@@ -303,6 +303,51 @@
                     </flux:sidebar.group>
                 @endcan
 
+                @canany(['pembelian.minta', 'pembelian.review', 'pembelian.anggaran', 'pembelian.po', 'pembelian.bayar', 'pembelian.terima', 'pembelian.lihat', 'master.supplier.kelola'])
+                    @php
+                        // PR yang sedang menunggu tindakan orang ini: review FAT atau persetujuan direktur.
+                        $statusMenunggu = array_keys(array_filter([
+                            'diajukan' => auth()->user()?->can('pembelian.review'),
+                            'ditinjau' => auth()->user()?->can('pembelian.anggaran'),
+                        ]));
+                        $countPr = $statusMenunggu ? \App\Models\Master\PermintaanPembelian::whereIn('status', $statusMenunggu)->count() : 0;
+                    @endphp
+                    <flux:sidebar.group :heading="__('Pembelian')" icon="shopping-cart" expandable
+                                        :expanded="request()->routeIs('pembelian.*') || request()->routeIs('master.supplier.*')">
+                        @canany(['pembelian.minta', 'pembelian.review', 'pembelian.anggaran', 'pembelian.po', 'pembelian.lihat'])
+                            <flux:sidebar.item icon="clipboard-document-list" :href="route('pembelian.permintaan.index')"
+                                               :current="request()->routeIs('pembelian.permintaan.*')"
+                                               :badge="$countPr > 0 ? $countPr : null" badge-color="violet" wire:navigate>
+                                {{ __('Permintaan (PR)') }}
+                            </flux:sidebar.item>
+                        @endcanany
+                        @canany(['pembelian.po', 'pembelian.bayar', 'pembelian.terima', 'pembelian.lihat'])
+                            <flux:sidebar.item icon="document-text" :href="route('pembelian.po.index')"
+                                               :current="request()->routeIs('pembelian.po.*')" wire:navigate>
+                                {{ __('Pembelian (PO)') }}
+                            </flux:sidebar.item>
+                        @endcanany
+                        @canany(['pembelian.review', 'pembelian.anggaran', 'pembelian.po', 'pembelian.bayar', 'pembelian.lihat'])
+                            <flux:sidebar.item icon="chart-bar" :href="route('pembelian.laporan')"
+                                               :current="request()->routeIs('pembelian.laporan')" wire:navigate>
+                                {{ __('Laporan') }}
+                            </flux:sidebar.item>
+                        @endcanany
+                        @canany(['master.kelola', 'master.supplier.kelola'])
+                            <flux:sidebar.item icon="building-storefront" :href="route('master.supplier.index')"
+                                               :current="request()->routeIs('master.supplier.*')" wire:navigate>
+                                {{ __('Supplier') }}
+                            </flux:sidebar.item>
+                        @endcanany
+                        @can('pembelian.anggaran')
+                            <flux:sidebar.item icon="cog-6-tooth" :href="route('pembelian.pengaturan')"
+                                               :current="request()->routeIs('pembelian.pengaturan')" wire:navigate>
+                                {{ __('Pengaturan') }}
+                            </flux:sidebar.item>
+                        @endcan
+                    </flux:sidebar.group>
+                @endcanany
+
                 @can('pembayaran.kelola')
                     @php
                         $countUtj = \App\Models\Master\Spr::where('status', 'submitted')

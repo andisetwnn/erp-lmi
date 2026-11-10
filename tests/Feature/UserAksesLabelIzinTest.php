@@ -64,7 +64,7 @@ it('menamai grup izin dengan kata yang terbaca', function () {
     // Izin baru dengan awalan baru wajib diputuskan grupnya — tambahkan ke
     // daftar ini kalau memang grup sendiri yang namanya sudah terbaca.
     $terbaca = ['user', 'ttd', 'master', 'spr', 'promo', 'biaya tambahan', 'pemberkasan', 'rencana akad',
-        'matrix', 'legal', 'teknik', 'target', 'pembayaran', 'akunting', 'laporan', 'log', 'monitoring'];
+        'matrix', 'legal', 'teknik', 'target', 'pembayaran', 'pembelian', 'akunting', 'laporan', 'log', 'monitoring'];
 
     $isi = file_get_contents(resource_path('views/pages/master/user.blade.php'));
     preg_match("/public const PERMISSION_GROUP_MAP = \[(.*?)\n    \];/s", $isi, $blok);

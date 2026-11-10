@@ -6,6 +6,7 @@ use App\Http\Controllers\LaporanAkuntingPdfController;
 use App\Http\Controllers\PersetujuanDireksiController;
 use App\Http\Controllers\RencanaAkadCetakController;
 use App\Models\Master\Perusahaan;
+use App\Models\Master\PesananPembelian;
 use App\Models\Master\Sales;
 use App\Models\Master\Spr;
 use App\Models\Master\SprRealisasiPembayaran;
@@ -179,6 +180,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::livewire('subcon/{id}', 'pages::master.subcon-show')
                 ->name('subcon.show')->where('id', '[0-9]+');
         });
+        Route::middleware('permission:master.kelola|master.supplier.kelola')->group(function () {
+            Route::livewire('supplier', 'pages::master.supplier')->name('supplier.index');
+        });
         Route::middleware('permission:master.kelola|master.coa.kelola')->group(function () {
             Route::livewire('coa', 'pages::master.coa')->name('coa.index');
         });
@@ -249,6 +253,41 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('permission:pembayaran.kelola')->prefix('finance')->name('finance.')->group(function () {
         Route::livewire('penerimaan-konsumen', 'pages::finance.penerimaan-konsumen')->name('penerimaan-konsumen.index');
         Route::livewire('tempel-materai', 'pages::finance.tempel-materai')->name('tempel-materai.index');
+    });
+
+    // PEMBELIAN — PR → review FAT → [direktur bila di atas batas] → PO → bayar dulu → barang datang.
+    // Tiap aksi di halaman juga memeriksa izinnya sendiri; middleware di sini hanya pintu masuk.
+    Route::prefix('pembelian')->name('pembelian.')->group(function () {
+        Route::middleware('permission:pembelian.minta|pembelian.review|pembelian.anggaran|pembelian.po|pembelian.lihat')->group(function () {
+            Route::livewire('permintaan', 'pages::pembelian.permintaan')->name('permintaan.index');
+            Route::livewire('permintaan/{id}', 'pages::pembelian.permintaan-show')
+                ->name('permintaan.show')->where('id', '[0-9]+');
+        });
+        Route::middleware('permission:pembelian.minta')->group(function () {
+            Route::livewire('permintaan/baru', 'pages::pembelian.permintaan-form')->name('permintaan.create');
+            Route::livewire('permintaan/{id}/ubah', 'pages::pembelian.permintaan-form')
+                ->name('permintaan.edit')->where('id', '[0-9]+');
+        });
+        Route::middleware('permission:pembelian.po')->group(function () {
+            Route::livewire('permintaan/{id}/po', 'pages::pembelian.po-form')
+                ->name('po.create')->where('id', '[0-9]+');
+        });
+        Route::middleware('permission:pembelian.po|pembelian.bayar|pembelian.terima|pembelian.lihat')->group(function () {
+            Route::livewire('po', 'pages::pembelian.po')->name('po.index');
+            Route::livewire('po/{id}', 'pages::pembelian.po-show')->name('po.show')->where('id', '[0-9]+');
+            Route::get('po/{id}/cetak', function (int $id) {
+                $pesanan = PesananPembelian::with(['item', 'supplier.bank', 'permintaan.proyek', 'createdBy'])->findOrFail($id);
+                abort_if($pesanan->status === 'batal', 404);
+
+                return view('exports.po-print', ['pesanan' => $pesanan, 'perusahaan' => Perusahaan::first()]);
+            })->where('id', '[0-9]+')->name('po.cetak');
+        });
+        Route::middleware('permission:pembelian.review|pembelian.anggaran|pembelian.po|pembelian.bayar|pembelian.lihat')->group(function () {
+            Route::livewire('laporan', 'pages::pembelian.laporan')->name('laporan');
+        });
+        Route::middleware('permission:pembelian.anggaran')->group(function () {
+            Route::livewire('pengaturan', 'pages::pembelian.pengaturan')->name('pengaturan');
+        });
     });
 
     // AKUNTING — Input Jurnal (Umum/Bank/Kas Kecil) + Buku Besar
