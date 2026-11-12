@@ -717,7 +717,10 @@ new #[Title('Monitoring')] class extends Component
         {{-- KEPALA --}}
         <header class="rk-kepala">
             <div>
-                <flux:heading size="xl">{{ __('Monitoring') }}</flux:heading>
+                <div class="flex items-center gap-2">
+                    <flux:heading size="xl">{{ __('Monitoring') }}</flux:heading>
+                    <x-tombol-panduan modul="monitoring" />
+                </div>
                 <flux:subheading>{{ __('Aktivitas seluruh divisi: penjualan, keuangan, pemberkasan, akunting, pembelian, unit, legal, dan akses.') }}</flux:subheading>
                 <div class="rk-langsung"><span class="rk-titik"></span>{{ __('Langsung · diperbarui tiap 30 detik') }}</div>
             </div>

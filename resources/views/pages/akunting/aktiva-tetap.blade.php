@@ -264,6 +264,7 @@ new #[Title('Aktiva Tetap')] class extends Component
                 </div>
             </div>
             <div class="flex gap-2">
+                <x-tombol-panduan modul="akunting" class="self-center" />
                 <flux:button
                     variant="ghost"
                     icon="document-arrow-down"
@@ -425,7 +426,7 @@ new #[Title('Aktiva Tetap')] class extends Component
 
                 <div>
                     <label class="mb-1 block text-sm font-medium">Harga Perolehan <span class="text-red-500">*</span></label>
-                    <div x-data="rupiahInputSimple($wire.get('harga_perolehan'))">
+                    <div x-data="rupiahInputSimple('harga_perolehan')">
                         <input type="text" x-model="display" @input="$wire.set('harga_perolehan', format(display))"
                                class="w-full rounded border border-zinc-300 bg-white px-3 py-1.5 text-right font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800" placeholder="0" />
                     </div>
@@ -433,7 +434,7 @@ new #[Title('Aktiva Tetap')] class extends Component
                 </div>
                 <div>
                     <label class="mb-1 block text-sm font-medium">Nilai Residu</label>
-                    <div x-data="rupiahInputSimple($wire.get('nilai_residu'))">
+                    <div x-data="rupiahInputSimple('nilai_residu')">
                         <input type="text" x-model="display" @input="$wire.set('nilai_residu', format(display))"
                                class="w-full rounded border border-zinc-300 bg-white px-3 py-1.5 text-right font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800" placeholder="0" />
                     </div>
@@ -448,7 +449,7 @@ new #[Title('Aktiva Tetap')] class extends Component
 
                 <div>
                     <label class="mb-1 block text-sm font-medium">Akumulasi Penyusutan</label>
-                    <div x-data="rupiahInputSimple($wire.get('akumulasi_penyusutan'))">
+                    <div x-data="rupiahInputSimple('akumulasi_penyusutan')">
                         <input type="text" x-model="display" @input="$wire.set('akumulasi_penyusutan', format(display))"
                                class="w-full rounded border border-zinc-300 bg-white px-3 py-1.5 text-right font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800" placeholder="0" />
                     </div>
@@ -495,8 +496,17 @@ new #[Title('Aktiva Tetap')] class extends Component
 
     @script
     <script>
-        Alpine.data('rupiahInputSimple', (initial) => ({
-            display: initial ? String(initial).replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '',
+        Alpine.data('rupiahInputSimple', (prop) => ({
+            display: '',
+            init() {
+                // Form dipakai bergantian untuk tambah dan edit: tampilan mengikuti nilai di server
+                // (kecuali saat sedang diketik), bukan nilai saat halaman pertama dimuat.
+                const tampil = (v) => String(v ?? '').replace(/[^\d]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                this.display = tampil(this.$wire.get(prop));
+                this.$watch(() => this.$wire.get(prop), (v) => {
+                    if (! this.$el.contains(document.activeElement)) this.display = tampil(v);
+                });
+            },
             format(v) {
                 const digits = String(v).replace(/[^\d]/g, '');
                 if (! digits) return '';

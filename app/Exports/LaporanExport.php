@@ -7,6 +7,7 @@ use App\Models\Master\Sales;
 use App\Models\Master\SalesGrup;
 use App\Models\Master\Spr;
 use App\Models\Master\SprRealisasiPembayaran;
+use App\Models\Master\SprSwitching;
 use App\Support\LaporanSopFormat;
 use Carbon\Carbon;
 use Maatwebsite\Excel\Concerns\FromArray;
@@ -30,6 +31,7 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
         private ?string $search = null,
         private ?\DateTimeInterface $from = null,
         private ?\DateTimeInterface $to = null,
+        private ?string $kategori = null,
     ) {}
 
     public function title(): string
@@ -41,6 +43,7 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
             'outstanding' => 'Outstanding UM',
             'pembatalan' => 'Pembatalan SPR',
             'performance' => 'Sales Performance',
+            'pindah' => 'Pindah Kavling',
             'rekap' => 'Rekap Lengkap',
             'sop' => 'Format SOP',
             default => 'Laporan',
@@ -56,6 +59,7 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
             'outstanding' => ['No SPR', 'Tanggal SPR', 'Customer', 'NIK', 'HP', 'Blok-Unit', 'Tipe', 'Sales', 'UM Net', 'UTJ + UM Cair', 'Sisa Kurang', 'Progress %', 'Umur (hari)', 'Age Bucket'],
             'pembatalan' => ['No SPR', 'Tanggal SPR', 'Customer', 'NIK', 'Blok-Unit', 'Tipe', 'Sales', 'Alasan Pembatalan', 'Cancel Keterangan', 'Cancelled At', 'Refund Amount', 'Refund Status', 'Refund At', 'Total Harga'],
             'performance' => ['Rank', 'Kode Sales', 'Nama Sales', 'DBOS Username', 'Jumlah SPR', 'Total Nilai', 'Total KPR', 'Cash In', 'Grup'],
+            'pindah' => ['Nomor Transaksi', 'Tanggal', 'Tipe', 'Customer', 'Unit Lama', 'Unit Baru', 'Selisih Harga', 'Customer Tukar', 'Unit Lama Tukar', 'Unit Baru Tukar', 'Selisih Harga Tukar', 'Alasan', 'Diproses Oleh'],
             'rekap' => [
                 'No SPR', 'Tanggal SPR', 'Kategori',
                 'Nama Customer', 'NIK', 'HP', 'Tempat Lahir', 'Tgl Lahir', 'JK', 'Alamat', 'Agama', 'Status Kawin', 'Pekerjaan', 'Penghasilan',
@@ -82,6 +86,7 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
             'outstanding' => $this->rowsOutstanding(),
             'pembatalan' => $this->rowsPembatalan(),
             'performance' => $this->rowsPerformance(),
+            'pindah' => $this->rowsPindah(),
             'rekap' => $this->rowsRekap(),
             'sop' => $this->rowsSop(),
             default => [],
@@ -116,6 +121,9 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
         }
         if ($this->tipeId) {
             $q->whereHas('rumah', fn ($r) => $r->where('tipe_rumah_id', $this->tipeId));
+        }
+        if ($this->kategori) {
+            $q->where('spr.kategori', $this->kategori);
         }
         if ($this->search) {
             $s = $this->search;
@@ -175,6 +183,9 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
         if ($this->tipeId) {
             $q->where('tipe_rumah_id', $this->tipeId);
         }
+        if ($this->kategori) {
+            $q->whereHas('tipeRumah', fn ($t) => $t->where('kategori', $this->kategori));
+        }
         if ($this->search) {
             $s = $this->search;
             $q->where(fn ($qq) => $qq->where('blok', 'like', "%{$s}%")->orWhere('nomor_unit', 'like', '%'.Rumah::normalCari($s).'%')->orWhereRaw("CONCAT(blok,'-',nomor_unit) like ?", ['%'.Rumah::normalCari($s).'%']));
@@ -213,6 +224,9 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
         }
         if ($this->tipeId) {
             $q->whereHas('spr.rumah', fn ($r) => $r->where('tipe_rumah_id', $this->tipeId));
+        }
+        if ($this->kategori) {
+            $q->whereHas('spr', fn ($sp) => $sp->where('kategori', $this->kategori));
         }
         if ($this->search) {
             $s = $this->search;
@@ -322,6 +336,9 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
         if ($this->tipeId) {
             $sprQ->whereHas('rumah', fn ($r) => $r->where('tipe_rumah_id', $this->tipeId));
         }
+        if ($this->kategori) {
+            $sprQ->where('kategori', $this->kategori);
+        }
         $sprIds = $sprQ->pluck('id');
 
         $ranking = Sales::query()->with('grup')
@@ -355,6 +372,53 @@ class LaporanExport implements FromArray, WithHeadings, WithStyles, WithTitle
             (float) ($cashInPerSales[$s->id] ?? 0),
             SalesGrup::find($s->sales_grup_id)?->nama,
         ])->values()->toArray();
+    }
+
+    /** Pindah dan tukar kavling; saringannya sama dengan tab Pindah Kavling di layar. */
+    private function rowsPindah(): array
+    {
+        $q = SprSwitching::query()->with([
+            'sprLamaA.rumah', 'sprLamaA.prospectCustomer:id,nama_lengkap', 'sprBaruA.rumah',
+            'sprLamaB.rumah', 'sprLamaB.prospectCustomer:id,nama_lengkap', 'sprBaruB.rumah',
+            'processedBy:id,name',
+        ]);
+        if ($this->from && $this->to) {
+            $q->whereBetween('processed_at', [$this->from, $this->to]);
+        }
+        if ($this->proyekId) {
+            $q->whereHas('sprLamaA.rumah', fn ($r) => $r->where('proyek_id', $this->proyekId));
+        }
+        if ($this->search) {
+            $s = "%{$this->search}%";
+            $q->where(function ($qq) use ($s) {
+                $qq->where('nomor_switching', 'like', $s)
+                    ->orWhere('alasan', 'like', $s)
+                    ->orWhereHas('sprLamaA.prospectCustomer', fn ($p) => $p->where('nama_lengkap', 'like', $s))
+                    ->orWhereHas('sprLamaB.prospectCustomer', fn ($p) => $p->where('nama_lengkap', 'like', $s))
+                    ->orWhereHas('sprLamaA.rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", [Rumah::normalCari($s)]))
+                    ->orWhereHas('sprLamaB.rumah', fn ($r) => $r->whereRaw("CONCAT(blok,'-',nomor_unit) like ?", [Rumah::normalCari($s)]));
+            });
+        }
+
+        return $q->orderByDesc('processed_at')->get()->map(function ($sw) {
+            $tukar = $sw->tipe === 'swap';
+
+            return [
+                $sw->nomor_switching,
+                $sw->processed_at?->format('d/m/Y'),
+                $tukar ? 'Tukar' : 'Pindah',
+                $sw->sprLamaA?->prospectCustomer?->nama_lengkap,
+                $sw->sprLamaA?->rumah?->kode_unit,
+                $sw->sprBaruA?->rumah?->kode_unit,
+                (float) $sw->selisih_a,
+                $tukar ? $sw->sprLamaB?->prospectCustomer?->nama_lengkap : null,
+                $tukar ? $sw->sprLamaB?->rumah?->kode_unit : null,
+                $tukar ? $sw->sprBaruB?->rumah?->kode_unit : null,
+                $tukar ? (float) $sw->selisih_b : null,
+                $sw->alasan,
+                $sw->processedBy?->name,
+            ];
+        })->toArray();
     }
 
     /** Rekap Lengkap — all-in-one per SPR. Grain: 1 SPR = 1 row. */

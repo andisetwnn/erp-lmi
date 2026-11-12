@@ -108,11 +108,14 @@ new #[Title('Permintaan Pembelian')] class extends Component
                     <flux:subheading>{{ __('PR dari proyek dan kantor pusat, sampai disetujui untuk dibuatkan PO.') }}</flux:subheading>
                 </div>
             </div>
-            @if ($bolehMinta)
-                <flux:button variant="primary" icon="plus" :href="route('pembelian.permintaan.create')" wire:navigate>
-                    {{ __('Buat PR') }}
-                </flux:button>
-            @endif
+            <div class="flex items-center gap-2">
+                <x-tombol-panduan modul="pembelian" />
+                @if ($bolehMinta)
+                    <flux:button variant="primary" icon="plus" :href="route('pembelian.permintaan.create')" wire:navigate>
+                        {{ __('Buat PR') }}
+                    </flux:button>
+                @endif
+            </div>
         </div>
 
         @php

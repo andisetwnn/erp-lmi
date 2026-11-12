@@ -220,6 +220,7 @@ new #[Title('Approval Rencana Akad')] class extends Component
             </div>
 
             <div class="flex items-center gap-3">
+                <x-tombol-panduan modul="approval" class="self-center" />
                 <div class="rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 dark:border-violet-900 dark:bg-violet-950/40">
                     <div class="text-xs font-medium text-violet-600 dark:text-violet-300">Menunggu Approval</div>
                     <div class="text-2xl font-bold text-violet-700 dark:text-violet-200">{{ $jumlahMenunggu }}</div>

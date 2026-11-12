@@ -448,6 +448,7 @@ new #[Title('Input Pemberkasan')] class extends Component
                     <flux:heading size="xl">{{ __('Input Pemberkasan') }}</flux:heading>
                 </div>
             </div>
+            <x-tombol-panduan modul="pemberkasan" class="self-center" />
         </div>
 
         {{-- FILTER --}}

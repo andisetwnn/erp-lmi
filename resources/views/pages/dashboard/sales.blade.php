@@ -94,6 +94,7 @@ new #[Title('Dashboard')] class extends Component
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <x-dashboard-switcher current="sales" />
+                <x-tombol-panduan modul="dashboard" />
             </div>
         </div>
 

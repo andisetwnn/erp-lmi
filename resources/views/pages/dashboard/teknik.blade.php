@@ -79,6 +79,7 @@ new #[Title('Dashboard')] class extends Component
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <x-dashboard-switcher current="teknik" />
+                <x-tombol-panduan modul="teknik" />
                 @can('teknik.rumah.lihat')
                     <flux:button size="sm" variant="primary" icon="wrench" :href="route('teknik.rumah.index')" wire:navigate>
                         Data Rumah

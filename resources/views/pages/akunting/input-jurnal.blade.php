@@ -36,6 +36,7 @@ new #[Title('Input Jurnal')] class extends Component
                 </div>
                 <flux:subheading>{{ __('Pilih jenis jurnal yang mau di-input.') }}</flux:subheading>
             </div>
+            <x-tombol-panduan modul="akunting" class="ml-auto self-center" />
         </div>
 
         {{-- INFO --}}

@@ -270,6 +270,7 @@ new #[Title('Pindah Kavling')] class extends Component
                     {{ __('Kelola perpindahan customer antar kavling.') }}
                 </flux:subheading>
             </div>
+            <x-tombol-panduan modul="marketing" class="self-center" />
         </div>
 
         @if (! $filterProyek)

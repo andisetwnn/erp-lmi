@@ -378,6 +378,7 @@ new #[Title('Dashboard')] class extends Component
 
             <div class="flex flex-wrap items-center gap-2">
                 <x-dashboard-switcher current="executive" />
+                <x-tombol-panduan modul="dashboard" />
                 <div class="inline-flex items-center rounded-lg border border-zinc-200 bg-white p-1 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
                     @foreach ($this::PERIOD_OPTIONS as $k => $lbl)
                         @php $active = $period === $k; @endphp

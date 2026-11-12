@@ -209,6 +209,7 @@ new #[Title('Pembatalan SPR')] class extends Component
             </div>
 
             <div class="flex gap-2 self-start sm:self-auto">
+                <x-tombol-panduan modul="marketing" class="self-center" />
                 @can('master.kelola')
                     <flux:button variant="ghost" icon="cog-6-tooth" :href="route('master.alasan-pembatalan.index')" wire:navigate>
                         {{ __('Kelola Alasan') }}

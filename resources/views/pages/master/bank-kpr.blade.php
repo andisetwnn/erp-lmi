@@ -212,9 +212,12 @@ new #[Title('Master Bank KPR')] class extends Component
                     {{ __('Bank tempat berkas KPR diurus, beserta biaya proses akad per unitnya.') }}
                 </flux:subheading>
             </div>
-            <flux:button variant="primary" icon="plus" wire:click="create" class="self-start sm:self-auto">
-                {{ __('Tambah') }}
-            </flux:button>
+            <div class="flex gap-2 self-start sm:self-auto">
+                <x-tombol-panduan modul="pemberkasan" class="self-center" />
+                <flux:button variant="primary" icon="plus" wire:click="create">
+                    {{ __('Tambah') }}
+                </flux:button>
+            </div>
         </div>
 
         @if ($belumBertarif > 0)

@@ -62,6 +62,7 @@ new #[Title('Neraca Saldo')] class extends Component
                 </div>
             </div>
             <div class="flex gap-2">
+                <x-tombol-panduan modul="akunting" class="self-center" />
                 <flux:button variant="ghost" icon="document-arrow-down"
                              href="{{ route('akunting.neraca-saldo.excel', ['from' => $from, 'to' => $to]) }}">
                     {{ __('Excel') }}

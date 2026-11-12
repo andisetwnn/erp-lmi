@@ -163,6 +163,7 @@ new #[Title('Laporan')] class extends Component
                 search: $this->search ?: null,
                 from: $from,
                 to: $to,
+                kategori: $this->filterKategori ?: null,
             ),
             $filename,
         );
@@ -825,15 +826,18 @@ public function setPeriod(string $p): void
 
         {{-- HEADER --}}
         @php $catLabel = $this::CATEGORIES[$category][0] ?? 'Penjualan'; @endphp
-        <div class="mb-5">
-            <flux:heading size="xl">{{ __('Laporan :cat', ['cat' => $catLabel]) }}</flux:heading>
-            <flux:subheading>
-                @if ($proyekAktif)
-                    <span class="font-semibold">{{ $proyekAktif->nama_proyek }}</span>
-                @else
-                    {{ __('Pilih proyek dari sidebar untuk melihat laporan.') }}
-                @endif
-            </flux:subheading>
+        <div class="mb-5 flex items-start justify-between gap-3">
+            <div>
+                <flux:heading size="xl">{{ __('Laporan :cat', ['cat' => $catLabel]) }}</flux:heading>
+                <flux:subheading>
+                    @if ($proyekAktif)
+                        <span class="font-semibold">{{ $proyekAktif->nama_proyek }}</span>
+                    @else
+                        {{ __('Pilih proyek dari sidebar untuk melihat laporan.') }}
+                    @endif
+                </flux:subheading>
+            </div>
+            <x-tombol-panduan modul="dashboard" />
         </div>
 
         {{-- Empty state kalau belum pilih proyek --}}

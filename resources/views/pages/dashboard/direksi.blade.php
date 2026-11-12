@@ -439,7 +439,10 @@ new #[Title('Dashboard')] class extends Component
                 </div>
             </div>
             <div class="flex flex-col items-end gap-2 text-right text-xs text-zinc-500">
-                <x-dashboard-switcher current="direksi" />
+                <div class="flex items-center gap-2">
+                    <x-dashboard-switcher current="direksi" />
+                    <x-tombol-panduan modul="dashboard" />
+                </div>
                 <div>Data per {{ $now->translatedFormat('l, d F Y H:i') }}</div>
                 <div class="mt-0.5 text-[10px] uppercase tracking-wide">Bulan berjalan: {{ $now->translatedFormat('F Y') }}</div>
             </div>

@@ -191,7 +191,7 @@ new #[Title('Rencana Akad')] class extends Component
                                 <li><strong>Diketahui</strong> — PM sudah setujui, tinggal Direksi tanda tangan via link</li>
                                 <li><strong>Selesai</strong> — Direksi sudah setujui &amp; tanggal terkunci, unit tidak bisa diubah lagi</li>
                             </ol>
-                            <p class="mt-2">Syarat unit boleh dijadwalkan: <strong>uang muka lunas 100%</strong> (realisasi UM + UTJ). Sertifikat boleh belum ada, titipan boleh nol.</p>
+                            <p class="mt-2">Syarat unit boleh dijadwalkan: <strong>SPR sudah disetujui</strong> dan unitnya belum ada di rencana lain yang masih berjalan. Uang muka boleh belum lunas — kekurangannya tampil di kolom Target Masuk. Sertifikat boleh belum ada, titipan boleh nol.</p>
                             <p class="mt-2 text-xs text-zinc-500">Begitu status Selesai, tanggalnya otomatis mengisi kolom Rencana Akad di Pemberkasan — tidak perlu diketik dua kali.</p>
                         </x-info-button>
                     </div>
@@ -199,6 +199,7 @@ new #[Title('Rencana Akad')] class extends Component
                 </div>
             </div>
             <div class="flex flex-wrap items-center gap-2">
+                <x-tombol-panduan modul="pemberkasan" class="self-center" />
                 <flux:button variant="ghost" icon="squares-2x2"
                              :href="route('pemberkasan.rencana-akad.blok', ['bulan' => $bulan, 'proyek' => $proyekId])" wire:navigate>
                     {{ __('Berdasarkan Blok') }}

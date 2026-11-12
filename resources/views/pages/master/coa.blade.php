@@ -401,8 +401,9 @@ new #[Title('Master COA')] class extends Component {
 <section class="w-full">
     <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
 
-        <div class="mb-6">
+        <div class="mb-6 flex items-center justify-between gap-3">
             <flux:heading size="xl">{{ __('Master COA') }}</flux:heading>
+            <x-tombol-panduan modul="akunting" />
         </div>
 
         {{-- PILIH PERUSAHAAN --}}

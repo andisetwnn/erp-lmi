@@ -458,11 +458,11 @@ new #[Title('Daftar Booking'), Layout('layouts.dbos')] class extends Component
                             <div class="flex items-center gap-2">
                                 <p class="text-sm font-bold text-zinc-900 dark:text-white">{{ __('Setelah Booking') }}</p>
                                 <span class="rounded-md bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                                    {{ __('1 hari kerja') }}
+                                    {{ __('24 jam') }}
                                 </span>
                             </div>
                             <p class="mt-1 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
-                                {{ __('Sales wajib lanjut ke input SPR dalam 1 hari kerja. Melewati batas tersebut, unit otomatis dilepas kembali ke daftar tersedia.') }}
+                                {{ __('Sales wajib lanjut ke input SPR dalam 24 jam, termasuk hari libur. Melewati batas tersebut, unit otomatis dilepas kembali ke daftar tersedia.') }}
                             </p>
                         </div>
                     </div>

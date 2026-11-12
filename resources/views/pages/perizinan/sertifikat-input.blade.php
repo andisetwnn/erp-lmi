@@ -204,6 +204,7 @@ new #[Title('Input Data Sertifikat')] class extends Component
                 <flux:heading size="xl">{{ __('Input Data Sertifikat') }}</flux:heading>
                 <flux:subheading>{{ __('Unit yang sudah diajukan dan menunggu nomor sertifikatnya.') }}</flux:subheading>
             </div>
+            <x-tombol-panduan modul="perizinan" class="ml-auto self-center" />
         </div>
 
         @if (! $proyekId)

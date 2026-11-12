@@ -169,6 +169,7 @@ new #[Title('Serah Terima Bank')] class extends Component
                 <flux:heading size="xl">{{ __('Serah Terima Bank') }}</flux:heading>
                 <flux:subheading>{{ __('Catat penyerahan fisik sertifikat beserta BAST-nya.') }}</flux:subheading>
             </div>
+            <x-tombol-panduan modul="perizinan" class="ml-auto self-center" />
         </div>
 
         @if (! $proyekId)

@@ -193,10 +193,13 @@ new class extends Component {
             @endforelse
         </div>
 
-        <a href="{{ route('monitoring.index') }}" wire:navigate
-           class="flex items-center justify-center gap-1.5 border-t border-zinc-100 bg-zinc-50 py-2 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-800/50 dark:text-zinc-300 dark:hover:bg-zinc-800">
-            Lihat semua di Monitoring
-            <flux:icon.arrow-right class="size-3" />
-        </a>
+        {{-- Keuangan menerima lonceng tanpa izin membuka halaman Monitoring. --}}
+        @canany(['monitoring.lihat', 'log.lihat'])
+            <a href="{{ route('monitoring.index') }}" wire:navigate
+               class="flex items-center justify-center gap-1.5 border-t border-zinc-100 bg-zinc-50 py-2 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-800/50 dark:text-zinc-300 dark:hover:bg-zinc-800">
+                Lihat semua di Monitoring
+                <flux:icon.arrow-right class="size-3" />
+            </a>
+        @endcanany
     </div>
 </div>

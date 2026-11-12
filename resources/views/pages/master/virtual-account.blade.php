@@ -410,7 +410,10 @@ new #[Title('Master Virtual Account')] class extends Component
     <div class="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8">
 
         <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <flux:heading size="xl">{{ __('Master Virtual Account') }}</flux:heading>
+            <div class="flex items-center gap-2">
+                <flux:heading size="xl">{{ __('Master Virtual Account') }}</flux:heading>
+                <x-tombol-panduan modul="admin" />
+            </div>
 
             <div class="flex gap-2 self-start sm:self-auto">
                 <flux:button variant="filled" icon="document-arrow-up" wire:click="openBulk">

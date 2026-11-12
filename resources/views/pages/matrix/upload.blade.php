@@ -168,6 +168,7 @@ new #[Title('Unggah Matrix')] class extends Component {
                 <flux:heading size="xl">{{ __('Unggah Matrix') }}</flux:heading>
                 <flux:subheading>{{ __('Sumber data Laporan Mikro, Makro, dan Non Lot') }}</flux:subheading>
             </div>
+            <x-tombol-panduan modul="teknik" class="ml-auto self-center" />
         </div>
 
         <div class="flex flex-col gap-4">

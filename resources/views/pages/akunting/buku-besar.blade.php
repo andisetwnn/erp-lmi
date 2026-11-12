@@ -192,13 +192,16 @@ new #[Title('Buku Besar')] class extends Component
                     <flux:subheading>{{ __('Detail mutasi per akun dengan saldo berjalan (running balance).') }}</flux:subheading>
                 </div>
             </div>
-            @if ($coaId)
-                <flux:button variant="ghost" icon="printer"
-                             href="{{ route('akunting.buku-besar.print', array_filter(['coa' => $coaId, 'from' => $from, 'to' => $to, 'rekanan' => $rekananFilter])) }}"
-                             target="_blank">
-                    {{ __('Print / Export PDF') }}
-                </flux:button>
-            @endif
+            <div class="flex gap-2">
+                <x-tombol-panduan modul="akunting" class="self-center" />
+                @if ($coaId)
+                    <flux:button variant="ghost" icon="printer"
+                                 href="{{ route('akunting.buku-besar.print', array_filter(['coa' => $coaId, 'from' => $from, 'to' => $to, 'rekanan' => $rekananFilter])) }}"
+                                 target="_blank">
+                        {{ __('Print / Export PDF') }}
+                    </flux:button>
+                @endif
+            </div>
         </div>
 
         {{-- FILTER --}}

@@ -68,18 +68,21 @@ new #[Title('SPR')] class extends Component
             </div>
 
             {{-- QUICK SEARCH: ketik nomor SPR / nama / blok → jump ke list dgn filter --}}
-            <form method="GET" action="{{ route('marketing.spr.list') }}"
-                  class="w-full sm:w-72">
-                <div class="relative">
-                    <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
-                        <flux:icon.magnifying-glass class="size-4" />
-                    </span>
-                    <input type="text" name="q"
-                           placeholder="{{ __('Cari SPR: nomor, nama, blok...') }}"
-                           class="block w-full rounded-lg border border-zinc-200 bg-white py-2 pl-9 pr-3 text-sm text-zinc-900 shadow-sm placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-                           aria-label="{{ __('Cari SPR') }}" />
-                </div>
-            </form>
+            <div class="flex items-center gap-2">
+                <x-tombol-panduan modul="marketing" />
+                <form method="GET" action="{{ route('marketing.spr.list') }}"
+                      class="w-full sm:w-72">
+                    <div class="relative">
+                        <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
+                            <flux:icon.magnifying-glass class="size-4" />
+                        </span>
+                        <input type="text" name="q"
+                               placeholder="{{ __('Cari SPR: nomor, nama, blok...') }}"
+                               class="block w-full rounded-lg border border-zinc-200 bg-white py-2 pl-9 pr-3 text-sm text-zinc-900 shadow-sm placeholder:text-zinc-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                               aria-label="{{ __('Cari SPR') }}" />
+                    </div>
+                </form>
+            </div>
         </div>
 
         @if (! $proyekId)

@@ -130,6 +130,11 @@
                                        :current="request()->routeIs('dbos.pimpinan.activity')" wire:navigate>
                         {{ __('Aktivitas Saya') }}
                     </flux:sidebar.item>
+                    @if (\App\Support\Panduan::tersedia('dbos'))
+                        <flux:sidebar.item icon="book-open" :href="route('dbos.panduan')" target="_blank">
+                            {{ __('Panduan DBOS') }}
+                        </flux:sidebar.item>
+                    @endif
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

@@ -94,6 +94,7 @@ new #[Title('Laporan Laba Rugi')] class extends Component
                 </div>
             </div>
             <div class="flex gap-2">
+                <x-tombol-panduan modul="akunting" class="self-center" />
                 <flux:button variant="ghost" icon="document-arrow-down"
                              title="Excel selalu berisi rincian per akun — berkas kerja Accounting"
                              href="{{ route('akunting.laba-rugi.excel', ['from' => $from, 'to' => $to]) }}">

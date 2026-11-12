@@ -373,20 +373,23 @@ new #[Title('Prospect Customer')] class extends Component
         <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
             <flux:heading size="xl">{{ __('Prospect Customer') }}</flux:heading>
 
-            <flux:dropdown align="end">
-                <flux:button icon="arrow-down-tray" icon-trailing="chevron-down" variant="primary"
-                             class="bg-orange-600! hover:bg-orange-700!">
-                    {{ __('Export') }}
-                </flux:button>
-                <flux:menu>
-                    <flux:menu.item wire:click="exportExcel" icon="table-cells">
-                        {{ __('Excel') }} (.xlsx)
-                    </flux:menu.item>
-                    <flux:menu.item wire:click="exportPdf" icon="document-text">
-                        {{ __('PDF') }} (.pdf)
-                    </flux:menu.item>
-                </flux:menu>
-            </flux:dropdown>
+            <div class="flex items-center gap-2">
+                <x-tombol-panduan modul="marketing" />
+                <flux:dropdown align="end">
+                    <flux:button icon="arrow-down-tray" icon-trailing="chevron-down" variant="primary"
+                                 class="bg-orange-600! hover:bg-orange-700!">
+                        {{ __('Export') }}
+                    </flux:button>
+                    <flux:menu>
+                        <flux:menu.item wire:click="exportExcel" icon="table-cells">
+                            {{ __('Excel') }} (.xlsx)
+                        </flux:menu.item>
+                        <flux:menu.item wire:click="exportPdf" icon="document-text">
+                            {{ __('PDF') }} (.pdf)
+                        </flux:menu.item>
+                    </flux:menu>
+                </flux:dropdown>
+            </div>
         </div>
 
         @if ($filterProyek === '')

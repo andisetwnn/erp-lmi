@@ -78,6 +78,7 @@ new #[Title('Kas & Bank')] class extends Component
                 </div>
             </div>
             <div class="flex flex-wrap gap-2">
+                <x-tombol-panduan modul="akunting" class="self-center" />
                 @can('master.coa.kelola')
                     <flux:button variant="ghost" icon="plus"
                                  :href="route('master.coa.index', array_filter(['tipe' => 'aset', 'parent' => $parentKasId, 'prefill_kode' => '1001']))"

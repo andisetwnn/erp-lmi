@@ -40,6 +40,7 @@ it('mengarahkan tiap role ke dashboardnya sendiri', function (string $role, stri
     ['admin-kpr', 'dashboard.kpr'],
     ['admin-sales', 'dashboard.sales'],
     ['admin-teknik', 'dashboard.teknik'],
+    ['admin-legal', 'perizinan.sertifikat.index'],
     ['super-admin', 'dashboard.executive'],
 ]);
 

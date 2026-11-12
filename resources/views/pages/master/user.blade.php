@@ -721,11 +721,14 @@ new #[Title('Pengguna Sistem')] class extends Component
                 </div>
             </div>
 
-            @if ($activeTab === 'pengguna')
-                <flux:button variant="primary" icon="plus" wire:click="openCreate">
-                    {{ __('Tambah User') }}
-                </flux:button>
-            @endif
+            <div class="flex items-center gap-2">
+                <x-tombol-panduan modul="admin" />
+                @if ($activeTab === 'pengguna')
+                    <flux:button variant="primary" icon="plus" wire:click="openCreate">
+                        {{ __('Tambah User') }}
+                    </flux:button>
+                @endif
+            </div>
         </div>
 
         {{-- TABS --}}

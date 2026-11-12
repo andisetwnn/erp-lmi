@@ -260,23 +260,26 @@ new #[Title('Laporan Monitoring Akad')] class extends Component {
                 <flux:subheading>{{ $this->keterangan() }}</flux:subheading>
             </div>
 
-            @if ($import)
-                <div class="text-xs text-zinc-500 sm:text-right">
-                    <div class="font-semibold text-zinc-700 dark:text-zinc-300">
-                        {{ $import->proyek ?: '—' }} · {{ $import->minggu_ke ?: '—' }}
+            <div class="flex items-start gap-3">
+                @if ($import)
+                    <div class="text-xs text-zinc-500 sm:text-right">
+                        <div class="font-semibold text-zinc-700 dark:text-zinc-300">
+                            {{ $import->proyek ?: '—' }} · {{ $import->minggu_ke ?: '—' }}
+                        </div>
+                        <div>{{ $import->periode }}</div>
+                        <div>{{ __('Sumber:') }} {{ $import->nama_file }}</div>
+                        {{-- Umur data perlu terlihat: Matrix disusun mingguan, dan angka
+                             yang sudah lewat seminggu gampang disangka masih terkini. --}}
+                        <div class="mt-1 text-zinc-400">
+                            {{ __('Data per') }}
+                            {{ $import->created_at->translatedFormat('d M Y, H:i') }}
+                            · {{ __('unggahan terakhir') }}
+                            ({{ $import->created_at->diffForHumans() }})
+                        </div>
                     </div>
-                    <div>{{ $import->periode }}</div>
-                    <div>{{ __('Sumber:') }} {{ $import->nama_file }}</div>
-                    {{-- Umur data perlu terlihat: Matrix disusun mingguan, dan angka
-                         yang sudah lewat seminggu gampang disangka masih terkini. --}}
-                    <div class="mt-1 text-zinc-400">
-                        {{ __('Data per') }}
-                        {{ $import->created_at->translatedFormat('d M Y, H:i') }}
-                        · {{ __('unggahan terakhir') }}
-                        ({{ $import->created_at->diffForHumans() }})
-                    </div>
-                </div>
-            @endif
+                @endif
+                <x-tombol-panduan modul="teknik" />
+            </div>
         </div>
 
         {{-- ===== TAB ===== --}}

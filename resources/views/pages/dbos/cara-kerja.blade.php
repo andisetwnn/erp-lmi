@@ -22,6 +22,8 @@ new #[Title('Cara Kerja'), Layout('layouts.dbos')] class extends Component {
         </div>
     </div>
 
+    <x-panduan-dbos class="mb-5" />
+
     {{-- HERO BANNER --}}
     <div class="mb-5 overflow-hidden rounded-2xl bg-linear-to-br from-orange-500 via-amber-500 to-yellow-400 p-5 text-white shadow-lg">
         <div class="flex items-start gap-3">

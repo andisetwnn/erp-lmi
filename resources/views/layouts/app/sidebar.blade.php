@@ -483,6 +483,18 @@
 
             <flux:spacer />
 
+            @if (\App\Support\Panduan::untuk(auth()->user()) !== [])
+                {{-- Angka = panduan modulnya yang belum dikonfirmasi sudah dibaca (versi terbaru). --}}
+                @php $panduanBelumDibaca = \App\Support\Panduan::jumlahBelumDibaca(auth()->user()); @endphp
+                <flux:sidebar.nav>
+                    <flux:sidebar.item icon="book-open" :href="route('panduan.index')"
+                                       :current="request()->routeIs('panduan.*')"
+                                       :badge="$panduanBelumDibaca > 0 ? $panduanBelumDibaca : null" badge-color="amber" wire:navigate>
+                        {{ __('Panduan') }}
+                    </flux:sidebar.item>
+                </flux:sidebar.nav>
+            @endif
+
             <x-desktop-user-menu class="hidden lg:block" :name="auth()->user()->name" />
         </flux:sidebar>
 

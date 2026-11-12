@@ -188,6 +188,7 @@ new #[Title('e-Materai')] class extends Component
                 <flux:heading size="xl">{{ __('e-Materai') }}</flux:heading>
                 <flux:subheading>{{ __('Finalisasi SPR — pembubuhan e-Materai pada dokumen yang sudah lengkap semua tanda tangan.') }}</flux:subheading>
             </div>
+            <x-tombol-panduan modul="keuangan" />
         </div>
 
         {{-- Info alur --}}

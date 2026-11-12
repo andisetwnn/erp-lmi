@@ -153,6 +153,7 @@ new #[Title('Target Marketing (RAB)')] class extends Component
                 </div>
             </div>
             <div class="flex gap-2">
+                <x-tombol-panduan modul="marketing" class="self-center" />
                 <flux:select wire:model.live="selectedTahun" size="sm" icon="calendar">
                     @foreach ($tahunOptions as $th)
                         <flux:select.option value="{{ $th }}">Tahun {{ $th }}</flux:select.option>

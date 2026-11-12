@@ -10,6 +10,8 @@ use App\Models\Master\PesananPembelian;
 use App\Models\Master\Sales;
 use App\Models\Master\Spr;
 use App\Models\Master\SprRealisasiPembayaran;
+use App\Support\Panduan;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -88,6 +90,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
             $user->hasRole('admin-kpr') => route('dashboard.kpr'),
             $user->hasRole('admin-sales') => route('dashboard.sales'),
             $user->hasRole('admin-teknik') => route('dashboard.teknik'),
+            // Admin Legal belum punya dashboard; executive terkunci untuk super-admin.
+            $user->hasRole('admin-legal') => route('perizinan.sertifikat.index'),
             default => route('dashboard.executive'), // super-admin & sisanya
         });
     })->name('dashboard');
@@ -254,6 +258,32 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::livewire('penerimaan-konsumen', 'pages::finance.penerimaan-konsumen')->name('penerimaan-konsumen.index');
         Route::livewire('tempel-materai', 'pages::finance.tempel-materai')->name('tempel-materai.index');
     });
+
+    // PANDUAN — PDF cara pakai per modul. Hanya bisa dibuka setelah login dan oleh orang yang
+    // punya izin modulnya (isinya screenshot data), tidak lewat folder public.
+    Route::livewire('panduan', 'pages::panduan.index')->name('panduan.index');
+    // Rekap siapa sudah membaca — didaftarkan sebelum panduan/{kunci} supaya "rekap" tidak dianggap kunci.
+    Route::livewire('panduan/rekap', 'pages::panduan.rekap')
+        ->middleware('role:direktur|super-admin')
+        ->name('panduan.rekap');
+    Route::get('panduan/{kunci}', function (Request $request, string $kunci) {
+        abort_unless(Panduan::tersedia($kunci), 404);
+        abort_unless(Panduan::bolehLihat($request->user(), $kunci), 403);
+
+        // Yang dilacak hanya peran yang wajib membaca. Penampil PDF browser bisa meminta berkas
+        // sepotong-sepotong; yang dihitung hanya permintaan awal.
+        if (Panduan::wajibBaca($request->user(), $kunci)
+            && str_starts_with((string) $request->header('Range', 'bytes=0-'), 'bytes=0-')) {
+            Panduan::catatDibuka($request->user(), $kunci);
+        }
+
+        return response()->download(
+            Panduan::berkas($kunci),
+            Panduan::namaUnduhan($kunci),
+            ['Content-Type' => 'application/pdf'],
+            $request->boolean('unduh') ? 'attachment' : 'inline',
+        );
+    })->where('kunci', '[a-z0-9-]+')->name('panduan.buka');
 
     // PEMBELIAN — PR → review FAT → [direktur bila di atas batas] → PO → bayar dulu → barang datang.
     // Tiap aksi di halaman juga memeriksa izinnya sendiri; middleware di sini hanya pintu masuk.
@@ -479,6 +509,29 @@ Route::prefix('dbos')->name('dbos.')->group(function () {
                 ? redirect()->route('dbos.pimpinan.home')
                 : redirect()->route('dbos.sales-home');
         })->name('home');
+
+        // PANDUAN DBOS (PDF) — untuk sales lapangan dan pimpinan; pembukaan dan konfirmasi
+        // bacanya tercatat di rekap pembaca panduan.
+        Route::get('panduan', function (Request $request) {
+            abort_unless(Panduan::tersedia('dbos'), 404);
+            if (str_starts_with((string) $request->header('Range', 'bytes=0-'), 'bytes=0-')) {
+                Panduan::catatDibuka($request->user('sales'), 'dbos');
+            }
+
+            return response()->download(
+                Panduan::berkas('dbos'),
+                Panduan::namaUnduhan('dbos'),
+                ['Content-Type' => 'application/pdf'],
+                $request->boolean('unduh') ? 'attachment' : 'inline',
+            );
+        })->name('panduan');
+        Route::post('panduan/baca', function (Request $request) {
+            abort_unless(Panduan::tersedia('dbos'), 404);
+
+            return back()->with('panduan_pesan', Panduan::konfirmasiBaca($request->user('sales'), 'dbos')
+                ? __('Terima kasih, panduan DBOS tercatat sudah kamu baca.')
+                : __('Buka panduannya dulu, baru konfirmasi setelah selesai membaca.'));
+        })->name('panduan.baca');
 
         // ========== SALES LAPANGAN ZONE (pimpinan diblok) ==========
         Route::middleware('sales.lapangan')->group(function () {

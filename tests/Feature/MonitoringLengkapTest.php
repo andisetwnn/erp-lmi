@@ -143,6 +143,17 @@ it('menandai perubahan status di Master Rumah sebagai manual dan hanya itu yang 
         ->assertDontSee('Booking → Terjual');
 });
 
+it('hanya menautkan halaman Monitoring untuk yang boleh membukanya', function () {
+    $direktur = User::factory()->create();
+    $direktur->assignRole('direktur');
+    $keuangan = User::factory()->create();
+    $keuangan->assignRole('finance');
+
+    Livewire::actingAs($direktur)->test('notification-bell')->assertSee('Lihat semua di Monitoring');
+    Livewire::actingAs($keuangan)->test('notification-bell')->assertDontSee('Lihat semua di Monitoring');
+    $this->actingAs($keuangan)->get(route('monitoring.index'))->assertForbidden();
+});
+
 it('mencatat tahap pemberkasan beserta isi lama dan barunya, sekali saja', function () {
     $spr = sprMonitor(unitMonitor('terjual'), 'approved');
     $this->actingAs($this->admin);

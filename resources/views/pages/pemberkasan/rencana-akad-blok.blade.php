@@ -251,6 +251,7 @@ new #[Title('Rencana Akad — Berdasarkan Blok')] class extends Component
                 </div>
             </div>
             <div class="flex gap-2">
+                <x-tombol-panduan modul="pemberkasan" class="self-center" />
                 <flux:button variant="ghost" icon="arrow-left" wire:click="pindahKeNomor">
                     {{ __('Berdasarkan Nomor') }}
                 </flux:button>

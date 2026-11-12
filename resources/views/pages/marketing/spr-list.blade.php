@@ -215,6 +215,7 @@ new #[Title('Data SPR')] class extends Component
             <div>
                 <flux:heading size="xl">{{ __('Data SPR') }}</flux:heading>
             </div>
+            <x-tombol-panduan modul="marketing" class="ml-auto self-center" />
         </div>
 
         {{-- TABS --}}

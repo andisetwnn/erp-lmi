@@ -165,7 +165,10 @@ new #[Title('Master Alasan Pembatalan')] class extends Component
                     <flux:icon.arrow-left class="size-4" />
                 </a>
                 <div>
-                    <flux:heading size="xl">{{ __('Master Alasan Pembatalan') }}</flux:heading>
+                    <div class="flex items-center gap-2">
+                        <flux:heading size="xl">{{ __('Master Alasan Pembatalan') }}</flux:heading>
+                        <x-tombol-panduan modul="admin" />
+                    </div>
                     <flux:subheading>{{ __('Daftar alasan yang dapat dipilih saat membatalkan SPR.') }}</flux:subheading>
                 </div>
             </div>

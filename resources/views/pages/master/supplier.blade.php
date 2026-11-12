@@ -249,9 +249,12 @@ new #[Title('Master Supplier')] class extends Component
                 <flux:subheading>{{ __('Supplier barang untuk Purchase Order.') }}</flux:subheading>
             </div>
 
-            <flux:button variant="primary" icon="plus" wire:click="create" class="self-start sm:self-auto">
-                {{ __('Tambah Supplier') }}
-            </flux:button>
+            <div class="flex items-center gap-2 self-start sm:self-auto">
+                <x-tombol-panduan modul="pembelian" />
+                <flux:button variant="primary" icon="plus" wire:click="create">
+                    {{ __('Tambah Supplier') }}
+                </flux:button>
+            </div>
         </div>
 
         <div class="mb-4">

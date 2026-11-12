@@ -206,7 +206,7 @@ new #[Title('DBOS Home'), Layout('layouts.dbos')] class extends Component {
             'Catat preferensi customer di field Catatan agar mudah menyambung di follow up berikutnya.',
             'Foto KTP yang jelas + pencahayaan baik = OCR akurat = data lebih cepat lengkap.',
             'Jangan lupa update status prospect setiap ada interaksi baru.',
-            'Booking hanya valid 1 hari kerja. Siapkan dokumen SPR dari awal.',
+            'Booking hanya berlaku 24 jam. Siapkan dokumen SPR dari awal.',
             'BI Checking via SLIK OJK adalah syarat wajib sebelum customer naik FINISH.',
             'Sapa customer dengan nama, jangan generic. Personal touch meningkatkan trust.',
             'Customer yang merasa didengarkan 3x lebih mungkin closing.',
@@ -266,6 +266,9 @@ new #[Title('DBOS Home'), Layout('layouts.dbos')] class extends Component {
             </form>
         </div>
     </div>
+
+    {{-- Pengingat panduan, hilang sendiri setelah dikonfirmasi sudah dibaca --}}
+    <x-panduan-dbos hanya-belum class="mb-4" />
 
     {{-- ============== PROMO PENJUALAN (berjalan & akan datang) ============== --}}
     <x-promo-dbos class="mb-4" />

@@ -249,28 +249,31 @@ new #[Title('Data Sertifikat')] class extends Component
                 <flux:subheading>{{ __('Arsip dan status sertifikat per unit.') }}</flux:subheading>
             </div>
 
-            @canany(['legal.pengajuan.kelola', 'legal.sertifikat.kelola', 'legal.serahterima.kelola'])
-                <flux:dropdown position="bottom" align="end">
-                    <flux:button variant="primary" icon-trailing="chevron-down">{{ __('Kelola Sertifikat') }}</flux:button>
-                    <flux:menu>
-                        @can('legal.pengajuan.kelola')
-                            <flux:menu.item icon="paper-airplane" :href="route('perizinan.sertifikat.pengajuan')" wire:navigate>
-                                {{ __('Input Pengajuan Sertifikat') }}
-                            </flux:menu.item>
-                        @endcan
-                        @can('legal.sertifikat.kelola')
-                            <flux:menu.item icon="pencil-square" :href="route('perizinan.sertifikat.input')" wire:navigate>
-                                {{ __('Input Data Sertifikat') }}
-                            </flux:menu.item>
-                        @endcan
-                        @can('legal.serahterima.kelola')
-                            <flux:menu.item icon="building-library" :href="route('perizinan.sertifikat.serah-bank')" wire:navigate>
-                                {{ __('Serah Terima Bank') }}
-                            </flux:menu.item>
-                        @endcan
-                    </flux:menu>
-                </flux:dropdown>
-            @endcanany
+            <div class="flex gap-2 self-start sm:self-auto">
+                <x-tombol-panduan modul="perizinan" class="self-center" />
+                @canany(['legal.pengajuan.kelola', 'legal.sertifikat.kelola', 'legal.serahterima.kelola'])
+                    <flux:dropdown position="bottom" align="end">
+                        <flux:button variant="primary" icon-trailing="chevron-down">{{ __('Kelola Sertifikat') }}</flux:button>
+                        <flux:menu>
+                            @can('legal.pengajuan.kelola')
+                                <flux:menu.item icon="paper-airplane" :href="route('perizinan.sertifikat.pengajuan')" wire:navigate>
+                                    {{ __('Input Pengajuan Sertifikat') }}
+                                </flux:menu.item>
+                            @endcan
+                            @can('legal.sertifikat.kelola')
+                                <flux:menu.item icon="pencil-square" :href="route('perizinan.sertifikat.input')" wire:navigate>
+                                    {{ __('Input Data Sertifikat') }}
+                                </flux:menu.item>
+                            @endcan
+                            @can('legal.serahterima.kelola')
+                                <flux:menu.item icon="building-library" :href="route('perizinan.sertifikat.serah-bank')" wire:navigate>
+                                    {{ __('Serah Terima Bank') }}
+                                </flux:menu.item>
+                            @endcan
+                        </flux:menu>
+                    </flux:dropdown>
+                @endcanany
+            </div>
         </div>
 
         {{-- SARINGAN — selalu tampil, bahkan sebelum proyek dipilih --}}

@@ -80,6 +80,7 @@ new #[Title('Neraca')] class extends Component
                 </div>
             </div>
             <div class="flex gap-2">
+                <x-tombol-panduan modul="akunting" class="self-center" />
                 <flux:button variant="ghost" icon="document-arrow-down"
                              title="Excel selalu berisi rincian per akun — berkas kerja Accounting"
                              href="{{ route('akunting.neraca.excel', ['tgl' => $tanggal, 'from' => $from]) }}">

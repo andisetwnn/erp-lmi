@@ -66,11 +66,14 @@ new #[Title('Laba Rugi Tahunan')] class extends Component
                     <flux:subheading>{{ __('Perbandingan laba rugi bulanan dalam satu tahun.') }}</flux:subheading>
                 </div>
             </div>
-            <flux:button variant="ghost" icon="printer"
-                         href="{{ route('akunting.laba-rugi-tahunan.print', ['tahun' => $tahun, 'versi' => $versi]) }}"
-                         target="_blank">
-                {{ __('Cetak PDF') }}
-            </flux:button>
+            <div class="flex gap-2">
+                <x-tombol-panduan modul="akunting" class="self-center" />
+                <flux:button variant="ghost" icon="printer"
+                             href="{{ route('akunting.laba-rugi-tahunan.print', ['tahun' => $tahun, 'versi' => $versi]) }}"
+                             target="_blank">
+                    {{ __('Cetak PDF') }}
+                </flux:button>
+            </div>
         </div>
 
         <x-tab-nav :items="[

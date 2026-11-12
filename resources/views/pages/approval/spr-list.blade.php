@@ -111,6 +111,7 @@ new #[Title('Persetujuan SPR')] class extends Component
                 <flux:icon.clipboard-document-check class="size-6" />
             </div>
             <flux:heading size="xl">{{ __('Persetujuan SPR') }}</flux:heading>
+            <x-tombol-panduan modul="approval" class="ml-auto self-center" />
         </div>
 
         {{-- WARNING kalau PM belum daftar TTD --}}

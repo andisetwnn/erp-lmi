@@ -175,6 +175,7 @@ new #[Title('Laporan Pembelian')] class extends Component
                 <flux:heading size="xl">{{ __('Laporan Pembelian') }}</flux:heading>
                 <flux:subheading>{{ __('Realisasi PO, status pembayaran ke supplier, dan lama pengadaan barang.') }}</flux:subheading>
             </div>
+            <x-tombol-panduan modul="pembelian" class="ml-auto self-start" />
         </div>
 
         <div class="mb-4 border-b border-zinc-200 dark:border-zinc-700">

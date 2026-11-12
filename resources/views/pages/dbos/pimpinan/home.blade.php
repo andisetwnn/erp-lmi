@@ -490,6 +490,9 @@ new #[Title('Dashboard Pimpinan'), Layout('layouts.pimpinan')] class extends Com
         </div>
     </div>
 
+    {{-- Pengingat panduan, hilang sendiri setelah dikonfirmasi sudah dibaca --}}
+    <x-panduan-dbos hanya-belum class="mb-4" />
+
     {{-- PROMO PENJUALAN (berjalan & akan datang) --}}
     <x-promo-dbos class="mb-6" />
 

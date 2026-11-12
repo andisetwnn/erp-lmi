@@ -321,7 +321,10 @@ new #[Title('Master Proyek')] class extends Component {
 
         <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-                <flux:heading size="xl">{{ __('Master Proyek') }}</flux:heading>
+                <div class="flex items-center gap-2">
+                    <flux:heading size="xl">{{ __('Master Proyek') }}</flux:heading>
+                    <x-tombol-panduan modul="admin" />
+                </div>
             </div>
 
             <flux:button variant="primary" icon="plus" wire:click="create" class="self-start sm:self-auto">

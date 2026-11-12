@@ -330,6 +330,7 @@ new #[Title('Data Rumah — Teknik')] class extends Component
                     <flux:subheading>Progres pembangunan fisik, LOT (gelombang pembangunan), & subcon per unit</flux:subheading>
                 </div>
             </div>
+            <x-tombol-panduan modul="teknik" class="self-center" />
         </div>
 
         {{-- FILTER RANGE SLIDER — Progres Fisik dari X% sampai Y% --}}

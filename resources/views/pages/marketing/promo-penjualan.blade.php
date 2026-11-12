@@ -317,11 +317,14 @@ new #[Title('Promo Penjualan')] class extends Component
                     {{ __('Promo ditanggung developer. Angka di SPR tidak berubah — yang ditampilkan potongannya dan berapa yang dibayar konsumen.') }}
                 </flux:subheading>
             </div>
-            @if ($proyekId)
-                <flux:button variant="primary" icon="plus" wire:click="buat" class="self-start sm:self-auto">
-                    {{ __('Promo Baru') }}
-                </flux:button>
-            @endif
+            <div class="flex gap-2 self-start sm:self-auto">
+                <x-tombol-panduan modul="marketing" class="self-center" />
+                @if ($proyekId)
+                    <flux:button variant="primary" icon="plus" wire:click="buat">
+                        {{ __('Promo Baru') }}
+                    </flux:button>
+                @endif
+            </div>
         </div>
 
         @if (! $proyekId)

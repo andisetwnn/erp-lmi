@@ -249,9 +249,12 @@ new #[Title('Penerimaan Konsumen')] class extends Component
     <div class="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8">
 
         {{-- HEADER --}}
-        <div class="mb-5">
-            <flux:heading size="xl">{{ __('Penerimaan Konsumen') }}</flux:heading>
-            <flux:subheading>{{ __('Konfirmasi Uang Tanda Jadi (UTJ) — verifikasi bukti transfer dari customer.') }}</flux:subheading>
+        <div class="mb-5 flex items-start justify-between gap-3">
+            <div>
+                <flux:heading size="xl">{{ __('Penerimaan Konsumen') }}</flux:heading>
+                <flux:subheading>{{ __('Konfirmasi Uang Tanda Jadi (UTJ) — verifikasi bukti transfer dari customer.') }}</flux:subheading>
+            </div>
+            <x-tombol-panduan modul="keuangan" />
         </div>
 
         @if (! $proyekId)

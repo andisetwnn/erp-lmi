@@ -104,6 +104,7 @@ new #[Title('Pengaturan Pembelian')] class extends Component
                 <flux:heading size="xl">{{ __('Pengaturan Pembelian') }}</flux:heading>
                 <flux:subheading>{{ __('Berlaku untuk semua PR dan PO.') }}</flux:subheading>
             </div>
+            <x-tombol-panduan modul="pembelian" class="ml-auto self-start" />
         </div>
 
         <div class="grid items-start gap-4 lg:grid-cols-2">

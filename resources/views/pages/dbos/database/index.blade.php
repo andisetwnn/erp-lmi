@@ -831,7 +831,7 @@ new #[Title('Database Konsumen'), Layout('layouts.dbos')] class extends Componen
                         $borderColor => $checked,
                         'border-zinc-200 dark:border-zinc-700' => ! $checked,
                     ])>
-                        <input type="radio" wire:model="statusNew" value="{{ $key }}" class="mt-1 accent-orange-600" />
+                        <input type="radio" wire:model.live="statusNew" value="{{ $key }}" class="mt-1 accent-orange-600" />
                         <div class="flex-1">
                             <div class="flex items-center gap-2">
                                 <div class="text-sm font-bold text-zinc-900 dark:text-white">{{ $info[0] }}</div>

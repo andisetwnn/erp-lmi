@@ -580,11 +580,14 @@ new #[Title('Jurnal Umum')] class extends Component
                     <flux:subheading>{{ __('Catatan pertama seluruh transaksi keuangan (double-entry: debet = kredit).') }}</flux:subheading>
                 </div>
             </div>
-            @if ($bolehKelola)
-                <flux:button variant="primary" icon="plus" wire:click="openCreate">
-                    {{ __('Buat Jurnal Baru') }}
-                </flux:button>
-            @endif
+            <div class="flex gap-2">
+                <x-tombol-panduan modul="akunting" class="self-center" />
+                @if ($bolehKelola)
+                    <flux:button variant="primary" icon="plus" wire:click="openCreate">
+                        {{ __('Buat Jurnal Baru') }}
+                    </flux:button>
+                @endif
+            </div>
         </div>
 
         {{-- SUMMARY CARDS --}}
@@ -1159,10 +1162,15 @@ new #[Title('Jurnal Umum')] class extends Component
             display: '',
             wireProp: null,
             init(prop) {
+                // Alpine juga memanggil init() sendiri tanpa argumen; yang dipakai panggilan dari x-init.
+                if (! prop) return;
                 this.wireProp = prop;
-                // Load initial value dari wire
-                const raw = this.$wire.get(prop);
-                this.display = this.format(raw);
+                this.display = this.format(this.$wire.get(prop));
+                // Form dipakai bergantian untuk jurnal baru dan edit, dan barisnya bisa dihapus:
+                // tampilan mengikuti nilai di server, kecuali saat sedang diketik.
+                this.$watch(() => this.$wire.get(prop), (v) => {
+                    if (! this.$el.contains(document.activeElement)) this.display = this.format(v);
+                });
             },
             format(v) {
                 if (v === null || v === undefined || v === '') return '';
