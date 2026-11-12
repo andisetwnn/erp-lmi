@@ -277,12 +277,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Panduan::catatDibuka($request->user(), $kunci);
         }
 
-        return response()->download(
-            Panduan::berkas($kunci),
-            Panduan::namaUnduhan($kunci),
-            ['Content-Type' => 'application/pdf'],
-            $request->boolean('unduh') ? 'attachment' : 'inline',
-        );
+        return Panduan::respons($kunci, $request->boolean('unduh'));
     })->where('kunci', '[a-z0-9-]+')->name('panduan.buka');
 
     // PEMBELIAN — PR → review FAT → [direktur bila di atas batas] → PO → bayar dulu → barang datang.
@@ -518,12 +513,7 @@ Route::prefix('dbos')->name('dbos.')->group(function () {
                 Panduan::catatDibuka($request->user('sales'), 'dbos');
             }
 
-            return response()->download(
-                Panduan::berkas('dbos'),
-                Panduan::namaUnduhan('dbos'),
-                ['Content-Type' => 'application/pdf'],
-                $request->boolean('unduh') ? 'attachment' : 'inline',
-            );
+            return Panduan::respons('dbos', $request->boolean('unduh'));
         })->name('panduan');
         Route::post('panduan/baca', function (Request $request) {
             abort_unless(Panduan::tersedia('dbos'), 404);

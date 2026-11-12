@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * Panduan pemakaian ERP per modul, berupa PDF yang disimpan bersama kode
@@ -264,5 +265,21 @@ final class Panduan
         $info = self::DAFTAR[$kunci];
 
         return 'Panduan '.$info['judul'].' - ERP LMI ('.Carbon::parse($info['versi'])->translatedFormat('j M Y').').pdf';
+    }
+
+    /**
+     * PDF dikirim utuh dalam satu permintaan. Kalau server mengizinkan, penampil PDF Chrome
+     * mengambil PDF "fast web view" sepotong-sepotong, dan tiap potongan melewati sesi dan
+     * pengecekan login — di hosting prod itu jauh lebih lambat daripada mengunduh sekaligus.
+     * Browser boleh menyimpannya sejam supaya membuka ulang tidak mengunduh lagi.
+     */
+    public static function respons(string $kunci, bool $unduh = false): BinaryFileResponse
+    {
+        $respons = response()->download(self::berkas($kunci), self::namaUnduhan($kunci), [
+            'Content-Type' => 'application/pdf',
+            'Accept-Ranges' => 'none',
+        ], $unduh ? 'attachment' : 'inline');
+
+        return $respons->setPrivate()->setMaxAge(3600);
     }
 }

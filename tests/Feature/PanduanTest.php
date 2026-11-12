@@ -41,6 +41,21 @@ it('membuka PDF panduan untuk orang yang punya izin modulnya, dan bisa diunduh',
         ->toStartWith('attachment;');
 });
 
+it('mengirim PDF utuh sekali jalan dan boleh disimpan browser sejam', function () {
+    // Tanpa Accept-Ranges: none, penampil PDF Chrome mengambil berkas sepotong-sepotong
+    // dan tiap potongan melewati sesi + login di server.
+    File::put($this->folder.'/dbos.pdf', '%PDF-1.4 panduan uji');
+    $sales = Sales::create(['kode' => 'SLS-R', 'nama' => 'Sales Ranges', 'is_aktif' => true, 'dbos_username' => 'sales-r', 'dbos_password' => 'rahasia123']);
+
+    foreach ([
+        $this->actingAs($this->fat)->get(route('panduan.buka', 'pembelian')),
+        $this->actingAs($sales, 'sales')->get(route('dbos.panduan')),
+    ] as $respons) {
+        $respons->assertOk()->assertHeader('Accept-Ranges', 'none');
+        expect($respons->headers->get('Cache-Control'))->toContain('private')->toContain('max-age=3600');
+    }
+});
+
 it('menolak orang tanpa izin modulnya, tamu, dan panduan yang belum ada', function () {
     $this->actingAs($this->sales)->get(route('panduan.buka', 'pembelian'))->assertForbidden();
     $this->actingAs($this->fat)->get(route('panduan.buka', 'akunting'))->assertNotFound();
