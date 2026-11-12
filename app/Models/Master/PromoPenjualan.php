@@ -42,6 +42,7 @@ class PromoPenjualan extends Model
         'dasar_usia',
         'semua_unit',
         'keterangan',
+        'syarat',
         'is_aktif',
         'created_by_user_id',
         'updated_by_user_id',
@@ -89,6 +90,12 @@ class PromoPenjualan extends Model
         return $q->where('is_aktif', true)
             ->whereDate('berlaku_mulai', '<=', $tgl)
             ->whereDate('berlaku_sampai', '>=', $tgl);
+    }
+
+    /** Promo yang hanya untuk konsumen tertentu; sales ditanya saat membuat SPR. */
+    public function bersyarat(): bool
+    {
+        return filled($this->syarat);
     }
 
     public function mencakup(Rumah $rumah): bool

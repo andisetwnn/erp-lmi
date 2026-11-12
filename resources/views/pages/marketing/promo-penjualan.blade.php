@@ -53,6 +53,9 @@ new #[Title('Promo Penjualan')] class extends Component
 
     public string $keterangan = '';
 
+    /** Diisi kalau promo hanya untuk konsumen tertentu; sales ditanya saat membuat SPR. */
+    public string $syarat = '';
+
     // Isi cepat tabel usia, mis. 23–40 × Rp 10.000.
     public string $isiDari = '23';
 
@@ -124,6 +127,7 @@ new #[Title('Promo Penjualan')] class extends Component
         $this->semuaUnit = $p->semua_unit;
         $this->unit = $p->rumah->mapWithKeys(fn ($r) => [$r->id => true])->all();
         $this->keterangan = (string) $p->keterangan;
+        $this->syarat = (string) $p->syarat;
 
         Flux::modal('promo-form')->show();
     }
@@ -176,6 +180,7 @@ new #[Title('Promo Penjualan')] class extends Component
             'mulai' => ['required', 'date'],
             'sampai' => ['required', 'date'],
             'keterangan' => ['nullable', 'string', 'max:255'],
+            'syarat' => ['nullable', 'string', 'max:255'],
         ], [], ['mulai' => 'tanggal mulai UTJ', 'sampai' => 'tanggal selesai UTJ']);
 
         $tingkat = collect($this->tingkat)
@@ -201,6 +206,7 @@ new #[Title('Promo Penjualan')] class extends Component
                 'dasar_usia' => $this->dasarUsia,
                 'semua_unit' => $this->semuaUnit,
                 'keterangan' => trim($this->keterangan) ?: null,
+                'syarat' => trim($this->syarat) ?: null,
                 'is_aktif' => $promo?->is_aktif ?? true,
             ], array_keys(array_filter($this->unit)), $tingkat, Auth::id(), $promo);
         } catch (ValidationException $e) {
@@ -264,7 +270,7 @@ new #[Title('Promo Penjualan')] class extends Component
 
     private function resetForm(): void
     {
-        $this->reset(['editId', 'nama', 'potonganUm', 'bookingFeeTetap', 'tingkat', 'unit', 'cariUnit', 'keterangan']);
+        $this->reset(['editId', 'nama', 'potonganUm', 'bookingFeeTetap', 'tingkat', 'unit', 'cariUnit', 'keterangan', 'syarat']);
         $this->jenis = 'um';
         $this->dasarUsia = 'usia';
         $this->semuaUnit = true;
@@ -361,6 +367,9 @@ new #[Title('Promo Penjualan')] class extends Component
                                     <td class="px-3 py-2">
                                         <div class="font-semibold">{{ $p->nama }}</div>
                                         <div class="text-xs text-zinc-500">{{ $p->labelJenis() }}</div>
+                                        @if ($p->bersyarat())
+                                            <div class="text-xs text-violet-700 dark:text-violet-300">{{ __('Khusus:') }} {{ $p->syarat }}</div>
+                                        @endif
                                     </td>
                                     <td class="whitespace-nowrap px-3 py-2 tabular-nums">
                                         {{ $p->berlaku_mulai->translatedFormat('d M Y') }} – {{ $p->berlaku_sampai->translatedFormat('d M Y') }}
@@ -564,6 +573,13 @@ new #[Title('Promo Penjualan')] class extends Component
                 <flux:field>
                     <flux:label>{{ __('Keterangan') }}</flux:label>
                     <flux:input wire:model="keterangan" placeholder="{{ __('opsional') }}" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>{{ __('Khusus untuk') }}</flux:label>
+                    <flux:input wire:model="syarat" placeholder="{{ __('opsional, mis. Pengajar: guru PNS, guru honorer, dosen, guru bimbel') }}" />
+                    <flux:description>{{ __('Kalau diisi, sales ditanya apakah konsumen memenuhi syarat ini saat membuat SPR. Promo hanya terpasang kalau dijawab "Ya"; konsumen lain membayar normal.') }}</flux:description>
+                    <flux:error name="syarat" />
                 </flux:field>
 
                 <div class="flex justify-end gap-2">

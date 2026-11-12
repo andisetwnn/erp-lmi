@@ -55,6 +55,9 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
 
     public ?string $utjKeterangan = null;
 
+    /** Jawaban sales untuk promo bersyarat: 'ya' atau 'tidak'. */
+    public ?string $promoSyarat = null;
+
     public function mount(int $bookingId): void
     {
         $salesId = Auth::guard('sales')->id();
@@ -201,7 +204,22 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
             $this->booking->prospectCustomer?->tanggal_lahir,
             (float) $this->utjNominal,
             $this->umNet,
+            $this->promoSyarat === 'ya',
         );
+    }
+
+    /** Promo yang berlaku tapi hanya untuk konsumen tertentu — sales wajib menjawab syaratnya. */
+    public function getPromoBersyaratProperty(): ?\App\Models\Master\PromoPenjualan
+    {
+        $rumah = $this->booking?->rumah;
+
+        if (! $rumah || $this->isKomersial || $this->tanggalSpr === '') {
+            return null;
+        }
+
+        $promo = app(\App\Services\PromoPenjualanService::class)->berlaku($rumah, $this->tanggalSpr);
+
+        return $promo?->bersyarat() ? $promo : null;
     }
 
     public function getSisaCicilProperty(): float
@@ -339,7 +357,10 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                     'max:'.max(1, $this->maxTermin),
                 ],
                 'catatanAngsuran' => ['nullable', 'string', 'max:1000'],
-            ], [], ['jumlahTerminUm' => 'jumlah termin']),
+                'promoSyarat' => [$this->promoBersyarat ? 'required' : 'nullable', 'in:ya,tidak'],
+            ], [
+                'promoSyarat.required' => 'Jawab dulu apakah konsumen memenuhi syarat promo.',
+            ], ['jumlahTerminUm' => 'jumlah termin']),
             // Step 3: UTJ + upload bukti transfer
             3 => $this->validate([
                 'utjNominal' => ['required', 'numeric', 'min:0'],
@@ -430,6 +451,8 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                 'promo_penjualan_id' => $umNet > 0 ? ($this->promo['promo'] ?? null)?->id : null,
                 'promo_potongan_utj' => $umNet > 0 ? ($this->promo['potongan_utj'] ?? 0) : 0,
                 'promo_potongan_um' => $umNet > 0 ? ($this->promo['potongan_um'] ?? 0) : 0,
+                // Jawaban sales atas syarat promo; kosong kalau promonya tanpa syarat.
+                'promo_syarat_terpenuhi' => $umNet > 0 && $this->promoBersyarat ? $this->promoSyarat === 'ya' : null,
                 'promo_at' => $umNet > 0 && $this->promo ? now() : null,
                 'nilai_kpr' => $nilaiKpr,
                 'catatan_angsuran' => $this->catatanAngsuran ?: null,
@@ -867,6 +890,37 @@ new #[Title('Buat SPR'), Layout('layouts.dbos')] class extends Component
                     Rp {{ number_format($totalHarga, 0, ',', '.') }}
                 </div>
             </div>
+
+            {{-- Promo bersyarat (mis. hanya untuk pengajar): promo baru terpasang kalau sales
+                 menyatakan konsumennya memenuhi syarat. --}}
+            @if ($this->promoBersyarat)
+                <div class="rounded-2xl border-2 border-violet-300 bg-white p-4 dark:border-violet-900/50 dark:bg-zinc-900">
+                    <div class="flex items-center gap-2 text-sm font-bold text-violet-800 dark:text-violet-200">
+                        <flux:icon.ticket class="size-4" />
+                        {{ $this->promoBersyarat->nama }}
+                    </div>
+                    <p class="mt-1 text-xs text-zinc-600 dark:text-zinc-400">{{ __('Promo ini khusus untuk:') }} <b class="text-zinc-900 dark:text-white">{{ $this->promoBersyarat->syarat }}</b></p>
+                    <p class="mt-3 text-sm font-semibold text-zinc-900 dark:text-white">{{ __('Apakah konsumen memenuhi syarat promo ini?') }}</p>
+                    <div class="mt-2 grid grid-cols-2 gap-2">
+                        @foreach (['ya' => __('Ya, memenuhi'), 'tidak' => __('Tidak')] as $nilai => $label)
+                            <label @class([
+                                'flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition',
+                                'border-violet-500 bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-200' => $promoSyarat === $nilai,
+                                'border-zinc-200 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300' => $promoSyarat !== $nilai,
+                            ])>
+                                <input type="radio" wire:model.live="promoSyarat" value="{{ $nilai }}" class="sr-only" />
+                                {{ $label }}
+                            </label>
+                        @endforeach
+                    </div>
+                    @error('promoSyarat')
+                        <p class="mt-2 text-xs font-medium text-rose-600">{{ $message }}</p>
+                    @enderror
+                    @if ($promoSyarat === 'tidak')
+                        <p class="mt-2 text-xs text-zinc-600 dark:text-zinc-400">{{ __('Konsumen membayar booking fee normal.') }}</p>
+                    @endif
+                </div>
+            @endif
 
             {{-- Promo = potongan uang muka yang ditanggung developer. Angka SPR tetap
                  normal; kartu ini menunjukkan berapa yang benar-benar dibayar konsumen,

@@ -1604,8 +1604,14 @@ new #[Title('Detail SPR')] class extends Component
                                         @if ($spr->promo_alasan)
                                             <p class="mt-1 text-[10px] text-fuchsia-700 dark:text-fuchsia-300">{{ __('Susulan:') }} {{ $spr->promo_alasan }}</p>
                                         @endif
+                                        @if ($spr->promoPenjualan->bersyarat() && $spr->promo_syarat_terpenuhi)
+                                            <p class="mt-1 text-[10px] text-violet-700 dark:text-violet-300">{{ __('Sales menyatakan konsumen memenuhi syarat:') }} {{ $spr->promoPenjualan->syarat }}</p>
+                                        @endif
                                     </div>
                                 @elseif ($this->daftarPromo->isNotEmpty())
+                                    @if ($spr->promo_syarat_terpenuhi === false)
+                                        <p class="mt-2 text-[11px] text-zinc-500">{{ __('Sales menyatakan konsumen tidak memenuhi syarat promo saat SPR dibuat.') }}</p>
+                                    @endif
                                     <button type="button" wire:click="bukaPromo"
                                             class="mt-2 flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-fuchsia-300 px-2 py-1.5 text-fuchsia-700 hover:bg-fuchsia-50 dark:border-fuchsia-800 dark:text-fuchsia-300 dark:hover:bg-fuchsia-950/30">
                                         <flux:icon.ticket class="size-3.5" />

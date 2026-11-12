@@ -75,11 +75,21 @@ class PromoPenjualanService
         return $tgl ? Carbon::parse($tgl) : null;
     }
 
+    /** Promo aktif yang mencakup unit pada tanggal itu, tanpa melihat konsumennya. */
+    public function berlaku(Rumah $rumah, CarbonInterface|string $tanggal): ?PromoPenjualan
+    {
+        return PromoPenjualan::where('proyek_id', $rumah->proyek_id)
+            ->berlakuPada($tanggal)
+            ->with('tingkat')
+            ->get()
+            ->first(fn (PromoPenjualan $p) => $p->mencakup($rumah));
+    }
+
     /**
      * Promo yang berlaku untuk unit pada tanggal itu beserta potongannya.
      *
-     * Null kalau tidak ada promo, unitnya tidak termasuk, atau — untuk promo
-     * usia — konsumennya di luar tabel.
+     * Null kalau tidak ada promo, unitnya tidak termasuk, konsumennya di luar
+     * tabel usia, atau promonya bersyarat dan konsumen tidak dinyatakan memenuhi.
      *
      * @return array{promo: PromoPenjualan, potongan_utj: float, potongan_um: float, keterangan: string}|null
      */
@@ -89,14 +99,11 @@ class PromoPenjualanService
         ?CarbonInterface $tanggalLahir,
         float $utjNormal,
         float $umNet,
+        ?bool $memenuhiSyarat = null,
     ): ?array {
-        $promo = PromoPenjualan::where('proyek_id', $rumah->proyek_id)
-            ->berlakuPada($tanggal)
-            ->with('tingkat')
-            ->get()
-            ->first(fn (PromoPenjualan $p) => $p->mencakup($rumah));
+        $promo = $this->berlaku($rumah, $tanggal);
 
-        if (! $promo) {
+        if (! $promo || ($promo->bersyarat() && $memenuhiSyarat !== true)) {
             return null;
         }
 
@@ -172,7 +179,7 @@ class PromoPenjualanService
     /**
      * Simpan promo baru atau ubahan.
      *
-     * @param  array{proyek_id: int, nama: string, jenis: string, berlaku_mulai: string, berlaku_sampai: string, potongan_um?: ?float, booking_fee_tetap?: ?float, dasar_usia?: ?string, semua_unit: bool, keterangan?: ?string}  $data
+     * @param  array{proyek_id: int, nama: string, jenis: string, berlaku_mulai: string, berlaku_sampai: string, potongan_um?: ?float, booking_fee_tetap?: ?float, dasar_usia?: ?string, semua_unit: bool, keterangan?: ?string, syarat?: ?string}  $data
      * @param  list<int>  $rumahIds
      * @param  list<array{dari: int, sampai: int, booking_fee: float, label?: ?string}>  $tingkat
      */
@@ -257,6 +264,7 @@ class PromoPenjualanService
                 'dasar_usia' => $data['jenis'] === 'booking_fee' ? ($data['dasar_usia'] ?? 'usia') : null,
                 'semua_unit' => $data['semua_unit'],
                 'keterangan' => $data['keterangan'] ?? null,
+                'syarat' => trim((string) ($data['syarat'] ?? '')) ?: null,
                 'is_aktif' => $data['is_aktif'] ?? true,
                 'updated_by_user_id' => $userId,
             ])->save();
@@ -321,6 +329,8 @@ class PromoPenjualanService
                 'promo_penjualan_id' => $promo->id,
                 'promo_potongan_utj' => $hasil['potongan_utj'],
                 'promo_potongan_um' => $hasil['potongan_um'],
+                // Admin Sales yang memasang promo bersyarat menilai konsumennya memenuhi syarat.
+                'promo_syarat_terpenuhi' => $promo->bersyarat() ? true : $spr->promo_syarat_terpenuhi,
                 'promo_alasan' => $alasan,
                 'promo_oleh_user_id' => $userId,
                 'promo_at' => now(),

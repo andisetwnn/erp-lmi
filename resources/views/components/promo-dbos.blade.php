@@ -28,6 +28,9 @@
                     {{ $promo->ringkasanPotongan() }} ·
                     {{ $promo->semua_unit ? __('semua unit') : $promo->rumah_count.' '.__('unit') }}
                 </div>
+                @if ($promo->bersyarat())
+                    <div class="mt-0.5 text-xs font-semibold text-violet-700 dark:text-violet-300">{{ __('Khusus untuk:') }} {{ $promo->syarat }}</div>
+                @endif
                 <div class="mt-0.5 text-[11px] text-zinc-500">
                     {{ __('UTJ') }} {{ $promo->berlaku_mulai->translatedFormat('d M') }} – {{ $promo->berlaku_sampai->translatedFormat('d M Y') }}
                     @if ($promo->keterangan)
@@ -45,6 +48,9 @@
                         <span class="font-semibold text-zinc-800 dark:text-zinc-200">{{ $promo->nama }}</span>
                         <span class="text-zinc-500">· {{ __('mulai') }} {{ $promo->berlaku_mulai->translatedFormat('d M') }} · {{ $promo->proyek?->nama_proyek }}</span>
                         <div class="text-[11px] text-fuchsia-700 dark:text-fuchsia-300">{{ $promo->ringkasanPotongan() }}</div>
+                        @if ($promo->bersyarat())
+                            <div class="text-[11px] text-violet-700 dark:text-violet-300">{{ __('Khusus untuk:') }} {{ $promo->syarat }}</div>
+                        @endif
                     </div>
                 @endforeach
             </div>

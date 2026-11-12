@@ -227,6 +227,8 @@ new #[Title('Penerimaan Konsumen')] class extends Component
                 $spr->prospectCustomer?->tanggal_lahir,
                 (float) $spr->utj_nominal,
                 (float) $spr->um_net,
+                // Promo bersyarat: diam kalau sales sudah menjawab konsumennya tidak memenuhi.
+                $spr->promo_syarat_terpenuhi !== false,
             ) : null;
         }
 
@@ -492,6 +494,9 @@ new #[Title('Penerimaan Konsumen')] class extends Component
                                         {{ __('Booking fee promo Rp :nominal.', ['nominal' => number_format((float) $confirmSpr->utj_nominal - $promoTerlewat['potongan_utj'], 0, ',', '.')]) }}
                                     @else
                                         {{ __('Potongan uang muka Rp :nominal.', ['nominal' => number_format($promoTerlewat['potongan_um'], 0, ',', '.')]) }}
+                                    @endif
+                                    @if ($promoTerlewat['promo']->bersyarat())
+                                        {{ __('Promo ini khusus untuk :syarat.', ['syarat' => $promoTerlewat['promo']->syarat]) }}
                                     @endif
                                     {{ __('Isi nominal sesuai yang benar-benar ditransfer, lalu minta Admin Sales memasang promonya lewat "Lampirkan promo yang terlewat" di detail SPR.') }}
                                 </div>
