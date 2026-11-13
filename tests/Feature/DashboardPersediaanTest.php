@@ -289,9 +289,22 @@ it('membagi seluruh kavling menjadi akad, sudah dibangun, dan belum dibangun men
         ->and($nilai('akad'))->toBe(1)
         ->and($nilai('sudah_dibangun'))->toBe(2)
         ->and($nilai('belum_dibangun'))->toBe(4)
-        ->and($nilai('konsumen_aktif'))->toBe(3)
+        // Konsumen aktif hanya yang unitnya sudah dibangun (turun LOT); sisanya Konsumen Non LOT.
+        ->and($nilai('konsumen_aktif'))->toBe(1)
         ->and($nilai('konsumen_non_lot'))->toBe(2)
         ->and($p['komposisi']->first())->toMatchArray(['total' => 7, 'akad' => 1, 'dibangun' => 2, 'belum' => 4]);
+});
+
+it('menghitung pembeli di kartu sudah dibangun dari Konsumen Aktif', function () {
+    buatUnitPersediaan(2, 'approved', 2);    // dibangun, sudah ada pembeli
+    buatUnitPersediaan(3, null, 2);          // dibangun, belum terjual
+    buatUnitPersediaan(4, 'approved', null); // belum dibangun, sudah ada pembeli
+    buatUnitPersediaan(6, null, null);
+
+    expect(Livewire::test('pages::dashboard.direksi')->html())
+        ->toContain('1 sudah terjual · 1 belum terjual')
+        ->toContain('Sudah beli, unit sudah dibangun')
+        ->toContain('unitnya sudah dibangun (sudah turun LOT)');
 });
 
 it('menaruh Persediaan Rumah di atas Marketing Performance beserta kartu ringkasnya', function () {
@@ -349,7 +362,7 @@ it('membuka daftar unit di balik setiap kartu dengan jumlah yang sama dengan ang
         'akad' => ['LT-01'],
         'sudah_dibangun' => ['LT-02', 'LT-03'],
         'belum_dibangun' => ['LT-04', 'LT-05', 'LT-06', 'LT-07'],
-        'konsumen_aktif' => ['LT-02', 'LT-04', 'LT-05'],
+        'konsumen_aktif' => ['LT-02'],
         'konsumen_non_lot' => ['LT-04', 'LT-05'],
         'stok_berjalan' => ['LT-02', 'LT-03', 'LT-04', 'LT-05', 'LT-06', 'LT-07'],
     ];

@@ -260,7 +260,9 @@ new #[Title('Dashboard')] class extends Component
             'akad' => $q->whereIn('id', $akad),
             'sudah_dibangun' => $q->whereNotNull('lot')->whereNotIn('id', $akad),
             'belum_dibangun' => $q->whereNull('lot')->whereNotIn('id', $akad),
-            'konsumen_aktif' => $q->whereIn('id', $dibeli)->whereNotIn('id', $akad),
+            // Konsumen aktif = sudah membeli dan unitnya sudah dibangun (turun LOT); yang belum
+            // turun LOT dihitung terpisah sebagai Konsumen Non LOT.
+            'konsumen_aktif' => $q->whereIn('id', $dibeli)->whereNotIn('id', $akad)->whereNotNull('lot'),
             'konsumen_non_lot' => $q->whereIn('id', $dibeli)->whereNotIn('id', $akad)->whereNull('lot'),
             'stok_awal' => $q->whereNotIn('id', $akadSebelumTahunIni),
             'stok_berjalan' => $q->whereNotIn('id', $akad),
@@ -366,11 +368,11 @@ new #[Title('Dashboard')] class extends Component
             ],
             [
                 'key' => 'konsumen_aktif', 'label' => 'Konsumen Aktif', 'icon' => 'user-group', 'color' => 'amber', 'values' => $konsumenAktif,
-                'info' => 'Konsumen yang sudah membeli — SPR-nya diajukan atau disetujui — tapi belum akad.',
+                'info' => 'Konsumen yang sudah membeli — SPR-nya diajukan atau disetujui — dan unitnya sudah dibangun (sudah turun LOT), tapi belum akad.',
             ],
             [
                 'key' => 'konsumen_non_lot', 'label' => 'Konsumen Non LOT', 'icon' => 'clock', 'color' => 'rose', 'values' => $konsumenNonLot,
-                'info' => 'Konsumen aktif yang unitnya belum turun LOT — sudah membeli, tapi rumahnya belum mulai dibangun.',
+                'info' => 'Konsumen yang sudah membeli tapi unitnya belum turun LOT — rumahnya belum mulai dibangun. Tidak termasuk Konsumen Aktif.',
             ],
             [
                 'key' => 'stok_awal', 'label' => 'Stok Kavling Awal '.$this->selectedTahun, 'icon' => 'calendar', 'color' => 'violet', 'values' => $stokAwal, 'persen' => true,
@@ -532,9 +534,9 @@ new #[Title('Dashboard')] class extends Component
                 $kartu = [
                     ['Total Kavling', $k['total'], 'Seluruh unit di master rumah', 'map', 'bg-sky-500', 'total_kavling'],
                     ['Akad', $k['akad'], $persen($k['akad']), 'check-badge', 'bg-emerald-500', 'akad'],
-                    ['Sudah Dibangun, Belum Akad', $k['dibangun'], $num($aktif - $nonLot).' sudah terjual · '.$num($k['dibangun'] - ($aktif - $nonLot)).' belum terjual', 'wrench-screwdriver', 'bg-orange-500', 'sudah_dibangun'],
+                    ['Sudah Dibangun, Belum Akad', $k['dibangun'], $num($aktif).' sudah terjual · '.$num($k['dibangun'] - $aktif).' belum terjual', 'wrench-screwdriver', 'bg-orange-500', 'sudah_dibangun'],
                     ['Belum Dibangun', $k['belum'], $num($nonLot).' sudah terjual · '.$num($k['belum'] - $nonLot).' belum terjual', 'map-pin', 'bg-zinc-400', 'belum_dibangun'],
-                    ['Konsumen Aktif', $aktif, 'Sudah beli, belum akad', 'user-group', 'bg-amber-500', 'konsumen_aktif'],
+                    ['Konsumen Aktif', $aktif, 'Sudah beli, unit sudah dibangun', 'user-group', 'bg-amber-500', 'konsumen_aktif'],
                     ['Konsumen Non LOT', $nonLot, 'Sudah beli, belum turun LOT', 'clock', 'bg-rose-500', 'konsumen_non_lot'],
                     ['Stok Kavling Awal '.$this->selectedTahun, $nilaiMetrik('stok_awal'), $persen($nilaiMetrik('stok_awal')), 'calendar', 'bg-violet-500', 'stok_awal'],
                     ['Stok Kavling Berjalan', $nilaiMetrik('stok_berjalan'), 'Total kavling dikurangi seluruh akad', 'squares-2x2', 'bg-indigo-500', 'stok_berjalan'],
