@@ -8,7 +8,6 @@ use App\Models\Master\Sales;
 use App\Models\Master\Spr;
 use App\Models\Master\TipeRumah;
 use App\Models\User;
-use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -308,14 +307,15 @@ it('menaruh Persediaan Rumah di atas Marketing Performance beserta kartu ringkas
         ->and($html)->toContain('Sudah beli, belum turun LOT');
 });
 
-it('menyebutkan kapan data LOT terakhir diperbarui', function () {
-    $this->travelTo(CarbonImmutable::parse('2026-11-09 10:00'));
+it('tidak menampilkan catatan sumber data LOT dan Matrix di bawah kartu persediaan', function () {
+    // Diminta dihapus dari dashboard Direksi (12 Nov 2026): catatan teknis, bukan informasi untuk Direksi.
     buatUnitPersediaan(1, null, null);
     Rumah::where('blok', 'LT')->first()->update(['lot' => 7]);
 
     expect(Livewire::test('pages::dashboard.direksi')->html())
-        ->toContain('Sudah/belum dibangun mengikuti LOT.')
-        ->toContain('Data LOT terakhir diperbarui <b>9 Nov 2026</b>');
+        ->not->toContain('mengikuti LOT')
+        ->not->toContain('Data LOT terakhir diperbarui')
+        ->not->toContain('Matrix terakhir diunggah');
 });
 
 it('menampilkan tabel rincian per proyek hanya kalau proyeknya lebih dari satu', function () {

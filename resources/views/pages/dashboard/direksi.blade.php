@@ -5,7 +5,6 @@ use App\Models\Master\Proyek;
 use App\Models\Master\Rumah;
 use App\Models\Master\Spr;
 use App\Models\Master\TargetMarketing;
-use App\Models\Matrix\MatrixImport;
 use Carbon\CarbonImmutable;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Builder;
@@ -396,12 +395,7 @@ new #[Title('Dashboard')] class extends Component
             ],
         ];
 
-        // Tahap pembangunan hanya sesegar data LOT-nya, yang datang dari unggahan Matrix
-        // atau diisi admin teknik di menu Teknik.
-        $lotDiperbarui = Rumah::whereIn('proyek_id', $proyekIds)->max('progres_updated_at');
-        $matrixTerakhir = MatrixImport::latest('id')->first(['nama_file', 'created_at']);
-
-        return compact('proyekList', 'metrics', 'totalKavling', 'komposisi', 'lotDiperbarui', 'matrixTerakhir');
+        return compact('proyekList', 'metrics', 'totalKavling', 'komposisi');
     }
 
     public function with(): array
@@ -563,15 +557,6 @@ new #[Title('Dashboard')] class extends Component
                         </button>
                     @endforeach
                 </div>
-                <p @class(['-mt-2 text-[11px] text-zinc-500 dark:text-zinc-400', 'mb-4' => $persediaan['komposisi']->count() > 1])>
-                    {{ __('Sudah/belum dibangun mengikuti LOT.') }}
-                    @if ($persediaan['lotDiperbarui'])
-                        {{ __('Data LOT terakhir diperbarui') }} <b>{{ \Illuminate\Support\Carbon::parse($persediaan['lotDiperbarui'])->translatedFormat('j M Y') }}</b>.
-                    @endif
-                    @if ($persediaan['matrixTerakhir'])
-                        {{ __('Matrix terakhir diunggah') }}: {{ $persediaan['matrixTerakhir']->nama_file }} ({{ $persediaan['matrixTerakhir']->created_at->translatedFormat('j M Y') }}).
-                    @endif
-                </p>
             @endif
 
             {{-- Rincian kartu: daftar unit di balik angka yang diklik --}}
