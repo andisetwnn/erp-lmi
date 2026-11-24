@@ -100,6 +100,15 @@ function berkasMatrixTiruan(): string
     $makroB->setCellValue('W10', '14/9/26');
     $makroB->setCellValue('X10', 'SUDAH');
 
+    // Sel berformat Amerika dari Google Sheets: tampil "10/8/2026", maksudnya
+    // 10 Agustus, tersimpan sebagai 8 Oktober. "7/28/2026" hanya bisa 28 Juli.
+    $mikro->setCellValue('X10', 46303);
+    $mikro->getStyle('X10')->getNumberFormat()->setFormatCode('m/d/yyyy');
+    $mikro->setCellValue('Y10', 46231);
+    $mikro->getStyle('Y10')->getNumberFormat()->setFormatCode('m/d/yyyy');
+    $mikro->setCellValue('Z10', 46303);
+    $mikro->getStyle('Z10')->getNumberFormat()->setFormatCode('d-mmm-yy');
+
     // Non Lot: judul kolom di baris 7, tanpa subcon, ada BBA di kolom O.
     $sheet = $spreadsheet->createSheet()->setTitle('NON LOT');
     $sheet->setCellValue('B6', 'BERKAS BELUM');
@@ -609,6 +618,17 @@ it('mengenali berbagai gaya tanggal di berkas Matrix', function (mixed $isi, ?st
     'tahun tak wajar' => ['14/9/0026', null],
     'teks biasa' => ['SUDAH', null],
 ]);
+
+it('membaca sel berformat Amerika sebagai dd/mm seperti yang tampil', function () {
+    app(MatrixImportService::class)->impor($this->berkas, 'MATRIX.xlsx');
+
+    $u = MatrixUnit::where('nama', 'BUDI MATRIX')->where('kategori', 'mikro')->first();
+
+    expect($u->sp3k->toDateString())->toBe('2026-08-10')
+        ->and($u->exp_sp3k->toDateString())->toBe('2026-07-28')
+        // Sel bertampilan hari-dulu tidak dibalik.
+        ->and($u->lpa->toDateString())->toBe('2026-10-08');
+});
 
 it('melaporkan sel yang tidak terbaca dan tidak lagi mengisi pemberkasan', function () {
     // Pemberkasan diinput Admin KPR langsung (keputusan 23 Nov 2026), jadi

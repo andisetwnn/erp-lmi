@@ -384,10 +384,11 @@ class MatrixImportService
         $gagal = [];
 
         foreach ($kolom as $field => $huruf) {
-            $mentah = $this->nilai($sheet->getCell($huruf.$r));
+            $sel = $sheet->getCell($huruf.$r);
+            $mentah = $this->nilai($sel);
 
             $baris[$field] = match (true) {
-                in_array($field, self::KOLOM_TANGGAL, true) => $this->keTanggal($mentah),
+                in_array($field, self::KOLOM_TANGGAL, true) => $this->keTanggal($mentah, $this->formatBulanDulu($sel)),
                 in_array($field, self::KOLOM_UANG, true) => $this->keUang($mentah),
                 in_array($field, self::KOLOM_ANGKA, true) => $this->keBulat($mentah),
                 $field === 'subcon' => $this->keSubcon($mentah),
@@ -545,12 +546,28 @@ class MatrixImportService
     }
 
     /**
+     * Sel bertampilan bulan-dulu ("m/d/yyyy"), bawaan Google Sheets berlokal Amerika.
+     *
+     * Admin KPR selalu mengetik dd/mm/yyyy. Di sel seperti ini "10/8/2026"
+     * (10 Agustus) tersimpan sebagai 8 Oktober, sedangkan "27/8/2026" tidak
+     * dikenali sebagai tanggal dan tetap berupa teks.
+     */
+    private function formatBulanDulu(Cell $sel): bool
+    {
+        $format = preg_replace('/\[[^\]]*\]|"[^"]*"/', '', $sel->getStyle()->getNumberFormat()->getFormatCode());
+
+        return (bool) preg_match('#^\s*m{1,2}[/.\-]d{1,2}[/.\-]y#i', (string) $format);
+    }
+
+    /**
      * Tanggal bisa berupa angka seri Excel atau teks "14/03/2026".
      *
      * Ambang 25000 (± tahun 1968) dipakai supaya angka kecil seperti nomor lot
-     * atau progres tidak ikut terbaca sebagai tanggal.
+     * atau progres tidak ikut terbaca sebagai tanggal. Angka seri dari sel
+     * bertampilan bulan-dulu dibaca seperti yang terlihat di layar, yaitu
+     * dd/mm — kecuali tanggalnya di atas 12, yang hanya bisa berarti satu hal.
      */
-    private function keTanggal(mixed $v): ?string
+    private function keTanggal(mixed $v, bool $bulanDulu = false): ?string
     {
         if (is_numeric($v)) {
             $seri = (float) $v;
@@ -559,7 +576,13 @@ class MatrixImportService
                 return null;
             }
 
-            return Carbon::createFromTimestampUTC((int) round(($seri - 25569) * 86400))->toDateString();
+            $tanggal = Carbon::createFromTimestampUTC((int) round(($seri - 25569) * 86400));
+
+            if ($bulanDulu && $tanggal->day <= 12) {
+                return $this->susunTanggal($tanggal->month, $tanggal->day, $tanggal->year);
+            }
+
+            return $tanggal->toDateString();
         }
 
         if (! is_string($v)) {
