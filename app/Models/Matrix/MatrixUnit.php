@@ -63,6 +63,18 @@ class MatrixUnit extends Model
         )));
     }
 
+    /** Judul kolom tanggal seperti tertulis di berkas Matrix, untuk laporan sel yang gagal dibaca. */
+    public const LABEL_KOLOM_TANGGAL = [
+        'tanggal' => 'Tanggal SPR',
+        'tgl_bayar_terakhir' => 'Tgl bayar terakhir',
+        'bm' => 'BM',
+        'wcr' => 'WCR',
+        'sp3k' => 'SP3K',
+        'exp_sp3k' => 'Exp SP3K',
+        'lpa' => 'LPA',
+        'rencana_akad' => 'Rencana Akad',
+    ];
+
     protected $fillable = [
         'matrix_import_id', 'kategori', 'seksi', 'urutan',
         'nama', 'blok', 'nomor_unit', 'sales', 'tanggal',

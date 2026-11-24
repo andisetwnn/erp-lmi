@@ -92,7 +92,6 @@ it('tidak menyisakan label unit yang dirakit tangan di kode', function () {
     $kecuali = [
         'app/Models/Master/Rumah.php',                    // accessor-nya sendiri
         'app/Console/Commands/Master/ImportStockKavling.php',
-        'app/Services/MatrixSinkronPemberkasan.php',
         'app/Services/MatrixSinkronTeknik.php',
         'app/Models/Matrix/MatrixUnit.php',
         'resources/views/pages/master/rumah.blade.php',   // pratinjau buat-massal, padding sendiri

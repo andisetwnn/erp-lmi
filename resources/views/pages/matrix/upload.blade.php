@@ -3,7 +3,6 @@
 use App\Models\Matrix\MatrixImport;
 use App\Models\Matrix\MatrixUnit;
 use App\Services\MatrixImportService;
-use App\Services\MatrixSinkronPemberkasan;
 use App\Services\MatrixSinkronTeknik;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
@@ -21,12 +20,6 @@ new #[Title('Unggah Matrix')] class extends Component {
      * susah dilacak kalau ada yang meleset. Menyalakannya harus jadi pilihan sadar.
      */
     public bool $sinkronTeknik = false;
-
-    /**
-     * Terpisah dari saklar teknik: pemberkasan sudah dipakai Admin KPR
-     * sehari-hari, jadi keputusannya berbeda dan harus bisa dipilih sendiri.
-     */
-    public bool $sinkronPemberkasan = false;
 
     public ?int $hapusId = null;
 
@@ -103,17 +96,13 @@ new #[Title('Unggah Matrix')] class extends Component {
             }
         }
 
-        if ($this->sinkronPemberkasan) {
-            $berkas = app(MatrixSinkronPemberkasan::class)->jalankan($import, Auth::id());
+        $gagal = count($import->tidak_terbaca ?? []);
 
-            $pesan .= ' '.__('Pemberkasan: :unit SPR terisi (:kolom kolom, :baru berkas baru).', [
-                'unit' => $berkas['diperbarui'],
-                'kolom' => $berkas['kolom'],
-                'baru' => $berkas['baru'],
-            ]);
+        if ($gagal > 0) {
+            $pesan .= ' '.__(':jumlah sel tanggal tidak terbaca — daftarnya ada di bawah.', ['jumlah' => $gagal]);
         }
 
-        Flux::toast(variant: 'success', heading: __('Matrix tersimpan'), text: $pesan);
+        Flux::toast(variant: $gagal > 0 ? 'warning' : 'success', heading: __('Matrix tersimpan'), text: $pesan);
     }
 
     public function konfirmasiHapus(int $id): void
@@ -219,6 +208,46 @@ new #[Title('Unggah Matrix')] class extends Component {
                             {{ __('oleh') }} {{ $terakhir->uploadedBy->name }}
                         @endif
                     </div>
+
+                    {{-- Sel tanggal yang ada isinya tapi tidak terbaca. Tanpa daftar ini
+                         sel seperti itu hilang diam-diam dan laporan tampak kurang lengkap. --}}
+                    @if (! empty($terakhir->tidak_terbaca))
+                        <div class="border-t border-amber-200 bg-amber-50/60 px-5 py-3 dark:border-amber-900/50 dark:bg-amber-950/20">
+                            <div class="flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300">
+                                <flux:icon.exclamation-triangle class="mt-0.5 size-4 shrink-0" />
+                                <p>
+                                    <b>{{ __(':jumlah sel tanggal tidak terbaca', ['jumlah' => count($terakhir->tidak_terbaca)]) }}</b> —
+                                    {{ __('isinya dianggap kosong. Tulis tanggal lengkap seperti 29/10/2026 di Matrix, lalu unggah ulang.') }}
+                                </p>
+                            </div>
+                            <div class="mt-2 max-h-64 overflow-auto rounded-lg border border-amber-200 bg-white dark:border-amber-900/50 dark:bg-zinc-900">
+                                <table class="w-full text-xs">
+                                    <thead class="sticky top-0 bg-zinc-50 text-[10px] uppercase tracking-wider text-zinc-500 dark:bg-zinc-800">
+                                        <tr>
+                                            <th class="px-3 py-1.5 text-left font-bold">{{ __('Sheet') }}</th>
+                                            <th class="px-3 py-1.5 text-right font-bold">{{ __('Baris') }}</th>
+                                            <th class="px-3 py-1.5 text-left font-bold">{{ __('Unit') }}</th>
+                                            <th class="px-3 py-1.5 text-left font-bold">{{ __('Nama') }}</th>
+                                            <th class="px-3 py-1.5 text-left font-bold">{{ __('Kolom') }}</th>
+                                            <th class="px-3 py-1.5 text-left font-bold">{{ __('Isi sel') }}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
+                                        @foreach ($terakhir->tidak_terbaca as $sel)
+                                            <tr>
+                                                <td class="px-3 py-1.5">{{ $sel['sheet'] }}</td>
+                                                <td class="px-3 py-1.5 text-right font-mono tabular-nums">{{ $sel['baris'] }}</td>
+                                                <td class="px-3 py-1.5 font-mono">{{ $sel['unit'] ?: '—' }}</td>
+                                                <td class="px-3 py-1.5">{{ $sel['nama'] ?: '—' }}</td>
+                                                <td class="px-3 py-1.5">{{ App\Models\Matrix\MatrixUnit::LABEL_KOLOM_TANGGAL[$sel['kolom']] ?? $sel['kolom'] }}</td>
+                                                <td class="px-3 py-1.5 font-mono text-amber-700 dark:text-amber-400">{{ $sel['isi'] }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    @endif
                 @else
                     <p class="px-5 py-8 text-center text-sm italic text-zinc-400">
                         {{ __('Belum ada berkas Matrix yang diunggah.') }}
@@ -273,16 +302,9 @@ new #[Title('Unggah Matrix')] class extends Component {
                         </p>
                     </div>
 
-                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
-                        <flux:switch wire:model.live="sinkronPemberkasan"
-                                     :label="__('Sekalian perbarui pemberkasan')" align="left" />
-                        <p class="mt-1.5 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
-                            {{ __('Tanggal BM, WCR, SP3K, LPA, Rencana Akad, dan kode bank diisikan ke modul Pemberkasan. Hanya kolom yang masih kosong — tanggal yang sudah diinput Admin KPR tidak tergeser.') }}
-                            <span class="block mt-1 text-zinc-500">
-                                {{ __('Masa berlaku SP3K tetap dihitung sistem (SP3K + 90 hari), tidak diambil dari berkas.') }}
-                            </span>
-                        </p>
-                    </div>
+                    <p class="text-xs leading-relaxed text-zinc-500">
+                        {{ __('Tanggal pemberkasan (berkas lengkap, wawancara, SP3K, LPA) tidak ikut diambil dari Matrix — Admin KPR menginputnya langsung di menu Pemberkasan.') }}
+                    </p>
 
                     <div>
                         <flux:button type="submit" variant="primary" icon="arrow-up-tray" wire:loading.attr="disabled">

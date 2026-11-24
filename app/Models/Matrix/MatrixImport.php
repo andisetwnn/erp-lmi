@@ -17,6 +17,7 @@ class MatrixImport extends Model
         'minggu_ke',
         'periode',
         'jumlah_baris',
+        'tidak_terbaca',
         'uploaded_by_user_id',
     ];
 
@@ -24,6 +25,7 @@ class MatrixImport extends Model
     {
         return [
             'jumlah_baris' => 'integer',
+            'tidak_terbaca' => 'array',
         ];
     }
 

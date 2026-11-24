@@ -84,6 +84,26 @@ class MatrixImportService
     private const KOLOM_ANGKA = ['luas_bangunan', 'luas_tanah'];
 
     /**
+     * Nama bulan yang dipakai Admin KPR saat mengetik tanggal sebagai teks,
+     * mis. "29 OKTOBER 2026" atau "16/okt/2026". Bahasa Inggris ikut didaftar
+     * karena sebagian sel berasal dari tempelan Google Sheets.
+     */
+    private const BULAN = [
+        'jan' => 1, 'januari' => 1, 'january' => 1,
+        'feb' => 2, 'peb' => 2, 'februari' => 2, 'pebruari' => 2, 'february' => 2,
+        'mar' => 3, 'maret' => 3, 'march' => 3,
+        'apr' => 4, 'april' => 4,
+        'mei' => 5, 'may' => 5,
+        'jun' => 6, 'juni' => 6, 'june' => 6,
+        'jul' => 7, 'juli' => 7, 'july' => 7,
+        'agu' => 8, 'agt' => 8, 'ags' => 8, 'agus' => 8, 'agust' => 8, 'agustus' => 8, 'aug' => 8, 'august' => 8,
+        'sep' => 9, 'sept' => 9, 'september' => 9,
+        'okt' => 10, 'oktober' => 10, 'oct' => 10, 'october' => 10,
+        'nov' => 11, 'nop' => 11, 'november' => 11, 'nopember' => 11,
+        'des' => 12, 'desember' => 12, 'dec' => 12, 'december' => 12,
+    ];
+
+    /**
      * Tulisan di kolom B yang bentuknya mirip judul tahap, padahal cuma catatan.
      *
      * "NOTED :" muncul persis di bawah tahap STOCK, jadi kalau ikut dianggap tahap,
@@ -101,6 +121,13 @@ class MatrixImportService
      * @var array<string, string>
      */
     private array $legendaSubcon = [];
+
+    /**
+     * Sel tanggal yang ada isinya tapi tidak bisa dibaca, untuk dilaporkan ke pengunggah.
+     *
+     * @var list<array{sheet: string, baris: int, unit: string, nama: string, kolom: string, isi: string}>
+     */
+    private array $tidakTerbaca = [];
 
     /**
      * Baca berkas lalu simpan. Unggahan lama tidak dihapus — laporan selalu
@@ -123,6 +150,7 @@ class MatrixImportService
         $meta['minggu_ke'] = $mingguKe ?? $meta['minggu_ke'];
         $meta['periode'] = $periode ?? $meta['periode'];
         $this->legendaSubcon = $this->bacaLegendaSubcon($spreadsheet);
+        $this->tidakTerbaca = [];
 
         return DB::transaction(function () use ($spreadsheet, $namaFile, $userId, $meta) {
             $import = MatrixImport::create([
@@ -157,7 +185,10 @@ class MatrixImportService
                 );
             }
 
-            $import->update(['jumlah_baris' => $total]);
+            $import->update([
+                'jumlah_baris' => $total,
+                'tidak_terbaca' => $this->tidakTerbaca ?: null,
+            ]);
 
             return $import->refresh();
         });
@@ -350,6 +381,7 @@ class MatrixImportService
     private function bacaBaris(Worksheet $sheet, int $r, array $kolom, string $seksi, int $urutan): array
     {
         $baris = ['seksi' => $seksi, 'urutan' => $urutan];
+        $gagal = [];
 
         foreach ($kolom as $field => $huruf) {
             $mentah = $this->nilai($sheet->getCell($huruf.$r));
@@ -363,9 +395,25 @@ class MatrixImportService
                 $field === 'persen_um' => $this->kePecahan($mentah),
                 default => $this->keTeks($mentah),
             };
+
+            if (in_array($field, self::KOLOM_TANGGAL, true) && $baris[$field] === null
+                && is_scalar($mentah) && trim((string) $mentah) !== '') {
+                $gagal[$field] = trim((string) $mentah);
+            }
         }
 
         $baris['nama'] = $baris['nama'] ?? '';
+
+        foreach ($gagal as $field => $isi) {
+            $this->tidakTerbaca[] = [
+                'sheet' => $sheet->getTitle(),
+                'baris' => $r,
+                'unit' => (new MatrixUnit(['blok' => $baris['blok'] ?? null, 'nomor_unit' => $baris['nomor_unit'] ?? null]))->kode_unit,
+                'nama' => $baris['nama'],
+                'kolom' => $field,
+                'isi' => $isi,
+            ];
+        }
 
         return $baris;
     }
@@ -518,20 +566,41 @@ class MatrixImportService
             return null;
         }
 
-        $teks = trim($v);
+        $teks = mb_strtolower(trim($v));
 
         if ($teks === '') {
             return null;
         }
 
-        foreach (['d/m/Y', 'd-m-Y', 'Y-m-d', 'd/m/y'] as $format) {
-            try {
-                return Carbon::createFromFormat($format, $teks)->toDateString();
-            } catch (\Throwable) {
-                continue;
-            }
+        if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})$/', $teks, $m)) {
+            return $this->susunTanggal((int) $m[3], (int) $m[2], (int) $m[1]);
         }
 
-        return null;
+        // Bulan berhuruf diganti angka, lalu semua pemisah diseragamkan:
+        // "29 oktober 2026", "16/okt/2026", dan "14-9-26" jadi bentuk d/m/y.
+        $teks = preg_replace_callback('/\p{L}+/u', fn (array $kata) => isset(self::BULAN[$kata[0]])
+            ? '/'.self::BULAN[$kata[0]].'/'
+            : $kata[0], $teks);
+        $teks = preg_replace('#[\s./-]+#', '/', trim($teks, ' ./-'));
+
+        if (! preg_match('#^(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})$#', $teks, $m)) {
+            return null;
+        }
+
+        // Tahun dua digit selalu berarti 20xx. Dulu "14/9/26" terbaca tahun 0026 —
+        // di layar tetap tampil 14/09/26, tapi hitungan masa berlaku SP3K kacau.
+        $tahun = strlen($m[3]) === 2 ? 2000 + (int) $m[3] : (int) $m[3];
+
+        return $this->susunTanggal((int) $m[1], (int) $m[2], $tahun);
+    }
+
+    /** Tanggal yang mustahil (31/2) atau tahunnya di luar kewajaran dianggap tidak terbaca. */
+    private function susunTanggal(int $hari, int $bulan, int $tahun): ?string
+    {
+        if ($tahun < 2000 || $tahun > 2100 || ! checkdate($bulan, $hari, $tahun)) {
+            return null;
+        }
+
+        return sprintf('%04d-%02d-%02d', $tahun, $bulan, $hari);
     }
 }

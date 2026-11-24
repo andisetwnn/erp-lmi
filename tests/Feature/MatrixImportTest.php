@@ -89,6 +89,13 @@ function berkasMatrixTiruan(): string
     $makroB->setCellValue('L16', 0.45);
     $makroB->setCellValue('N16', 190_000_000);
 
+    // Tanggal yang diketik Admin KPR sebagai teks dengan berbagai gaya.
+    $makroA = $spreadsheet->getSheetByName('MAKRO A');
+    $makroA->setCellValue('W10', '16/okt/2026');
+    $makroA->setCellValue('X10', '29 OKTOBER 2026');
+    $makroB->setCellValue('W10', '14/9/26');
+    $makroB->setCellValue('X10', 'SUDAH');
+
     // Non Lot: judul kolom di baris 7, tanpa subcon, ada BBA di kolom O.
     $sheet = $spreadsheet->createSheet()->setTitle('NON LOT');
     $sheet->setCellValue('B6', 'BERKAS BELUM');
@@ -561,4 +568,57 @@ it('tetap memakai judul berkas kalau dipanggil tanpa pilihan', function () {
 
     expect($import->minggu_ke)->toBe('MINGGU KE-24')
         ->and($import->periode)->toBe('Per September 2026');
+});
+
+it('membaca tanggal berhuruf dan bertahun dua digit, dan melaporkan yang tidak terbaca', function () {
+    $import = app(MatrixImportService::class)->impor($this->berkas, 'MATRIX.xlsx');
+
+    $makroA = MatrixUnit::kategori('makro_a')->where('nama', 'BUDI MATRIX')->first();
+    $makroB = MatrixUnit::kategori('makro_b')->where('nama', 'BUDI MATRIX')->first();
+
+    expect($makroA->wcr->toDateString())->toBe('2026-10-16')
+        ->and($makroA->sp3k->toDateString())->toBe('2026-10-29')
+        // Dulu "14/9/26" tersimpan sebagai tahun 0026.
+        ->and($makroB->wcr->toDateString())->toBe('2026-09-14')
+        ->and($makroB->sp3k)->toBeNull();
+
+    expect($import->tidak_terbaca)->toBe([[
+        'sheet' => 'MAKRO B', 'baris' => 10, 'unit' => 'AE-11', 'nama' => 'BUDI MATRIX',
+        'kolom' => 'sp3k', 'isi' => 'SUDAH',
+    ]]);
+});
+
+it('mengenali berbagai gaya tanggal di berkas Matrix', function (mixed $isi, ?string $hasil) {
+    $baca = new ReflectionMethod(MatrixImportService::class, 'keTanggal');
+
+    expect($baca->invoke(new MatrixImportService, $isi))->toBe($hasil);
+})->with([
+    'angka seri Excel' => [46071, '2026-02-18'],
+    'd/m/Y' => ['14/03/2026', '2026-03-14'],
+    'tahun dua digit' => ['14/9/26', '2026-09-14'],
+    'bulan singkat' => ['16/okt/2026', '2026-10-16'],
+    'bulan panjang' => ['29 OKTOBER 2026', '2026-10-29'],
+    'bulan campur huruf' => ['21 Agustus 2026', '2026-08-21'],
+    'bulan + tahun dua digit' => ['7-Des-26', '2026-12-07'],
+    'ISO' => ['2026-10-05', '2026-10-05'],
+    'tanggal mustahil' => ['31/2/2026', null],
+    'tahun tak wajar' => ['14/9/0026', null],
+    'teks biasa' => ['SUDAH', null],
+]);
+
+it('melaporkan sel yang tidak terbaca dan tidak lagi mengisi pemberkasan', function () {
+    // Pemberkasan diinput Admin KPR langsung (keputusan 23 Nov 2026), jadi
+    // pilihan untuk mengisinya dari Matrix sudah tidak ditawarkan.
+    $user = User::factory()->create();
+    $user->assignRole('super-admin');
+
+    Livewire::actingAs($user)
+        ->test('pages::matrix.upload')
+        ->assertDontSee('Sekalian perbarui pemberkasan')
+        ->set('berkas', UploadedFile::fake()->createWithContent('MATRIX.xlsx', file_get_contents($this->berkas)))
+        ->set('pilihan', MatrixImportService::mingguIni())
+        ->call('unggah')
+        ->assertHasNoErrors()
+        ->assertSee('1 sel tanggal tidak terbaca')
+        ->assertSee('SUDAH');
 });
