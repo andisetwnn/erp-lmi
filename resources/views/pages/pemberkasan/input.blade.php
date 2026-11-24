@@ -749,7 +749,24 @@ new #[Title('Input Pemberkasan')] class extends Component
                 @error('val_bm_tanggal') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
                 <div>
                     <label class="mb-1 block text-sm font-medium">Upload Berkas Lengkap (PDF/JPG, max 5MB, opsional)</label>
-                    <input type="file" wire:model="uploadFile" accept=".pdf,.jpg,.jpeg,.png" class="text-xs" />
+                    <input type="file" wire:model="uploadFile" accept=".pdf,.jpg,.jpeg,.png"
+                           class="block w-full text-sm text-zinc-700 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-zinc-700 hover:file:bg-zinc-200 dark:text-zinc-300 dark:file:bg-zinc-700 dark:file:text-zinc-200 dark:hover:file:bg-zinc-600" />
+
+                    {{-- Unggahan berjalan di belakang layar begitu berkas dipilih; tanpa
+                         penanda ini Simpan bisa ditekan sebelum berkasnya selesai terunggah. --}}
+                    <div wire:loading wire:target="uploadFile"
+                         class="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                        <flux:icon.arrow-path class="size-3 animate-spin" />
+                        Mengunggah — tunggu sampai selesai sebelum menyimpan.
+                    </div>
+                    @if ($uploadFile)
+                        <div wire:loading.remove wire:target="uploadFile"
+                             class="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                            <flux:icon.check-circle class="size-3 shrink-0" />
+                            <span class="truncate">{{ $uploadFile->getClientOriginalName() }}</span>
+                            <span class="shrink-0 text-zinc-500">— siap disimpan</span>
+                        </div>
+                    @endif
                     @if ($existingFileName)
                         <div class="mt-1 text-[11px] text-zinc-600 dark:text-zinc-400">
                             <flux:icon.paper-clip class="inline size-3" /> {{ $existingFileName }} (upload baru akan replace)
@@ -790,7 +807,7 @@ new #[Title('Input Pemberkasan')] class extends Component
 
             <div class="flex justify-end gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-700">
                 <flux:modal.close><flux:button variant="ghost">Batal</flux:button></flux:modal.close>
-                <flux:button variant="primary" wire:click="simpanField">Simpan</flux:button>
+                <flux:button variant="primary" wire:click="simpanField" wire:loading.attr="disabled" wire:target="uploadFile">Simpan</flux:button>
             </div>
         </div>
     </flux:modal>
