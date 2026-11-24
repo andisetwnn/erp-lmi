@@ -1,12 +1,16 @@
 <?php
 
-use App\Support\BusinessActivityLogger;
+use App\Livewire\Concerns\Sortable;
 use App\Models\Master\BankKpr;
+use App\Models\Master\ProspectCustomer;
 use App\Models\Master\Proyek;
 use App\Models\Master\Rumah;
 use App\Models\Master\Spr;
 use App\Models\Master\SprPemberkasan;
+use App\Support\BusinessActivityLogger;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\On;
@@ -18,10 +22,19 @@ use Livewire\WithPagination;
 
 new #[Title('Input Pemberkasan')] class extends Component
 {
-    use WithFileUploads, WithPagination;
+    use Sortable, WithFileUploads, WithPagination;
 
     #[Url(as: 'proyek')]
     public ?int $selectedProyekId = null;
+
+    /**
+     * proses | akad | semua.
+     *
+     * Bawaannya hanya SPR yang masih berproses: separuh lebih isi tabel ini sudah
+     * akad dan jarang disentuh lagi, padahal pekerjaan harian ada di sisanya.
+     */
+    #[Url(as: 'tab')]
+    public string $tab = 'proses';
 
     #[Url(as: 'q')]
     public string $search = '';
@@ -71,14 +84,73 @@ new #[Title('Input Pemberkasan')] class extends Component
 
     public ?string $val_lpa_tanggal = null;
 
-    // Upload (per file — dipakai kalau editingField = bm/sp3k/lpa)
+    // Upload (per file — dipakai kalau editingField = bm/sp3k)
     public $uploadFile = null;
 
     public ?string $existingFileName = null;
 
+    // Isi cepat langsung di sel tabel (tanggal satu-satunya isian: BM, WCR, LPA, atau bank)
+    public ?int $inlineSprId = null;
+
+    public ?string $inlineField = null;
+
+    public ?string $inlineValue = null;
+
+    /**
+     * Peringatan urutan tanggal yang menahan penyimpanan sampai dikonfirmasi.
+     *
+     * @var list<string>
+     */
+    public array $peringatanUrutan = [];
+
+    /** Kolom tabel per field yang bisa diisi langsung di sel. */
+    private const KOLOM_CEPAT = ['bank' => 'bank_kode', 'bm' => 'bm_tanggal', 'wcr' => 'wcr_tanggal', 'lpa' => 'lpa_tanggal'];
+
+    private const LABEL_FIELD = ['bank' => 'Bank', 'bm' => 'Berkas Lengkap', 'wcr' => 'Wawancara', 'sp3k' => 'SP3K', 'lpa' => 'LPA'];
+
+    /**
+     * Ringkasan tahap di atas tabel: kode filter => [judul, keterangan, warna].
+     *
+     * Tahap dihitung dari yang terjauh. SPR yang sudah wawancara atau SP3K tidak
+     * dihitung "belum berkas" walau tanggal berkas lengkapnya tidak tercatat.
+     */
+    public const RINGKASAN = [
+        'belum_berkas' => ['Belum berkas', 'belum ada tahap', 'zinc'],
+        'belum_wawancara' => ['Berkas lengkap', 'belum wawancara', 'sky'],
+        'belum_sp3k' => ['Sudah wawancara', 'belum SP3K', 'blue'],
+        'sudah_sp3k' => ['SP3K terbit', 'semua', 'emerald'],
+        'expiring' => ['SP3K ≤ 30 hari', 'segera habis', 'amber'],
+        'sp3k_expired' => ['SP3K kedaluwarsa', 'belum akad', 'rose'],
+        'lpa_wajib' => ['LPA BTN', 'belum diisi', 'violet'],
+        'tidak_runtut' => ['Tanggal tidak runtut', 'perlu dicek', 'rose'],
+        'akad_diset' => ['Rencana akad', 'sudah diset', 'zinc'],
+    ];
+
     public function mount(): void
     {
         $this->selectedProyekId = \App\Support\ProyekAktif::sinkron($this->selectedProyekId);
+
+        if (! in_array($this->tab, ['proses', 'akad', 'semua'], true)) {
+            $this->tab = 'proses';
+        }
+    }
+
+    public function pilihTab(string $tab): void
+    {
+        if (! in_array($tab, ['proses', 'akad', 'semua'], true)) {
+            return;
+        }
+
+        $this->tab = $tab;
+        $this->filterStatus = '';
+        $this->batalInline();
+        $this->resetPage();
+    }
+
+    public function pakaiTahap(string $kode): void
+    {
+        $this->filterStatus = $this->filterStatus === $kode ? '' : $kode;
+        $this->resetPage();
     }
 
     #[On('active-proyek-changed')]
@@ -92,6 +164,10 @@ new #[Title('Input Pemberkasan')] class extends Component
     {
         if (in_array($property, ['search', 'filterStatus', 'filterBank', 'filterSales', 'filterAkadPeriode', 'perPage', 'selectedProyekId'])) {
             $this->resetPage();
+        }
+        // Tanggal diganti: peringatan untuk tanggal sebelumnya tidak berlaku lagi.
+        if (str_starts_with($property, 'val_') || $property === 'inlineValue') {
+            $this->peringatanUrutan = [];
         }
         // Auto-fill sp3k_expired = sp3k_tanggal + 90 hari kalau belum di-set
         if ($property === 'val_sp3k_tanggal' && $this->val_sp3k_tanggal && ! $this->val_sp3k_expired) {
@@ -122,6 +198,8 @@ new #[Title('Input Pemberkasan')] class extends Component
             return;
         }
 
+        $this->batalInline();
+        $this->peringatanUrutan = [];
         $this->editSprId = $spr->id;
         $this->editPemberkasanId = $p?->id;
         $this->editingField = $field;
@@ -142,6 +220,7 @@ new #[Title('Input Pemberkasan')] class extends Component
             ],
             'sp3k' => [
                 $this->val_sp3k_tanggal = $p?->sp3k_tanggal?->toDateString(),
+                $this->existingFileName = $p?->sp3k_file_original_name,
                 $this->val_sp3k_nomor = $p?->sp3k_nomor,
                 $this->val_sp3k_expired = $p?->sp3k_expired?->toDateString(),
                 $this->val_sp3k_nominal = $p && (float) $p->sp3k_nominal > 0
@@ -156,14 +235,15 @@ new #[Title('Input Pemberkasan')] class extends Component
         Flux::modal('edit-field')->show();
     }
 
-    public function simpanField(): void
+    public function simpanField(bool $abaikanUrutan = false): void
     {
         abort_unless(Auth::user()?->can('pemberkasan.kelola'), 403);
 
-        // Validate per field. Upload berkas hanya untuk BM (Berkas Masuk).
+        // Validate per field. Upload berkas untuk Berkas Lengkap dan SP3K.
+        $berkas = ['nullable', 'file', 'max:5120', 'mimes:pdf,jpg,jpeg,png'];
         $rules = match ($this->editingField) {
             'bank' => ['val_bank_kode' => ['required', 'exists:bank_kpr,kode']],
-            'bm' => ['val_bm_tanggal' => ['required', 'date'], 'uploadFile' => ['nullable', 'file', 'max:5120', 'mimes:pdf,jpg,jpeg,png']],
+            'bm' => ['val_bm_tanggal' => ['required', 'date'], 'uploadFile' => $berkas],
             'wcr' => [
                 'val_wcr_tanggal' => ['required', 'date'],
                 'val_wcr_catatan' => ['nullable', 'string', 'max:255'],
@@ -173,6 +253,7 @@ new #[Title('Input Pemberkasan')] class extends Component
                 'val_sp3k_nomor' => ['nullable', 'string', 'max:50'],
                 'val_sp3k_expired' => ['nullable', 'date'],
                 'val_sp3k_nominal' => ['required', 'string'],
+                'uploadFile' => $berkas,
             ],
             'lpa' => ['val_lpa_tanggal' => ['required', 'date']],
             default => [],
@@ -181,33 +262,115 @@ new #[Title('Input Pemberkasan')] class extends Component
 
         $spr = Spr::findOrFail($this->editSprId);
 
-        // Prep data field yang berubah
-        $data = ['updated_by_user_id' => Auth::id()];
-        $dir = "pemberkasan/{$spr->id}";
-        match ($this->editingField) {
-            'bank' => $data['bank_kode'] = $this->val_bank_kode,
-            'bm' => [
-                $data['bm_tanggal'] = $this->val_bm_tanggal,
-                $this->uploadFile ? ($data['bm_file_path'] = $this->uploadFile->store($dir, 'private'))
-                    && ($data['bm_file_original_name'] = $this->uploadFile->getClientOriginalName()) : null,
-            ],
+        $data = match ($this->editingField) {
+            'bank' => ['bank_kode' => $this->val_bank_kode],
+            'bm' => ['bm_tanggal' => $this->val_bm_tanggal],
             'wcr' => [
-                $data['wcr_tanggal'] = $this->val_wcr_tanggal,
+                'wcr_tanggal' => $this->val_wcr_tanggal,
                 // Dikosongkan berarti catatannya dihapus, bukan dibiarkan yang lama.
-                $data['wcr_catatan'] = trim((string) $this->val_wcr_catatan) ?: null,
+                'wcr_catatan' => trim((string) $this->val_wcr_catatan) ?: null,
             ],
             'sp3k' => [
-                $data['sp3k_tanggal'] = $this->val_sp3k_tanggal,
-                $data['sp3k_nomor'] = $this->val_sp3k_nomor,
-                $data['sp3k_expired'] = $this->val_sp3k_expired,
+                'sp3k_tanggal' => $this->val_sp3k_tanggal,
+                'sp3k_nomor' => $this->val_sp3k_nomor,
+                'sp3k_expired' => $this->val_sp3k_expired,
                 // Strip dot separator sebelum cast ("179.000.000" -> 179000000)
-                $data['sp3k_nominal'] = (float) preg_replace('/\D/', '', (string) $this->val_sp3k_nominal),
+                'sp3k_nominal' => (float) preg_replace('/\D/', '', (string) $this->val_sp3k_nominal),
             ],
-            'lpa' => $data['lpa_tanggal'] = $this->val_lpa_tanggal,
-            default => null,
+            'lpa' => ['lpa_tanggal' => $this->val_lpa_tanggal],
+            default => [],
         };
 
-        $sebelum = $this->editPemberkasanId ? SprPemberkasan::findOrFail($this->editPemberkasanId) : null;
+        // Dicek sebelum berkas disimpan, supaya berkas tidak tertinggal saat penyimpanan ditahan.
+        $this->peringatanUrutan = $abaikanUrutan ? [] : $this->cekUrutan($spr, $data);
+        if ($this->peringatanUrutan !== []) {
+            return;
+        }
+
+        if ($this->uploadFile && in_array($this->editingField, ['bm', 'sp3k'], true)) {
+            $data[$this->editingField.'_file_path'] = $this->uploadFile->store("pemberkasan/{$spr->id}", 'private');
+            $data[$this->editingField.'_file_original_name'] = $this->uploadFile->getClientOriginalName();
+        }
+
+        $this->simpanData($spr, $this->editingField, $data);
+
+        Flux::modal('edit-field')->close();
+        $this->resetFieldState();
+    }
+
+    /** Buka isian tanggal (atau bank) langsung di sel tabel. */
+    public function mulaiInline(int $sprId, string $field): void
+    {
+        abort_unless(Auth::user()?->can('pemberkasan.kelola'), 403);
+
+        if (! array_key_exists($field, self::KOLOM_CEPAT)) {
+            return;
+        }
+
+        $p = SprPemberkasan::where('spr_id', $sprId)->first();
+
+        if ($field === 'lpa' && ! BankKpr::wajibLpa($p?->bank_kode)) {
+            Flux::toast(variant: 'warning', text: 'LPA hanya wajib untuk Bank BTN (CBN / BSY). Pilih bank BTN dulu.');
+
+            return;
+        }
+
+        $this->batalInline();
+        $this->inlineSprId = $sprId;
+        $this->inlineField = $field;
+        $nilai = $p?->getAttribute(self::KOLOM_CEPAT[$field]);
+        $this->inlineValue = $nilai instanceof \DateTimeInterface ? $nilai->format('Y-m-d') : $nilai;
+    }
+
+    public function simpanInline(bool $abaikanUrutan = false): void
+    {
+        abort_unless(Auth::user()?->can('pemberkasan.kelola'), 403);
+
+        $kolom = self::KOLOM_CEPAT[$this->inlineField] ?? null;
+
+        if (! $this->inlineSprId || ! $kolom) {
+            return;
+        }
+
+        $this->validate(
+            ['inlineValue' => $this->inlineField === 'bank' ? ['required', 'exists:bank_kpr,kode'] : ['required', 'date']],
+            [],
+            ['inlineValue' => strtolower(self::LABEL_FIELD[$this->inlineField])],
+        );
+
+        $spr = Spr::findOrFail($this->inlineSprId);
+        $data = [$kolom => $this->inlineValue];
+
+        $this->peringatanUrutan = $abaikanUrutan ? [] : $this->cekUrutan($spr, $data);
+        if ($this->peringatanUrutan !== []) {
+            return;
+        }
+
+        $this->simpanData($spr, $this->inlineField, $data);
+        $this->batalInline();
+    }
+
+    public function batalInline(): void
+    {
+        $this->reset(['inlineSprId', 'inlineField', 'inlineValue', 'peringatanUrutan']);
+        $this->resetErrorBag('inlineValue');
+    }
+
+    /** Dari isian cepat ke jendela lengkap (unggah berkas, catatan wawancara). */
+    public function bukaDetailInline(): void
+    {
+        [$sprId, $field] = [$this->inlineSprId, $this->inlineField];
+
+        if ($sprId && $field) {
+            $this->openField($sprId, $field);
+        }
+    }
+
+    /** Simpan perubahan satu tahap beserta jejaknya di Monitoring. */
+    private function simpanData(Spr $spr, string $field, array $data): void
+    {
+        $data['updated_by_user_id'] = Auth::id();
+        $sebelum = SprPemberkasan::where('spr_id', $spr->id)->first();
         $nilaiLama = $this->nilaiPemberkasan($sebelum);
 
         if ($sebelum) {
@@ -221,13 +384,53 @@ new #[Title('Input Pemberkasan')] class extends Component
 
         BusinessActivityLogger::pemberkasan(
             $spr,
-            self::TAHAP_LOG[$this->editingField] ?? (string) $this->editingField,
+            self::TAHAP_LOG[$field] ?? $field,
             $this->bedaNilai($nilaiLama, $this->nilaiPemberkasan($sesudah->fresh())),
         );
 
-        Flux::modal('edit-field')->close();
-        Flux::toast(variant: 'success', text: "SPR {$spr->nomor_display} — {$this->fieldLabel()} disimpan.");
-        $this->resetFieldState();
+        Flux::toast(variant: 'success', text: "SPR {$spr->nomor_display} — ".self::LABEL_FIELD[$field].' disimpan.');
+    }
+
+    /**
+     * Tanggal yang janggal untuk tahap yang sedang diisi.
+     *
+     * Hanya pasangan yang melibatkan tanggal yang diubah yang diperiksa, supaya
+     * mengisi satu tahap tidak terhalang oleh kejanggalan lama di tahap lain.
+     * Peringatan menahan penyimpanan sampai pengguna memilih "Tetap simpan".
+     *
+     * @param  array<string, mixed>  $data
+     * @return list<string>
+     */
+    private function cekUrutan(Spr $spr, array $data): array
+    {
+        $p = SprPemberkasan::where('spr_id', $spr->id)->first();
+        $nilai = fn (string $kolom): ?string => array_key_exists($kolom, $data)
+            ? ($data[$kolom] ? Carbon::parse($data[$kolom])->toDateString() : null)
+            : $p?->getAttribute($kolom)?->toDateString();
+        $tgl = fn (string $t): string => Carbon::parse($t)->format('d/m/Y');
+        $label = ['bm_tanggal' => 'Berkas lengkap', 'wcr_tanggal' => 'Wawancara', 'sp3k_tanggal' => 'SP3K', 'lpa_tanggal' => 'LPA'];
+        $kecil = ['bm_tanggal' => 'berkas lengkap', 'wcr_tanggal' => 'wawancara', 'sp3k_tanggal' => 'SP3K'];
+        $pesan = [];
+
+        foreach ($label as $kolom => $nama) {
+            if (array_key_exists($kolom, $data) && $nilai($kolom) && $nilai($kolom) > today()->toDateString()) {
+                $pesan[] = "{$nama} {$tgl($nilai($kolom))} belum terjadi.";
+            }
+        }
+
+        foreach ([['bm_tanggal', 'wcr_tanggal'], ['wcr_tanggal', 'sp3k_tanggal'], ['bm_tanggal', 'sp3k_tanggal']] as [$awal, $akhir]) {
+            $diubah = array_key_exists($awal, $data) || array_key_exists($akhir, $data);
+            if ($diubah && $nilai($awal) && $nilai($akhir) && $nilai($akhir) < $nilai($awal)) {
+                $pesan[] = "{$label[$akhir]} ({$tgl($nilai($akhir))}) lebih awal dari {$kecil[$awal]} ({$tgl($nilai($awal))}).";
+            }
+        }
+
+        if (array_key_exists('sp3k_tanggal', $data) && $nilai('sp3k_tanggal') && $spr->tgl_akad
+            && $nilai('sp3k_tanggal') > $spr->tgl_akad->toDateString()) {
+            $pesan[] = "SP3K sesudah tanggal akad ({$spr->tgl_akad->format('d/m/Y')}).";
+        }
+
+        return $pesan;
     }
 
     /** Nama event Monitoring per field yang diedit. */
@@ -243,6 +446,7 @@ new #[Title('Input Pemberkasan')] class extends Component
         'sp3k_nomor' => 'Nomor SP3K',
         'sp3k_expired' => 'SP3K berlaku sampai',
         'sp3k_nominal' => 'Nominal SP3K',
+        'sp3k_file_original_name' => 'Berkas SP3K',
         'lpa_tanggal' => 'Tanggal LPA',
     ];
 
@@ -282,14 +486,7 @@ new #[Title('Input Pemberkasan')] class extends Component
 
     protected function fieldLabel(): string
     {
-        return match ($this->editingField) {
-            'bank' => 'Bank',
-            'bm' => 'Berkas Lengkap',
-            'wcr' => 'Wawancara',
-            'sp3k' => 'SP3K',
-            'lpa' => 'LPA',
-            default => '',
-        };
+        return self::LABEL_FIELD[$this->editingField] ?? '';
     }
 
     protected function resetFieldState(): void
@@ -299,22 +496,26 @@ new #[Title('Input Pemberkasan')] class extends Component
             'val_bank_kode', 'val_bm_tanggal', 'val_wcr_tanggal', 'val_wcr_catatan',
             'val_sp3k_tanggal', 'val_sp3k_nomor', 'val_sp3k_expired', 'val_sp3k_nominal',
             'val_lpa_tanggal',
-            'uploadFile', 'existingFileName',
+            'uploadFile', 'existingFileName', 'peringatanUrutan',
         ]);
     }
 
-    /** Download berkas BM (satu-satunya yg punya upload). */
-    public function downloadBmFile(int $pemberkasanId): ?\Symfony\Component\HttpFoundation\StreamedResponse
+    /** Unduh berkas lengkap (bm) atau lembar SP3K (sp3k). */
+    public function downloadBerkas(int $pemberkasanId, string $jenis = 'bm'): ?\Symfony\Component\HttpFoundation\StreamedResponse
     {
         abort_unless(Auth::user()?->can('pemberkasan.kelola') || Auth::user()?->can('pemberkasan.lihat'), 403);
+        abort_unless(in_array($jenis, ['bm', 'sp3k'], true), 404);
+
         $p = SprPemberkasan::findOrFail($pemberkasanId);
-        if (! $p->bm_file_path || ! Storage::disk('private')->exists($p->bm_file_path)) {
+        $path = $p->getAttribute($jenis.'_file_path');
+
+        if (! $path || ! Storage::disk('private')->exists($path)) {
             Flux::toast(variant: 'warning', text: 'File tidak ditemukan.');
 
             return null;
         }
 
-        return Storage::disk('private')->download($p->bm_file_path, $p->bm_file_original_name ?? basename($p->bm_file_path));
+        return Storage::disk('private')->download($path, $p->getAttribute($jenis.'_file_original_name') ?? basename($path));
     }
 
     public function resetAllFilters(): void
@@ -323,17 +524,28 @@ new #[Title('Input Pemberkasan')] class extends Component
         $this->resetPage();
     }
 
-    public function with(): array
+    /**
+     * SPR yang tampil sebelum disaring tahap: proyek, tab, pencarian, bank, sales.
+     *
+     * Dipisah dari tahap supaya angka ringkasan tetap menunjukkan sebaran meski
+     * satu tahap sedang dipilih.
+     */
+    private function queryDasar(bool $pakaiTab = true): Builder
     {
         $q = Spr::query()
-            ->with(['prospectCustomer:id,nama_lengkap,nik', 'sales:id,nama',
-                'rumah:id,proyek_id,blok,nomor_unit', 'pemberkasan',
-                'realisasiPembayaran:id,spr_id,jenis,jumlah'])
             ->whereIn('status', ['approved', 'akad'])
             ->where('jenis_pembayaran', 'kpr');
 
         // Selalu dibatasi proyek: tanpa proyek terpilih hasilnya kosong, bukan semua proyek.
         $q->whereHas('rumah', fn ($r) => $r->where('proyek_id', $this->selectedProyekId ?? 0));
+
+        if ($pakaiTab) {
+            match ($this->tab) {
+                'proses' => $q->where('status', 'approved'),
+                'akad' => $q->where('status', 'akad'),
+                default => null,
+            };
+        }
 
         if ($this->search !== '') {
             $s = "%{$this->search}%";
@@ -361,26 +573,74 @@ new #[Title('Input Pemberkasan')] class extends Component
             $q->where('sales_id', $this->filterSales);
         }
 
-        // Filter status tahapan (per stage)
-        match ($this->filterStatus) {
-            'belum_berkas' => $q->where(function ($qq) {
-                $qq->whereDoesntHave('pemberkasan')
-                    ->orWhereHas('pemberkasan', fn ($p) => $p->whereNull('bm_tanggal'));
-            }),
-            'belum_wawancara' => $q->whereHas('pemberkasan', fn ($p) => $p->whereNotNull('bm_tanggal')
-                ->whereNull('wcr_tanggal')),
-            'belum_sp3k' => $q->whereHas('pemberkasan', fn ($p) => $p->whereNotNull('wcr_tanggal')
-                ->whereNull('sp3k_tanggal')),
+        return $q;
+    }
+
+    /**
+     * Saring per tahap. "Belum" dihitung dari tahap terjauh yang sudah tercapai dan
+     * hanya untuk SPR yang belum akad — SPR yang sudah wawancara tidak lagi terhitung
+     * belum berkas hanya karena tanggal berkas lengkapnya tidak tercatat.
+     */
+    private function terapkanTahap(Builder $q, string $kode): Builder
+    {
+        match ($kode) {
+            'belum_berkas' => $q->where('status', 'approved')->where(fn ($qq) => $qq
+                ->whereDoesntHave('pemberkasan')
+                ->orWhereHas('pemberkasan', fn ($p) => $p->whereNull('bm_tanggal')->whereNull('wcr_tanggal')->whereNull('sp3k_tanggal'))),
+            'belum_wawancara' => $q->where('status', 'approved')->whereHas('pemberkasan', fn ($p) => $p
+                ->whereNotNull('bm_tanggal')->whereNull('wcr_tanggal')->whereNull('sp3k_tanggal')),
+            'belum_sp3k' => $q->where('status', 'approved')->whereHas('pemberkasan', fn ($p) => $p
+                ->whereNotNull('wcr_tanggal')->whereNull('sp3k_tanggal')),
             'sudah_sp3k' => $q->whereHas('pemberkasan', fn ($p) => $p->whereNotNull('sp3k_tanggal')),
-            'expiring' => $q->whereHas('pemberkasan', fn ($p) => $p->whereNotNull('sp3k_expired')
-                ->whereBetween('sp3k_expired', [now(), now()->addDays(30)])),
-            'sp3k_expired' => $q->whereHas('pemberkasan', fn ($p) => $p->whereNotNull('sp3k_expired')
-                ->where('sp3k_expired', '<', now())),
+            'expiring' => $q->where('status', 'approved')->whereHas('pemberkasan', fn ($p) => $p
+                ->whereNotNull('sp3k_expired')->whereBetween('sp3k_expired', [today(), today()->addDays(30)])),
+            'sp3k_expired' => $q->where('status', 'approved')->whereHas('pemberkasan', fn ($p) => $p
+                ->whereNotNull('sp3k_expired')->where('sp3k_expired', '<', today())),
             'lpa_wajib' => $q->whereHas('pemberkasan', fn ($p) => $p->whereIn('bank_kode', BankKpr::kodeWajibLpa())
                 ->whereNotNull('sp3k_tanggal')->whereNull('lpa_tanggal')),
+            'tidak_runtut' => $q->whereHas('pemberkasan', fn ($p) => $p->where(fn ($w) => $w
+                ->whereColumn('wcr_tanggal', '<', 'bm_tanggal')
+                ->orWhereColumn('sp3k_tanggal', '<', 'wcr_tanggal')
+                ->orWhereColumn('sp3k_tanggal', '<', 'bm_tanggal'))),
             'akad_diset' => $q->whereHas('pemberkasan', fn ($p) => $p->whereNotNull('rencana_akad_tanggal')),
             default => null,
         };
+
+        return $q;
+    }
+
+    /** @return array<string, callable> */
+    private function kolomUrut(): array
+    {
+        $berkas = fn (string $kolom) => fn ($q, string $arah) => $q->orderBy(
+            SprPemberkasan::select($kolom)->whereColumn('spr_pemberkasan.spr_id', 'spr.id')->limit(1), $arah);
+        $rumah = fn () => Rumah::query()->whereColumn('rumah.id', 'spr.rumah_id')->limit(1);
+
+        return [
+            'spr' => fn ($q, string $arah) => $q->orderBy('nomor_spr', $arah),
+            // Nomor unit disimpan sebagai teks: diurutkan per panjang dulu supaya AE-9 tidak mendahului AE-10.
+            'blok' => fn ($q, string $arah) => $q->orderBy($rumah()->select('blok'), $arah)
+                ->orderBy($rumah()->selectRaw('LENGTH(nomor_unit)'), $arah)
+                ->orderBy($rumah()->select('nomor_unit'), $arah),
+            'customer' => fn ($q, string $arah) => $q->orderBy(ProspectCustomer::select('nama_lengkap')
+                ->whereColumn('prospect_customer.id', 'spr.prospect_customer_id')->limit(1), $arah),
+            'bm' => $berkas('bm_tanggal'),
+            'wcr' => $berkas('wcr_tanggal'),
+            'sp3k' => $berkas('sp3k_tanggal'),
+            'lpa' => $berkas('lpa_tanggal'),
+            'rencana_akad' => $berkas('rencana_akad_tanggal'),
+            'akad' => fn ($q, string $arah) => $q->orderBy('tgl_akad', $arah),
+        ];
+    }
+
+    public function with(): array
+    {
+        $dasar = $this->queryDasar();
+        $q = (clone $dasar)->with(['prospectCustomer:id,nama_lengkap,nik', 'sales:id,nama',
+            'rumah:id,proyek_id,blok,nomor_unit', 'pemberkasan',
+            'realisasiPembayaran:id,spr_id,jenis,jumlah']);
+
+        $this->terapkanTahap($q, $this->filterStatus);
 
         // Filter rencana akad periode
         match ($this->filterAkadPeriode) {
@@ -391,8 +651,25 @@ new #[Title('Input Pemberkasan')] class extends Component
             default => null,
         };
 
+        if ($this->sortBy !== '') {
+            $this->applySort($q, $this->kolomUrut());
+            $q->orderByDesc('spr.id');
+        } else {
+            $q->orderByDesc('tanggal_spr')->orderByDesc('id');
+        }
+
+        $tanpaTab = $this->queryDasar(false);
+
         return [
-            'sprs' => $q->orderByDesc('tanggal_spr')->orderByDesc('id')->paginate((int) $this->perPage),
+            'sprs' => $q->paginate((int) $this->perPage),
+            'jumlahTab' => [
+                'proses' => (clone $tanpaTab)->where('status', 'approved')->count(),
+                'akad' => (clone $tanpaTab)->where('status', 'akad')->count(),
+                'semua' => (clone $tanpaTab)->count(),
+            ],
+            'ringkasan' => collect(self::RINGKASAN)
+                ->map(fn ($info, $kode) => $this->terapkanTahap(clone $dasar, $kode)->count())
+                ->all(),
             'proyekList' => Proyek::orderBy('nama_proyek')->get(['id', 'nama_proyek']),
             'salesList' => \App\Models\Master\Sales::where('is_aktif', true)->orderBy('nama')->get(['id', 'nama']),
         ];
@@ -433,8 +710,8 @@ new #[Title('Input Pemberkasan')] class extends Component
             </div>
 
             {{-- Row 2: Dropdown filters --}}
-            <div class="flex flex-wrap items-end gap-3">
-                <div class="min-w-40">
+            <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
+                <div class="sm:min-w-40">
                     <flux:select wire:model.live="filterBank" placeholder="Semua Bank" size="sm">
                         <flux:select.option value="">Semua Bank</flux:select.option>
                         <flux:select.option value="__EMPTY__">— (Belum di-set)</flux:select.option>
@@ -443,7 +720,7 @@ new #[Title('Input Pemberkasan')] class extends Component
                         @endforeach
                     </flux:select>
                 </div>
-                <div class="min-w-40">
+                <div class="sm:min-w-40">
                     <flux:select wire:model.live="filterSales" placeholder="Semua Sales" size="sm">
                         <flux:select.option value="">Semua Sales</flux:select.option>
                         @foreach ($salesList as $sl)
@@ -451,20 +728,7 @@ new #[Title('Input Pemberkasan')] class extends Component
                         @endforeach
                     </flux:select>
                 </div>
-                <div class="min-w-48">
-                    <flux:select wire:model.live="filterStatus" placeholder="Semua Status Tahap" size="sm">
-                        <flux:select.option value="">Semua Status Tahap</flux:select.option>
-                        <flux:select.option value="belum_berkas">Belum Berkas Lengkap</flux:select.option>
-                        <flux:select.option value="belum_wawancara">Sudah Berkas / Belum Wawancara</flux:select.option>
-                        <flux:select.option value="belum_sp3k">Sudah Wawancara / Belum SP3K</flux:select.option>
-                        <flux:select.option value="sudah_sp3k">Sudah SP3K</flux:select.option>
-                        <flux:select.option value="expiring">SP3K Expiring ≤ 30h</flux:select.option>
-                        <flux:select.option value="sp3k_expired">SP3K Sudah Expired</flux:select.option>
-                        <flux:select.option value="lpa_wajib">LPA Wajib (BTN — belum diisi)</flux:select.option>
-                        <flux:select.option value="akad_diset">Rencana Akad Sudah Diset</flux:select.option>
-                    </flux:select>
-                </div>
-                <div class="min-w-44">
+                <div class="col-span-2 sm:min-w-44">
                     <flux:select wire:model.live="filterAkadPeriode" placeholder="Rencana Akad" size="sm">
                         <flux:select.option value="">Rencana Akad — Semua</flux:select.option>
                         <flux:select.option value="week">Minggu Ini (7h)</flux:select.option>
@@ -480,17 +744,64 @@ new #[Title('Input Pemberkasan')] class extends Component
                 Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri untuk menampilkan data pemberkasan.
             </div>
         @else
+            {{-- TAB: yang masih berproses dipisah dari yang sudah akad --}}
+            <div class="mb-3 flex w-full rounded-full border border-zinc-200 bg-white p-1 sm:inline-flex sm:w-auto dark:border-zinc-700 dark:bg-zinc-900">
+                @foreach (['proses' => 'Proses KPR', 'akad' => 'Sudah akad', 'semua' => 'Semua'] as $kode => $label)
+                    <button type="button" wire:click="pilihTab('{{ $kode }}')"
+                            @class([
+                                'flex-1 whitespace-nowrap rounded-full px-2 py-1.5 text-xs font-semibold transition-colors sm:flex-none sm:px-4',
+                                'bg-zinc-900 text-white shadow-sm dark:bg-white dark:text-zinc-900' => $tab === $kode,
+                                'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white' => $tab !== $kode,
+                            ])>
+                        {{ $label }}
+                        <span @class(['ml-1 font-mono tabular-nums', 'opacity-70' => $tab === $kode, 'text-zinc-400' => $tab !== $kode])>{{ $jumlahTab[$kode] }}</span>
+                    </button>
+                @endforeach
+            </div>
+
+            {{-- RINGKASAN TAHAP — klik untuk menyaring, klik lagi untuk melepas --}}
+            @php
+                $warnaAngka = [
+                    'zinc' => 'text-zinc-700 dark:text-zinc-300',
+                    'sky' => 'text-sky-700 dark:text-sky-400',
+                    'blue' => 'text-blue-700 dark:text-blue-400',
+                    'emerald' => 'text-emerald-700 dark:text-emerald-400',
+                    'amber' => 'text-amber-700 dark:text-amber-400',
+                    'rose' => 'text-rose-700 dark:text-rose-400',
+                    'violet' => 'text-violet-700 dark:text-violet-400',
+                ];
+            @endphp
+            <div class="mb-4 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
+                @foreach ($this::RINGKASAN as $kode => [$judul, $keterangan, $warna])
+                    @continue(($ringkasan[$kode] ?? 0) === 0 && $filterStatus !== $kode)
+                    @php $aktif = $filterStatus === $kode; @endphp
+                    <button type="button" wire:click="pakaiTahap('{{ $kode }}')"
+                            @class([
+                                'flex shrink-0 items-baseline gap-2 whitespace-nowrap rounded-lg border bg-white px-3 py-2 text-left transition dark:bg-zinc-900',
+                                'border-zinc-900 ring-1 ring-zinc-900 dark:border-white dark:ring-white' => $aktif,
+                                'border-zinc-200 hover:border-zinc-400 dark:border-zinc-700' => ! $aktif,
+                            ])>
+                        <span class="font-mono text-lg font-bold tabular-nums {{ $warnaAngka[$warna] }}">{{ $ringkasan[$kode] ?? 0 }}</span>
+                        <span class="leading-tight">
+                            <span class="block text-xs font-semibold text-zinc-800 dark:text-zinc-200">{{ $judul }}</span>
+                            <span class="block text-[10px] text-zinc-500">{{ $keterangan }}</span>
+                        </span>
+                    </button>
+                @endforeach
+            </div>
+
             {{-- TABLE — setiap cell editable (klik langsung).
                  Kolom Identitas dibekukan di kiri supaya konsumennya tetap terbaca saat
                  tabel digeser ke kolom tahapan. Lebarnya tetap karena posisi tempel
-                 tiap kolom dihitung dari lebar kolom sebelumnya. --}}
+                 tiap kolom dihitung dari lebar kolom sebelumnya. Di layar HP keempatnya
+                 lebih lebar dari layar, jadi yang dibekukan hanya Blok. --}}
             @php
-                $bekuEdge = 'shadow-[inset_-1px_0_0_var(--color-zinc-300)] dark:shadow-[inset_-1px_0_0_var(--color-zinc-600)]';
+                $bekuEdge = 'md:shadow-[inset_-1px_0_0_var(--color-zinc-300)] dark:md:shadow-[inset_-1px_0_0_var(--color-zinc-600)]';
                 $beku = [
-                    'spr' => 'sticky left-0 z-10 w-20 min-w-20 max-w-20',
-                    'blok' => 'sticky left-20 z-10 w-16 min-w-16 max-w-16',
-                    'customer' => 'sticky left-36 z-10 w-40 min-w-40 max-w-40',
-                    'sales' => 'sticky left-76 z-10 w-32 min-w-32 max-w-32 '.$bekuEdge,
+                    'spr' => 'md:sticky md:left-0 md:z-10 w-20 min-w-20 max-w-20',
+                    'blok' => 'sticky left-0 z-10 md:left-20 w-16 min-w-16 max-w-16 max-md:shadow-[inset_-1px_0_0_var(--color-zinc-300)] dark:max-md:shadow-[inset_-1px_0_0_var(--color-zinc-600)]',
+                    'customer' => 'md:sticky md:left-36 md:z-10 w-40 min-w-40 max-w-40',
+                    'sales' => 'md:sticky md:left-76 md:z-10 w-32 min-w-32 max-w-32 '.$bekuEdge,
                 ];
                 $bekuIsi = 'bg-white dark:bg-zinc-900';
                 $bekuKepala = 'bg-zinc-50 dark:bg-zinc-800';
@@ -501,16 +812,16 @@ new #[Title('Input Pemberkasan')] class extends Component
                         <thead>
                             {{-- Row 1: Group category --}}
                             <tr class="border-b border-zinc-200 bg-zinc-100 text-center uppercase text-[10px] font-bold text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-                                <th colspan="4" class="sticky left-0 z-10 bg-zinc-100 px-3 py-1.5 dark:bg-zinc-800 {{ $bekuEdge }}">Identitas</th>
+                                <th colspan="4" class="bg-zinc-100 px-3 py-1.5 md:sticky md:left-0 md:z-10 dark:bg-zinc-800 {{ $bekuEdge }}">Identitas</th>
                                 <th colspan="5" class="border-l border-zinc-300 px-3 py-1.5 dark:border-zinc-600">Harga &amp; UM</th>
                                 <th colspan="3" class="border-l border-zinc-300 px-3 py-1.5 dark:border-zinc-600">KPR</th>
                                 <th colspan="6" class="border-l border-zinc-300 px-3 py-1.5 dark:border-zinc-600">Tahapan Pemberkasan</th>
                             </tr>
                             {{-- Row 2: Detail column --}}
                             <tr class="border-b border-zinc-200 bg-zinc-50 text-left uppercase text-[10px] font-semibold text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800/60">
-                                <th class="{{ $beku['spr'] }} {{ $bekuKepala }} px-3 py-2.5">SPR</th>
-                                <th class="{{ $beku['blok'] }} {{ $bekuKepala }} px-3 py-2.5">Blok</th>
-                                <th class="{{ $beku['customer'] }} {{ $bekuKepala }} px-3 py-2.5">Customer</th>
+                                <x-th-urut field="spr" :sort-by="$sortBy" :sort-dir="$sortDir" class="{{ $beku['spr'] }} {{ $bekuKepala }}">SPR</x-th-urut>
+                                <x-th-urut field="blok" :sort-by="$sortBy" :sort-dir="$sortDir" class="{{ $beku['blok'] }} {{ $bekuKepala }}">Blok</x-th-urut>
+                                <x-th-urut field="customer" :sort-by="$sortBy" :sort-dir="$sortDir" class="{{ $beku['customer'] }} {{ $bekuKepala }}">Customer</x-th-urut>
                                 <th class="{{ $beku['sales'] }} {{ $bekuKepala }} px-3 py-2.5">Sales</th>
                                 <th class="border-l border-zinc-300 px-3 py-2.5 text-right dark:border-zinc-600">Harga Jual AJB</th>
                                 <th class="px-3 py-2.5 text-right">Harga All In</th>
@@ -520,12 +831,12 @@ new #[Title('Input Pemberkasan')] class extends Component
                                 <th class="border-l border-zinc-300 px-3 py-2.5 dark:border-zinc-600">Bank</th>
                                 <th class="px-3 py-2.5 text-right">Pengajuan KPR</th>
                                 <th class="px-3 py-2.5 text-right">Setuju Bank</th>
-                                <th class="border-l border-zinc-300 px-3 py-2.5 dark:border-zinc-600">Berkas Lengkap</th>
-                                <th class="px-3 py-2.5">Wawancara</th>
-                                <th class="px-3 py-2.5">SP3K</th>
-                                <th class="px-3 py-2.5">LPA</th>
-                                <th class="px-3 py-2.5">Rencana Akad</th>
-                                <th class="px-3 py-2.5">Akad</th>
+                                <x-th-urut field="bm" :sort-by="$sortBy" :sort-dir="$sortDir" class="border-l border-zinc-300 dark:border-zinc-600">Berkas Lengkap</x-th-urut>
+                                <x-th-urut field="wcr" :sort-by="$sortBy" :sort-dir="$sortDir">Wawancara</x-th-urut>
+                                <x-th-urut field="sp3k" :sort-by="$sortBy" :sort-dir="$sortDir">SP3K</x-th-urut>
+                                <x-th-urut field="lpa" :sort-by="$sortBy" :sort-dir="$sortDir">LPA</x-th-urut>
+                                <x-th-urut field="rencana_akad" :sort-by="$sortBy" :sort-dir="$sortDir">Rencana Akad</x-th-urut>
+                                <x-th-urut field="akad" :sort-by="$sortBy" :sort-dir="$sortDir">Akad</x-th-urut>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -560,6 +871,14 @@ new #[Title('Input Pemberkasan')] class extends Component
                                         $umPersen > 0 => 'text-amber-700 dark:text-amber-400',
                                         default => 'text-zinc-400',
                                     };
+                                    // Sel yang sedang diisi langsung (tanpa jendela).
+                                    $sedang = fn (string $f) => $inlineSprId === $s->id && $inlineField === $f;
+                                    // Tahap sesudahnya sudah jalan tapi tanggal berkas lengkap tidak pernah dicatat.
+                                    $bmTakTercatat = ! $p?->bm_tanggal && ($p?->wcr_tanggal || $p?->sp3k_tanggal || $s->status === 'akad');
+                                    $mundur = fn ($awal, $akhir) => $awal && $akhir && $akhir->lt($awal);
+                                    $wcrJanggal = $mundur($p?->bm_tanggal, $p?->wcr_tanggal);
+                                    $sp3kJanggal = $mundur($p?->wcr_tanggal, $p?->sp3k_tanggal) || $mundur($p?->bm_tanggal, $p?->sp3k_tanggal);
+                                    $ikonJanggal = '<svg xmlns="http://www.w3.org/2000/svg" class="ml-1 inline size-3 text-rose-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>';
                                 @endphp
                                 <tr>
                                     {{-- SPR (link ke detail) --}}
@@ -597,14 +916,18 @@ new #[Title('Input Pemberkasan')] class extends Component
                                     </td>
 
                                     {{-- Bank (editable) — awal grup KPR --}}
-                                    <td @class(['whitespace-nowrap border-l border-zinc-200 px-3 py-2 dark:border-zinc-700', $editableCell => $canEdit])
-                                        @if ($canEdit) wire:click="openField({{ $s->id }}, 'bank')" title="Klik untuk pilih bank" @endif>
-                                        @if ($p?->bank_kode)
-                                            <span class="font-mono text-zinc-700 dark:text-zinc-300">{{ $p->bank_kode }}</span>
+                                    <td @class(['whitespace-nowrap border-l border-zinc-200 px-3 py-2 dark:border-zinc-700', $editableCell => $canEdit && ! $sedang('bank')])
+                                        @if ($canEdit && ! $sedang('bank')) wire:click="mulaiInline({{ $s->id }}, 'bank')" title="Klik untuk pilih bank" @endif>
+                                        @if ($sedang('bank'))
+                                            <x-pemberkasan.isi-cepat jenis="bank" :peringatan="$peringatanUrutan" />
                                         @else
-                                            <span class="text-zinc-400">—</span>
+                                            @if ($p?->bank_kode)
+                                                <span class="font-mono text-zinc-700 dark:text-zinc-300">{{ $p->bank_kode }}</span>
+                                            @else
+                                                <span class="text-zinc-400">—</span>
+                                            @endif
+                                            @if ($canEdit) {!! $editPencil !!} @endif
                                         @endif
-                                        @if ($canEdit) {!! $editPencil !!} @endif
                                     </td>
 
                                     {{-- Pengajuan KPR (spr.nilai_kpr) --}}
@@ -618,15 +941,21 @@ new #[Title('Input Pemberkasan')] class extends Component
                                     </td>
 
                                     {{-- Berkas Lengkap (editable) — awal grup Tahapan Pemberkasan --}}
-                                    <td @class(['whitespace-nowrap border-l border-zinc-200 px-3 py-2 dark:border-zinc-700', $editableCell => $canEdit])
-                                        @if ($canEdit) wire:click="openField({{ $s->id }}, 'bm')" title="Klik untuk input berkas lengkap" @endif>
-                                        @if (! $p?->bm_tanggal)
-                                            <span class="text-zinc-400">—</span>
+                                    <td @class(['whitespace-nowrap border-l border-zinc-200 px-3 py-2 dark:border-zinc-700', $editableCell => $canEdit && ! $sedang('bm')])
+                                        @if ($canEdit && ! $sedang('bm')) wire:click="mulaiInline({{ $s->id }}, 'bm')" title="Klik untuk isi tanggal berkas lengkap" @endif>
+                                        @if ($sedang('bm'))
+                                            <x-pemberkasan.isi-cepat detail="Unggah berkas lengkap" :peringatan="$peringatanUrutan" />
+                                        @elseif (! $p?->bm_tanggal)
+                                            @if ($bmTakTercatat)
+                                                <span class="italic text-zinc-400" title="Tahap sesudahnya sudah jalan, tapi tanggal berkas lengkap belum dicatat">tidak tercatat</span>
+                                            @else
+                                                <span class="text-zinc-400">—</span>
+                                            @endif
                                             @if ($canEdit) {!! $editPencil !!} @endif
                                         @else
                                             <span>{{ $p->bm_tanggal?->format('d/m/y') }}</span>
                                             @if ($p->bm_file_path)
-                                                <button type="button" wire:click.stop="downloadBmFile({{ $p->id }})" title="{{ $p->bm_file_original_name }}" class="ml-1 text-blue-500 hover:text-blue-700">
+                                                <button type="button" wire:click.stop="downloadBerkas({{ $p->id }}, 'bm')" title="{{ $p->bm_file_original_name }}" class="ml-1 text-blue-500 hover:text-blue-700">
                                                     <flux:icon.paper-clip class="inline size-3" />
                                                 </button>
                                             @endif
@@ -635,11 +964,14 @@ new #[Title('Input Pemberkasan')] class extends Component
                                     </td>
 
                                     {{-- WCR (editable) --}}
-                                    <td @class(['whitespace-nowrap px-3 py-2', $editableCell => $canEdit])
-                                        @if ($canEdit) wire:click="openField({{ $s->id }}, 'wcr')" title="Klik untuk input Wawancara" @endif>
-                                        @if ($p?->wcr_tanggal)
+                                    <td @class(['whitespace-nowrap px-3 py-2', $editableCell => $canEdit && ! $sedang('wcr')])
+                                        @if ($canEdit && ! $sedang('wcr')) wire:click="mulaiInline({{ $s->id }}, 'wcr')" title="Klik untuk isi tanggal wawancara" @endif>
+                                        @if ($sedang('wcr'))
+                                            <x-pemberkasan.isi-cepat detail="Tambah catatan wawancara" :peringatan="$peringatanUrutan" />
+                                        @elseif ($p?->wcr_tanggal)
                                             <div>
                                                 {{ $p->wcr_tanggal->format('d/m/y') }}
+                                                @if ($wcrJanggal) <span title="Lebih awal dari tanggal berkas lengkap">{!! $ikonJanggal !!}</span> @endif
                                                 @if ($canEdit) {!! $editPencil !!} @endif
                                             </div>
                                             @if ($p->wcr_catatan)
@@ -657,7 +989,15 @@ new #[Title('Input Pemberkasan')] class extends Component
                                     <td @class(['whitespace-nowrap px-3 py-2', $editableCell => $canEdit])
                                         @if ($canEdit) wire:click="openField({{ $s->id }}, 'sp3k')" title="Klik untuk input SP3K" @endif>
                                         @if ($p?->sp3k_tanggal)
-                                            <div>{{ $p->sp3k_tanggal->format('d/m/y') }}</div>
+                                            <div>
+                                                {{ $p->sp3k_tanggal->format('d/m/y') }}
+                                                @if ($sp3kJanggal) <span title="Lebih awal dari tanggal wawancara atau berkas lengkap">{!! $ikonJanggal !!}</span> @endif
+                                                @if ($p->sp3k_file_path)
+                                                    <button type="button" wire:click.stop="downloadBerkas({{ $p->id }}, 'sp3k')" title="{{ $p->sp3k_file_original_name }}" class="ml-1 text-blue-500 hover:text-blue-700">
+                                                        <flux:icon.paper-clip class="inline size-3" />
+                                                    </button>
+                                                @endif
+                                            </div>
                                             @if ($p->sp3k_expired && $sp3kExpIn !== null)
                                                 <div class="text-[10px] rounded px-1 inline-block {{ $sp3kCls }}">
                                                     @if ($sp3kExpIn < 0)
@@ -675,9 +1015,11 @@ new #[Title('Input Pemberkasan')] class extends Component
                                     </td>
 
                                     {{-- LPA — cuma untuk CBN (editable) --}}
-                                    <td @class(['whitespace-nowrap px-3 py-2', $editableCell => $canEdit && BankKpr::wajibLpa($p?->bank_kode)])
-                                        @if ($canEdit && BankKpr::wajibLpa($p?->bank_kode)) wire:click="openField({{ $s->id }}, 'lpa')" title="Klik untuk input LPA" @endif>
-                                        @if (BankKpr::wajibLpa($p?->bank_kode))
+                                    <td @class(['whitespace-nowrap px-3 py-2', $editableCell => $canEdit && BankKpr::wajibLpa($p?->bank_kode) && ! $sedang('lpa')])
+                                        @if ($canEdit && BankKpr::wajibLpa($p?->bank_kode) && ! $sedang('lpa')) wire:click="mulaiInline({{ $s->id }}, 'lpa')" title="Klik untuk isi tanggal LPA" @endif>
+                                        @if ($sedang('lpa'))
+                                            <x-pemberkasan.isi-cepat :peringatan="$peringatanUrutan" />
+                                        @elseif (BankKpr::wajibLpa($p?->bank_kode))
                                             @if ($p->lpa_tanggal)
                                                 {{ $p->lpa_tanggal->format('d/m/y') }}
                                             @else
@@ -789,13 +1131,37 @@ new #[Title('Input Pemberkasan')] class extends Component
                 @error('val_wcr_catatan') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
             @endif
 
-            {{-- SP3K (tanpa upload — cuma tanggal + nomor + expired + nominal) --}}
+            {{-- SP3K: tanggal + nomor + expired + nominal, lembar SP3K opsional --}}
             @if ($editingField === 'sp3k')
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <flux:input type="date" wire:model.live="val_sp3k_tanggal" label="Tanggal SP3K" required />
                     <flux:input wire:model="val_sp3k_nomor" label="Nomor SP3K" placeholder="opsional" />
                     <flux:input type="date" wire:model="val_sp3k_expired" label="Expired (auto +90h)" />
                     <flux:input wire:model.live.debounce.300ms="val_sp3k_nominal" label="Nominal KPR Disetujui (Rp)" placeholder="0" required inputmode="numeric" description="Ketik angka saja, separator dot otomatis." />
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium">Upload Lembar SP3K (PDF/JPG, max 5MB, opsional)</label>
+                    <input type="file" wire:model="uploadFile" accept=".pdf,.jpg,.jpeg,.png"
+                           class="block w-full text-sm text-zinc-700 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-zinc-700 hover:file:bg-zinc-200 dark:text-zinc-300 dark:file:bg-zinc-700 dark:file:text-zinc-200 dark:hover:file:bg-zinc-600" />
+                    <div wire:loading wire:target="uploadFile"
+                         class="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                        <flux:icon.arrow-path class="size-3 animate-spin" />
+                        Mengunggah — tunggu sampai selesai sebelum menyimpan.
+                    </div>
+                    @if ($uploadFile)
+                        <div wire:loading.remove wire:target="uploadFile"
+                             class="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                            <flux:icon.check-circle class="size-3 shrink-0" />
+                            <span class="truncate">{{ $uploadFile->getClientOriginalName() }}</span>
+                            <span class="shrink-0 text-zinc-500">— siap disimpan</span>
+                        </div>
+                    @endif
+                    @if ($existingFileName)
+                        <div class="mt-1 text-[11px] text-zinc-600 dark:text-zinc-400">
+                            <flux:icon.paper-clip class="inline size-3" /> {{ $existingFileName }} (upload baru akan replace)
+                        </div>
+                    @endif
+                    @error('uploadFile') <div class="mt-1 text-xs text-rose-600">{{ $message }}</div> @enderror
                 </div>
             @endif
 
@@ -805,9 +1171,24 @@ new #[Title('Input Pemberkasan')] class extends Component
                 @error('val_lpa_tanggal') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
             @endif
 
+            @if ($peringatanUrutan && $editingField)
+                <div class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                    <p class="font-semibold">Tanggalnya janggal — periksa dulu:</p>
+                    <ul class="mt-1 list-disc space-y-0.5 pl-4">
+                        @foreach ($peringatanUrutan as $pesan)
+                            <li>{{ $pesan }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
             <div class="flex justify-end gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-700">
                 <flux:modal.close><flux:button variant="ghost">Batal</flux:button></flux:modal.close>
-                <flux:button variant="primary" wire:click="simpanField" wire:loading.attr="disabled" wire:target="uploadFile">Simpan</flux:button>
+                @if ($peringatanUrutan && $editingField)
+                    <flux:button variant="filled" wire:click="simpanField(true)" wire:loading.attr="disabled" wire:target="uploadFile">Tetap simpan</flux:button>
+                @else
+                    <flux:button variant="primary" wire:click="simpanField" wire:loading.attr="disabled" wire:target="uploadFile">Simpan</flux:button>
+                @endif
             </div>
         </div>
     </flux:modal>

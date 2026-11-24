@@ -16,6 +16,7 @@ class SprPemberkasan extends Model
         'bm_tanggal', 'bm_file_path', 'bm_file_original_name',
         'wcr_tanggal', 'wcr_catatan',
         'sp3k_tanggal', 'sp3k_nomor', 'sp3k_expired', 'sp3k_nominal',
+        'sp3k_file_path', 'sp3k_file_original_name',
         'lpa_tanggal',
         'rencana_akad_tanggal',
         'catatan',
