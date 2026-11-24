@@ -1,10 +1,14 @@
 <?php
 
+use App\Models\Master\Rumah;
+use App\Models\Master\TipeRumah;
 use App\Models\Matrix\MatrixImport;
 use App\Models\Matrix\MatrixUnit;
 use App\Models\User;
 use App\Services\MatrixImportService;
+use Database\Seeders\ProyekSeeder;
 use Database\Seeders\RolePermissionSeeder;
+use Database\Seeders\TipeRumahSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Livewire\Livewire;
@@ -621,4 +625,31 @@ it('melaporkan sel yang tidak terbaca dan tidak lagi mengisi pemberkasan', funct
         ->assertHasNoErrors()
         ->assertSee('1 sel tanggal tidak terbaca')
         ->assertSee('SUDAH');
+});
+
+it('selalu memperbarui progres dan LOT di Data Rumah saat diunggah', function () {
+    // Saklar "Sekalian perbarui data teknik" dihapus 24 Nov 2026 — untuk
+    // sementara setiap unggahan langsung menyalurkan progres & LOT.
+    $this->seed([ProyekSeeder::class, TipeRumahSeeder::class]);
+    $tipe = TipeRumah::first();
+    $rumah = Rumah::create([
+        'proyek_id' => $tipe->proyek_id, 'tipe_rumah_id' => $tipe->id,
+        'blok' => 'AE', 'nomor_unit' => '11', 'status' => 'terjual', 'progres_fisik' => 0,
+    ]);
+
+    $user = User::factory()->create();
+    $user->assignRole('super-admin');
+
+    Livewire::actingAs($user)
+        ->test('pages::matrix.upload')
+        ->assertDontSee('Sekalian perbarui data teknik')
+        ->set('berkas', UploadedFile::fake()->createWithContent('MATRIX.xlsx', file_get_contents($this->berkas)))
+        ->set('pilihan', MatrixImportService::mingguIni())
+        ->call('unggah')
+        ->assertHasNoErrors();
+
+    $rumah->refresh();
+
+    expect($rumah->progres_fisik)->toBe(94)
+        ->and($rumah->lot)->toBe(2);
 });

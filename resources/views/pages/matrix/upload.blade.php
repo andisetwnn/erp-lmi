@@ -15,12 +15,6 @@ new #[Title('Unggah Matrix')] class extends Component {
 
     public $berkas = null;
 
-    /**
-     * Sengaja mati secara bawaan: unggah yang diam-diam mengubah master data
-     * susah dilacak kalau ada yang meleset. Menyalakannya harus jadi pilihan sadar.
-     */
-    public bool $sinkronTeknik = false;
-
     public ?int $hapusId = null;
 
     /**
@@ -75,25 +69,24 @@ new #[Title('Unggah Matrix')] class extends Component {
             'file' => $import->nama_file,
         ]);
 
-        if ($this->sinkronTeknik) {
-            $hasil = app(MatrixSinkronTeknik::class)->jalankan($import, Auth::id());
+        // Untuk sementara data teknik selalu ikut diperbarui dari Matrix (keputusan 24 Nov 2026).
+        $hasil = app(MatrixSinkronTeknik::class)->jalankan($import, Auth::id());
 
-            $pesan .= ' '.__('Data teknik: :unit unit diperbarui (:progres progres, :lot LOT, :subcon subcon).', [
-                'unit' => $hasil['diperbarui'],
-                'progres' => $hasil['progres'],
-                'lot' => $hasil['lot'],
-                'subcon' => $hasil['subcon'],
+        $pesan .= ' '.__('Data teknik: :unit unit diperbarui (:progres progres, :lot LOT, :subcon subcon).', [
+            'unit' => $hasil['diperbarui'],
+            'progres' => $hasil['progres'],
+            'lot' => $hasil['lot'],
+            'subcon' => $hasil['subcon'],
+        ]);
+
+        if ($hasil['subcon_baru'] > 0) {
+            $pesan .= ' '.__(':jumlah subcon baru didaftarkan dari berkas.', ['jumlah' => $hasil['subcon_baru']]);
+        }
+
+        if ($hasil['tanpa_unit'] > 0) {
+            $pesan .= ' '.__(':jumlah unit di berkas belum ada di master rumah.', [
+                'jumlah' => $hasil['tanpa_unit'],
             ]);
-
-            if ($hasil['subcon_baru'] > 0) {
-                $pesan .= ' '.__(':jumlah subcon baru didaftarkan dari berkas.', ['jumlah' => $hasil['subcon_baru']]);
-            }
-
-            if ($hasil['tanpa_unit'] > 0) {
-                $pesan .= ' '.__(':jumlah unit di berkas belum ada di master rumah.', [
-                    'jumlah' => $hasil['tanpa_unit'],
-                ]);
-            }
         }
 
         $gagal = count($import->tidak_terbaca ?? []);
@@ -291,18 +284,8 @@ new #[Title('Unggah Matrix')] class extends Component {
                         {{ __('Laporan selalu membaca unggahan paling akhir, jadi berkas ini akan langsung menggantikan yang sekarang dipakai — unggahan lama tetap tersimpan di riwayat.') }}
                     </div>
 
-                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
-                        <flux:switch wire:model.live="sinkronTeknik"
-                                     :label="__('Sekalian perbarui data teknik')" align="left" />
-                        <p class="mt-1.5 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
-                            {{ __('Progres bangunan dan LOT di Data Rumah ikut disesuaikan dengan isi berkas ini. Unit yang kolomnya kosong di berkas tidak disentuh — kosong berarti belum diisi, bukan nol persen.') }}
-                            <span class="block mt-1 text-zinc-500">
-                                {{ __('Subcon ikut disesuaikan. Nama lengkapnya dibaca dari daftar singkatan di kepala berkas, dan yang belum terdaftar akan ditambahkan ke master subcon.') }}
-                            </span>
-                        </p>
-                    </div>
-
                     <p class="text-xs leading-relaxed text-zinc-500">
+                        {{ __('Progres bangunan, LOT, dan subcon di Data Rumah ikut diperbarui dari berkas ini. Unit yang kolomnya kosong di berkas tidak disentuh.') }}
                         {{ __('Tanggal pemberkasan (berkas lengkap, wawancara, SP3K, LPA) tidak ikut diambil dari Matrix — Admin KPR menginputnya langsung di menu Pemberkasan.') }}
                     </p>
 
