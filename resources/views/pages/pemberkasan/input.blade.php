@@ -76,13 +76,6 @@ new #[Title('Input Pemberkasan')] class extends Component
 
     public ?string $existingFileName = null;
 
-    // Inline NPWP edit (modal terpisah)
-    public ?int $editNpwpProspectId = null;
-
-    public ?string $editNpwpValue = null;
-
-    public ?string $editNpwpCustomerName = null;
-
     public function mount(): void
     {
         $this->selectedProyekId = \App\Support\ProyekAktif::sinkron($this->selectedProyekId);
@@ -310,36 +303,6 @@ new #[Title('Input Pemberkasan')] class extends Component
         ]);
     }
 
-    public function openEditNpwp(int $prospectId, ?string $currentNpwp, ?string $customerName = null): void
-    {
-        abort_unless(Auth::user()?->can('pemberkasan.kelola'), 403);
-        $this->editNpwpProspectId = $prospectId;
-        $this->editNpwpValue = $currentNpwp ?? '';
-        $this->editNpwpCustomerName = $customerName;
-        Flux::modal('edit-npwp')->show();
-    }
-
-    public function saveNpwp(): void
-    {
-        abort_unless(Auth::user()?->can('pemberkasan.kelola'), 403);
-        $this->validate([
-            'editNpwpValue' => ['nullable', 'string', 'max:30'],
-        ]);
-        $npwpLama = \App\Models\Master\ProspectCustomer::whereKey($this->editNpwpProspectId)->value('npwp');
-        $npwpBaru = $this->editNpwpValue ?: null;
-
-        \App\Models\Master\ProspectCustomer::where('id', $this->editNpwpProspectId)
-            ->update(['npwp' => $npwpBaru]);
-
-        $sprKonsumen = Spr::where('prospect_customer_id', $this->editNpwpProspectId)->latest('id')->first();
-        if ($sprKonsumen && $npwpLama !== $npwpBaru) {
-            BusinessActivityLogger::pemberkasan($sprKonsumen, 'npwp', ['NPWP' => [$npwpLama, $npwpBaru]]);
-        }
-        Flux::modal('edit-npwp')->close();
-        Flux::toast(variant: 'success', text: 'NPWP customer diperbarui.');
-        $this->reset(['editNpwpProspectId', 'editNpwpValue', 'editNpwpCustomerName']);
-    }
-
     /** Download berkas BM (satu-satunya yg punya upload). */
     public function downloadBmFile(int $pemberkasanId): ?\Symfony\Component\HttpFoundation\StreamedResponse
     {
@@ -363,7 +326,7 @@ new #[Title('Input Pemberkasan')] class extends Component
     public function with(): array
     {
         $q = Spr::query()
-            ->with(['prospectCustomer:id,nama_lengkap,nik,npwp', 'sales:id,nama',
+            ->with(['prospectCustomer:id,nama_lengkap,nik', 'sales:id,nama',
                 'rumah:id,proyek_id,blok,nomor_unit', 'pemberkasan',
                 'realisasiPembayaran:id,spr_id,jenis,jumlah'])
             ->whereIn('status', ['approved', 'akad'])
@@ -517,25 +480,38 @@ new #[Title('Input Pemberkasan')] class extends Component
                 Pilih proyek dulu di picker "Proyek Aktif" pada sidebar kiri untuk menampilkan data pemberkasan.
             </div>
         @else
-            {{-- TABLE — setiap cell editable (klik langsung) --}}
+            {{-- TABLE — setiap cell editable (klik langsung).
+                 Kolom Identitas dibekukan di kiri supaya konsumennya tetap terbaca saat
+                 tabel digeser ke kolom tahapan. Lebarnya tetap karena posisi tempel
+                 tiap kolom dihitung dari lebar kolom sebelumnya. --}}
+            @php
+                $bekuEdge = 'shadow-[inset_-1px_0_0_var(--color-zinc-300)] dark:shadow-[inset_-1px_0_0_var(--color-zinc-600)]';
+                $beku = [
+                    'spr' => 'sticky left-0 z-10 w-20 min-w-20 max-w-20',
+                    'blok' => 'sticky left-20 z-10 w-16 min-w-16 max-w-16',
+                    'customer' => 'sticky left-36 z-10 w-40 min-w-40 max-w-40',
+                    'sales' => 'sticky left-76 z-10 w-32 min-w-32 max-w-32 '.$bekuEdge,
+                ];
+                $bekuIsi = 'bg-white dark:bg-zinc-900';
+                $bekuKepala = 'bg-zinc-50 dark:bg-zinc-800';
+            @endphp
             <div class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900">
                 <div class="overflow-x-auto">
                     <table class="w-full text-xs">
                         <thead>
                             {{-- Row 1: Group category --}}
                             <tr class="border-b border-zinc-200 bg-zinc-100 text-center uppercase text-[10px] font-bold text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-                                <th colspan="5" class="px-3 py-1.5">Identitas</th>
+                                <th colspan="4" class="sticky left-0 z-10 bg-zinc-100 px-3 py-1.5 dark:bg-zinc-800 {{ $bekuEdge }}">Identitas</th>
                                 <th colspan="5" class="border-l border-zinc-300 px-3 py-1.5 dark:border-zinc-600">Harga &amp; UM</th>
                                 <th colspan="3" class="border-l border-zinc-300 px-3 py-1.5 dark:border-zinc-600">KPR</th>
                                 <th colspan="6" class="border-l border-zinc-300 px-3 py-1.5 dark:border-zinc-600">Tahapan Pemberkasan</th>
                             </tr>
                             {{-- Row 2: Detail column --}}
                             <tr class="border-b border-zinc-200 bg-zinc-50 text-left uppercase text-[10px] font-semibold text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800/60">
-                                <th class="px-3 py-2.5">SPR</th>
-                                <th class="px-3 py-2.5">Blok</th>
-                                <th class="px-3 py-2.5">Customer</th>
-                                <th class="px-3 py-2.5">NPWP</th>
-                                <th class="px-3 py-2.5">Sales</th>
+                                <th class="{{ $beku['spr'] }} {{ $bekuKepala }} px-3 py-2.5">SPR</th>
+                                <th class="{{ $beku['blok'] }} {{ $bekuKepala }} px-3 py-2.5">Blok</th>
+                                <th class="{{ $beku['customer'] }} {{ $bekuKepala }} px-3 py-2.5">Customer</th>
+                                <th class="{{ $beku['sales'] }} {{ $bekuKepala }} px-3 py-2.5">Sales</th>
                                 <th class="border-l border-zinc-300 px-3 py-2.5 text-right dark:border-zinc-600">Harga Jual AJB</th>
                                 <th class="px-3 py-2.5 text-right">Harga All In</th>
                                 <th class="px-3 py-2.5 text-right">Besaran UM</th>
@@ -587,23 +563,14 @@ new #[Title('Input Pemberkasan')] class extends Component
                                 @endphp
                                 <tr>
                                     {{-- SPR (link ke detail) --}}
-                                    <td class="whitespace-nowrap px-3 py-2 font-mono">
+                                    <td class="{{ $beku['spr'] }} {{ $bekuIsi }} whitespace-nowrap px-3 py-2 font-mono">
                                         <a href="{{ route('marketing.spr.show', $s->id) }}" class="text-blue-600 hover:underline dark:text-blue-400" wire:navigate>
                                             {{ $s->nomor_display }}
                                         </a>
                                     </td>
-                                    <td class="whitespace-nowrap px-3 py-2 font-mono">{{ $s->rumah?->kode_unit }}</td>
-                                    <td class="px-3 py-2">{{ $s->prospectCustomer?->nama_lengkap ?? '—' }}</td>
-                                    {{-- NPWP: auto keisi dari master customer, admin bisa edit inline kalau kosong / mau update --}}
-                                    <td @class(['whitespace-nowrap px-3 py-2 font-mono', $editableCell => $canEdit && $s->prospect_customer_id])
-                                        @if ($canEdit && $s->prospect_customer_id)
-                                            wire:click="openEditNpwp({{ $s->prospect_customer_id }}, '{{ addslashes((string) ($s->prospectCustomer?->npwp ?? '')) }}', '{{ addslashes((string) ($s->prospectCustomer?->nama_lengkap ?? '')) }}')"
-                                            title="Klik untuk edit NPWP"
-                                        @endif>
-                                        {{ $s->prospectCustomer?->npwp ?: '—' }}
-                                        @if ($canEdit && $s->prospect_customer_id) {!! $editPencil !!} @endif
-                                    </td>
-                                    <td class="px-3 py-2">{{ $s->sales?->nama ?? '—' }}</td>
+                                    <td class="{{ $beku['blok'] }} {{ $bekuIsi }} whitespace-nowrap px-3 py-2 font-mono">{{ $s->rumah?->kode_unit }}</td>
+                                    <td class="{{ $beku['customer'] }} {{ $bekuIsi }} px-3 py-2">{{ $s->prospectCustomer?->nama_lengkap ?? '—' }}</td>
+                                    <td class="{{ $beku['sales'] }} {{ $bekuIsi }} px-3 py-2">{{ $s->sales?->nama ?? '—' }}</td>
 
                                     {{-- Harga Jual AJB (read-only dari spr.harga_jual) — awal grup Harga & UM --}}
                                     <td class="whitespace-nowrap border-l border-zinc-200 px-3 py-2 text-right font-mono tabular-nums dark:border-zinc-700">{{ $fmt($s->harga_jual) }}</td>
@@ -742,7 +709,7 @@ new #[Title('Input Pemberkasan')] class extends Component
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="19" class="px-4 py-12 text-center text-zinc-400">
+                                    <td colspan="18" class="px-4 py-12 text-center text-zinc-400">
                                         Tidak ada SPR KPR yang butuh pemberkasan di proyek ini.
                                     </td>
                                 </tr>
@@ -824,25 +791,6 @@ new #[Title('Input Pemberkasan')] class extends Component
             <div class="flex justify-end gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-700">
                 <flux:modal.close><flux:button variant="ghost">Batal</flux:button></flux:modal.close>
                 <flux:button variant="primary" wire:click="simpanField">Simpan</flux:button>
-            </div>
-        </div>
-    </flux:modal>
-
-    {{-- MODAL EDIT NPWP CUSTOMER --}}
-    <flux:modal name="edit-npwp" class="md:w-md">
-        <div class="space-y-4">
-            <div>
-                <flux:heading size="lg">Edit NPWP Customer</flux:heading>
-                @if ($editNpwpCustomerName)
-                    <flux:subheading>{{ $editNpwpCustomerName }}</flux:subheading>
-                @endif
-            </div>
-            <flux:input wire:model="editNpwpValue" label="NPWP" placeholder="16 digit atau kosong" maxlength="30" />
-            <flux:description>Perubahan akan langsung ter-update di master Customer.</flux:description>
-            @error('editNpwpValue') <div class="text-xs text-rose-600">{{ $message }}</div> @enderror
-            <div class="flex justify-end gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-700">
-                <flux:modal.close><flux:button variant="ghost">Batal</flux:button></flux:modal.close>
-                <flux:button variant="primary" wire:click="saveNpwp">Simpan</flux:button>
             </div>
         </div>
     </flux:modal>
